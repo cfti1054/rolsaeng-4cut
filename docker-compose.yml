@@ -1,0 +1,39 @@
+# 로컬 개발용 인프라. 실행: docker compose up -d
+# Redis는 문서 4장 지침대로 선택 사항이다(S1 외부 API 동기화부터 사용). S0은 PostgreSQL만 있으면 동작한다.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: gcd-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gcd
+      POSTGRES_PASSWORD: gcd
+      POSTGRES_DB: gcd
+      TZ: UTC
+    ports:
+      - "5432:5432"
+    volumes:
+      - gcd-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gcd -d gcd"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: gcd-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - gcd-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  gcd-postgres:
+  gcd-redis:

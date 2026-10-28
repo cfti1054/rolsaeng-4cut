@@ -1,0 +1,176 @@
+@import "tailwindcss";
+@import "../styles/tokens.css";
+
+/*
+ * Tailwind v4 매핑 (계약 9-2). 유틸리티 이름 = {속성}-{토큰명}: bg-bg, bg-surface, text-muted, border-line ...
+ * 기본 팔레트(red-500 등)는 지워서 토큰 밖의 색을 쓰지 못하게 한다.
+ * shadcn 변수(--background, --primary ...)는 정의하지 않는다(9-3 치환표 사용).
+ */
+@theme {
+  --color-*: initial;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-nav: var(--nav);
+  --color-nav-line: var(--nav-line);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line-2: var(--line-2);
+  --color-line-3: var(--line-3);
+  --color-line-4: var(--line-4);
+  --color-hero: var(--hero);
+  --color-hero-2: var(--hero-2);
+  --color-hero-3: var(--hero-3);
+  --color-hero-line: var(--hero-line);
+  --color-hero-line-2: var(--hero-line-2);
+  --color-hero-faint: var(--hero-faint);
+  --color-avatar-deep: var(--avatar-deep);
+  --color-banner-lol: var(--banner-lol);
+  --color-banner-tft: var(--banner-tft);
+  --color-banner-steam: var(--banner-steam);
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-on-accent: var(--on-accent);
+  --color-overlay: var(--overlay);
+  --color-hi: var(--hi);
+  --color-chip: var(--chip);
+  --color-hair: var(--hair);
+  --color-hair-2: var(--hair-2);
+  --color-shadow: var(--shadow);
+  --color-hover: var(--hover);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-ink-hover: var(--accent-ink-hover);
+  --color-cyan: var(--cyan);
+  --color-cyan-text: var(--cyan-text);
+  --color-cyan-ink: var(--cyan-ink);
+  --color-cyan-ink-2: var(--cyan-ink-2);
+  --color-violet: var(--violet);
+  --color-violet-text: var(--violet-text);
+  --color-violet-ink: var(--violet-ink);
+  --color-orange: var(--orange);
+  --color-orange-text: var(--orange-text);
+  --color-orange-ink: var(--orange-ink);
+  --color-orange-ink-2: var(--orange-ink-2);
+  --color-warn-text: var(--warn-text);
+  --color-warn-text-2: var(--warn-text-2);
+  --color-blue: var(--blue);
+  --color-blue-text: var(--blue-text);
+  --color-blue-ink: var(--blue-ink);
+  --color-gold: var(--gold);
+  --color-gold-text: var(--gold-text);
+  --color-gold-ink: var(--gold-ink);
+  --color-silver: var(--silver);
+  --color-silver-text: var(--silver-text);
+  --color-bronze: var(--bronze);
+  --color-bronze-text: var(--bronze-text);
+  --color-pink-ink: var(--pink-ink);
+  /* 브랜드 색(디스코드). 토큰 파일 밖의 유일한 색. 아래 :root 블록 참고 */
+  --color-discord: var(--brand-discord);
+  --color-on-discord: var(--brand-on-discord);
+
+  --shadow-lift: var(--lift);
+  --shadow-seg: var(--seg-shadow);
+
+  --font-sans: "IBM Plex Sans KR", system-ui, sans-serif;
+  --font-display: "Chakra Petch", "IBM Plex Sans KR", sans-serif;
+}
+
+/*
+ * 디스코드 로그인 버튼 색. 목업 Login이 #5865F2 / #FFFFFF를 직접 쓴다.
+ * tokens.css에는 새 hex를 넣지 않는 규칙이라 여기 따로 둔다(테마와 무관한 외부 브랜드 색).
+ */
+:root {
+  --brand-discord: #5865F2;
+  --brand-on-discord: #FFFFFF;
+}
+
+/* 목업 tokens.css의 공통 규칙. .gcd 접두사만 뗐다(계약 9-1). 유틸리티가 이기도록 base 층에 둔다. */
+@layer base {
+  html,
+  body {
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  body {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a {
+    color: var(--accent-ink);
+  }
+  a:hover {
+    color: var(--accent-ink-hover);
+  }
+
+  html,
+  section,
+  nav,
+  article,
+  header,
+  div,
+  span,
+  button,
+  a,
+  input,
+  select,
+  textarea,
+  tr {
+    transition:
+      background-color 0.25s ease,
+      border-color 0.25s ease,
+      color 0.25s ease,
+      box-shadow 0.25s ease,
+      transform 0.2s ease;
+  }
+
+  nav a:hover {
+    background: var(--hover);
+  }
+
+  button:hover,
+  a[href]:hover {
+    filter: brightness(1.05);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent-ink);
+    outline-offset: 2px;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--faint);
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+/* 목업의 article:hover lift. 카드 컴포넌트에만 건다(계약 9-1 4번). */
+@utility card-lift {
+  &:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--lift);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+  }
+  .card-lift:hover {
+    transform: none;
+  }
+}

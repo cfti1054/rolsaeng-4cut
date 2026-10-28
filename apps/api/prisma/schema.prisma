@@ -1,0 +1,590 @@
+// =============================================================================
+// 게임 커뮤니티 대시보드 — 전체 스키마 (S0에서 일괄 생성)
+// 명세: 게임 커뮤니티 대시보드 개발 문서.md 5장 + _workspace/00_input/slice.md 결정 사항
+// 계약: _workspace/01_architect_contract.md 「스키마 변경」
+//
+// 규칙
+// - 모든 테이블: id uuid(@default(uuid())), created_at.
+// - TS 필드는 camelCase, DB 컬럼은 @map으로 snake_case, 테이블은 @@map으로 복수형 snake_case.
+// - 시각 컬럼은 timestamptz(@db.Timestamptz(3)).
+// - 문서 5장 인덱스 3개: ratings(game_id, season_id, elo desc), activity_logs(user_id, started_at),
+//   scrim_players(scrim_id, status).
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// enums (값은 packages/shared/src/constants/enums.ts와 동일해야 한다)
+// -----------------------------------------------------------------------------
+
+enum UserRole {
+  member
+  admin
+
+  @@map("user_role")
+}
+
+enum ScrimStatus {
+  recruiting
+  full
+  playing
+  finished
+  cancelled
+
+  @@map("scrim_status")
+}
+
+enum ScrimPlayerStatus {
+  joined
+  waitlist
+  cancelled
+  no_show
+
+  @@map("scrim_player_status")
+}
+
+enum ScrimTeam {
+  blue
+  orange
+
+  @@map("scrim_team")
+}
+
+enum ScrimResultStatus {
+  pending
+  approved
+  rejected
+
+  @@map("scrim_result_status")
+}
+
+enum DisputeStatus {
+  open
+  resolved
+
+  @@map("dispute_status")
+}
+
+enum ActivityType {
+  voice
+  chat
+  play
+
+  @@map("activity_type")
+}
+
+// -----------------------------------------------------------------------------
+// 계정
+// -----------------------------------------------------------------------------
+
+/// 회원. 문서 5장 users + 디스코드 로그인(사용자 결정)용 컬럼.
+model User {
+  id                     String    @id @default(uuid()) @db.Uuid
+  /// 디스코드가 준 이메일(인증된 경우만). 선택 정보
+  email                  String?
+  /// 커뮤니티 닉네임. 정규화(앞뒤 공백 제거·연속 공백 1개) 후 2–12자, 전역 유일(대소문자 구분)
+  nickname               String    @unique
+  role                   UserRole  @default(member)
+  /// 로그인 식별자. 디스코드 snowflake, 개발 전용 로그인은 'dev-{username}'
+  discordId              String?   @unique @map("discord_id")
+  /// 디스코드 username(고유 핸들). 로그인마다 갱신
+  discordUsername        String?   @map("discord_username")
+  /// 디스코드 표시 이름(global_name). 로그인마다 갱신
+  discordGlobalName      String?   @map("discord_global_name")
+  /// 디스코드 아바타 해시. URL은 API가 조립
+  discordAvatar          String?   @map("discord_avatar")
+  /// 마지막 로그인에서 DISCORD_GUILD_ID 서버 멤버로 확인된 시각
+  discordGuildVerifiedAt DateTime? @map("discord_guild_verified_at") @db.Timestamptz(3)
+  /// null이면 첫 로그인 닉네임 확인이 남아 있음
+  nicknameConfirmedAt    DateTime? @map("nickname_confirmed_at") @db.Timestamptz(3)
+  lastLoginAt            DateTime? @map("last_login_at") @db.Timestamptz(3)
+  /// 알림 설정(목업 Settings). S1 설정 화면에서 API 노출
+  notifyScrimStart       Boolean   @default(true) @map("notify_scrim_start")
+  notifyResult           Boolean   @default(true) @map("notify_result")
+  notifyWaitlist         Boolean   @default(true) @map("notify_waitlist")
+  notifyPatch            Boolean   @default(false) @map("notify_patch")
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  refreshTokens    RefreshToken[]
+  gameAccounts     GameAccount[]
+  syncRequests     GameAccountSyncRequest[]
+  hostedScrims     Scrim[]                  @relation("ScrimHost")
+  scrimPlayers     ScrimPlayer[]
+  noShowsMarked    ScrimPlayer[]            @relation("NoShowMarkedBy")
+  submittedResults ScrimResult[]            @relation("ResultSubmittedBy")
+  approvedResults  ScrimResult[]            @relation("ResultApprovedBy")
+  rejectedResults  ScrimResult[]            @relation("ResultRejectedBy")
+  disputes         ScrimResultDispute[]     @relation("DisputeUser")
+  resolvedDisputes ScrimResultDispute[]     @relation("DisputeResolvedBy")
+  ratings          Rating[]
+  ratingHistory    RatingHistory[]
+  seasonStandings  SeasonStanding[]
+  activityLogs     ActivityLog[]
+  userBadges       UserBadge[]
+  notices          Notice[]
+  apiKeysCreated   ApiKey[]
+
+  @@map("users")
+}
+
+/// 리프레시 토큰(회전 방식). 원문은 저장하지 않고 SHA-256 해시만 보관.
+/// family_id: 한 번의 로그인에서 이어지는 회전 계열. 재사용 감지 시 계열 전체 폐기.
+model RefreshToken {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  tokenHash    String    @unique @map("token_hash")
+  familyId     String    @map("family_id") @db.Uuid
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(3)
+  /// 회전·로그아웃·재사용 감지로 폐기된 시각
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(3)
+  /// 회전으로 대체한 새 토큰 id
+  replacedById String?   @map("replaced_by_id") @db.Uuid
+  userAgent    String?   @map("user_agent")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+// -----------------------------------------------------------------------------
+// 게임과 연동 계정
+// -----------------------------------------------------------------------------
+
+/// 게임 종류. 새 게임은 행만 추가(설계 원칙 3). 시드: packages/shared GAME_SEED
+model Game {
+  id           String   @id @default(uuid()) @db.Uuid
+  code         String   @unique
+  name         String
+  hasPositions Boolean  @default(false) @map("has_positions")
+  /// 두 팀 대결 여부. false면 개인 순위(롤체)
+  hasTeams     Boolean  @default(true) @map("has_teams")
+  /// 선택 가능한 포지션 코드, 표시 순서대로
+  positions    String[] @default([])
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  gameAccounts    GameAccount[]
+  scrims          Scrim[]
+  ratings         Rating[]
+  ratingHistory   RatingHistory[]
+  seasonStandings SeasonStanding[]
+  activityLogs    ActivityLog[]
+
+  @@map("games")
+}
+
+/// 연동 계정(라이엇 PUUID, 스팀 ID 등). 문서 5장 + 소유 확인·동기화 오류 컬럼(S1)
+model GameAccount {
+  id                    String    @id @default(uuid()) @db.Uuid
+  userId                String    @map("user_id") @db.Uuid
+  gameId                String    @map("game_id") @db.Uuid
+  /// 라이엇 PUUID, 스팀 64비트 ID
+  externalId            String    @map("external_id")
+  /// 라이엇 ID(이름#태그), 스팀 표시 이름
+  displayName           String    @map("display_name")
+  verified              Boolean   @default(false)
+  verifiedAt            DateTime? @map("verified_at") @db.Timestamptz(3)
+  /// 소유 확인 과제(예: 바꿔야 할 프로필 아이콘 번호). 확인 끝나면 null
+  verificationChallenge String?   @map("verification_challenge")
+  verificationExpiresAt DateTime? @map("verification_expires_at") @db.Timestamptz(3)
+  /// 마지막 성공 동기화 시각(문서 9장 갱신 시각 표시)
+  lastSyncedAt          DateTime? @map("last_synced_at") @db.Timestamptz(3)
+  /// 마지막 동기화 실패 사유 코드(예: STEAM_PROFILE_PRIVATE). 성공하면 null
+  lastSyncError         String?   @map("last_sync_error")
+  lastSyncErrorAt       DateTime? @map("last_sync_error_at") @db.Timestamptz(3)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user          User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game          Game                     @relation(fields: [gameId], references: [id])
+  rankSnapshots RankSnapshot[]
+  steamPlaytime SteamPlaytime[]
+  recentMatches RecentMatch[]
+  syncRequests  GameAccountSyncRequest[]
+
+  @@unique([gameId, externalId])
+  @@index([userId])
+  @@map("game_accounts")
+}
+
+/// 수동 새로고침 기록. 사용자당 하루 5회 제한을 Redis 없이 DB로 셀 때 사용(문서 9장)
+model GameAccountSyncRequest {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  gameAccountId String   @map("game_account_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gameAccount GameAccount @relation(fields: [gameAccountId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("game_account_sync_requests")
+}
+
+/// 티어 변화 기록. 문서 5장 + queue(솔로/자유 등 구분)
+model RankSnapshot {
+  id            String   @id @default(uuid()) @db.Uuid
+  gameAccountId String   @map("game_account_id") @db.Uuid
+  /// 라이엇 큐 타입(RANKED_SOLO_5x5, RANKED_TFT 등)
+  queue         String?
+  /// IRON … CHALLENGER, 언랭이면 UNRANKED
+  tier          String
+  /// I … IV. 마스터 이상은 null
+  division      String?
+  lp            Int      @default(0)
+  wins          Int      @default(0)
+  losses        Int      @default(0)
+  capturedAt    DateTime @map("captured_at") @db.Timestamptz(3)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  gameAccount GameAccount @relation(fields: [gameAccountId], references: [id], onDelete: Cascade)
+
+  @@index([gameAccountId, capturedAt(sort: Desc)])
+  @@map("rank_snapshots")
+}
+
+/// 최근 전적 요약(Match-V5). 문서 2장 프로필 「최근 전적」, 9장 6시간 캐시. 명세 공백 보완
+model RecentMatch {
+  id              String   @id @default(uuid()) @db.Uuid
+  gameAccountId   String   @map("game_account_id") @db.Uuid
+  externalMatchId String   @map("external_match_id")
+  playedAt        DateTime @map("played_at") @db.Timestamptz(3)
+  /// 팀 게임 승패. 롤체는 null
+  win             Boolean?
+  /// 롤체 순위(1–8). 팀 게임은 null
+  placement       Int?
+  /// 챔피언·KDA 등 화면 표시용 요약(형식은 S1 계약에서 확정)
+  summary         Json     @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  gameAccount GameAccount @relation(fields: [gameAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([gameAccountId, externalMatchId])
+  @@index([gameAccountId, playedAt(sort: Desc)])
+  @@map("recent_matches")
+}
+
+/// 스팀 게임별 플레이타임. 문서 5장 + app_name
+model SteamPlaytime {
+  id            String   @id @default(uuid()) @db.Uuid
+  gameAccountId String   @map("game_account_id") @db.Uuid
+  appId         Int      @map("app_id")
+  appName       String?  @map("app_name")
+  minutesTotal  Int      @default(0) @map("minutes_total")
+  minutesRecent Int      @default(0) @map("minutes_recent")
+  syncedAt      DateTime @map("synced_at") @db.Timestamptz(3)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  gameAccount GameAccount @relation(fields: [gameAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([gameAccountId, appId])
+  @@index([appId, minutesTotal(sort: Desc)])
+  @@map("steam_playtime")
+}
+
+// -----------------------------------------------------------------------------
+// 시즌과 레이팅
+// -----------------------------------------------------------------------------
+
+/// 랭킹 시즌 구간. 문서 5장
+model Season {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  startsAt  DateTime @map("starts_at") @db.Timestamptz(3)
+  endsAt    DateTime @map("ends_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  ratings       Rating[]
+  ratingHistory RatingHistory[]
+  standings     SeasonStanding[]
+  userBadges    UserBadge[]
+
+  @@index([startsAt, endsAt])
+  @@map("seasons")
+}
+
+/// 시즌별 내전 레이팅 현재값. 문서 5장. elo는 정수(계산 후 반올림)
+model Rating {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  gameId    String   @map("game_id") @db.Uuid
+  seasonId  String   @map("season_id") @db.Uuid
+  elo       Int      @default(1000)
+  wins      Int      @default(0)
+  losses    Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game   Game   @relation(fields: [gameId], references: [id])
+  season Season @relation(fields: [seasonId], references: [id])
+
+  @@unique([userId, gameId, seasonId])
+  @@index([gameId, seasonId, elo(sort: Desc)])
+  @@map("ratings")
+}
+
+/// 레이팅 변동 이력. 문서 5장 + game_id, season_id, scrim_result_id(그래프·감사용)
+/// (scrim_id, user_id) 유일: 같은 내전 레이팅 이중 반영 방지
+model RatingHistory {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  scrimId       String   @map("scrim_id") @db.Uuid
+  scrimResultId String   @map("scrim_result_id") @db.Uuid
+  gameId        String   @map("game_id") @db.Uuid
+  seasonId      String   @map("season_id") @db.Uuid
+  eloBefore     Int      @map("elo_before")
+  eloAfter      Int      @map("elo_after")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scrim       Scrim       @relation(fields: [scrimId], references: [id])
+  scrimResult ScrimResult @relation(fields: [scrimResultId], references: [id])
+  game        Game        @relation(fields: [gameId], references: [id])
+  season      Season      @relation(fields: [seasonId], references: [id])
+
+  @@unique([scrimId, userId])
+  @@index([userId, createdAt])
+  @@map("rating_history")
+}
+
+/// 시즌 종료 최종 순위 스냅샷(문서 7-3 「최종 순위를 스냅샷으로 저장」). 명세 공백 보완
+model SeasonStanding {
+  id        String   @id @default(uuid()) @db.Uuid
+  seasonId  String   @map("season_id") @db.Uuid
+  gameId    String   @map("game_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  rank      Int
+  elo       Int
+  wins      Int
+  losses    Int
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  season Season @relation(fields: [seasonId], references: [id])
+  game   Game   @relation(fields: [gameId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonId, gameId, userId])
+  @@index([seasonId, gameId, rank])
+  @@map("season_standings")
+}
+
+// -----------------------------------------------------------------------------
+// 내전
+// -----------------------------------------------------------------------------
+
+/// 내전 모집글. 문서 5장
+model Scrim {
+  id          String      @id @default(uuid()) @db.Uuid
+  gameId      String      @map("game_id") @db.Uuid
+  hostId      String      @map("host_id") @db.Uuid
+  title       String
+  scheduledAt DateTime    @map("scheduled_at") @db.Timestamptz(3)
+  capacity    Int
+  status      ScrimStatus @default(recruiting)
+  rules       String?
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  game          Game            @relation(fields: [gameId], references: [id])
+  host          User            @relation("ScrimHost", fields: [hostId], references: [id])
+  players       ScrimPlayer[]
+  results       ScrimResult[]
+  ratingHistory RatingHistory[]
+
+  @@index([status, scheduledAt])
+  @@index([gameId, status, scheduledAt])
+  @@index([hostId])
+  @@map("scrims")
+}
+
+/// 내전 참가자. 문서 5장 + 희망 포지션, 참가 시각, 노쇼 표시 기록
+model ScrimPlayer {
+  id                 String            @id @default(uuid()) @db.Uuid
+  scrimId            String            @map("scrim_id") @db.Uuid
+  userId             String            @map("user_id") @db.Uuid
+  status             ScrimPlayerStatus @default(joined)
+  /// 팀 밸런스 후 배정된 포지션(games.positions 값). 배정 전 null
+  position           String?
+  /// 희망 포지션, 1지망부터 순서대로(문서 7-2 3번)
+  preferredPositions String[]          @default([]) @map("preferred_positions")
+  team               ScrimTeam?
+  /// 대기열 순서 기준. 재참가 시 갱신
+  joinedAt           DateTime          @default(now()) @map("joined_at") @db.Timestamptz(3)
+  /// 노쇼 30일 집계 기준 시각(문서 7-4)
+  noShowMarkedAt     DateTime?         @map("no_show_marked_at") @db.Timestamptz(3)
+  noShowMarkedById   String?           @map("no_show_marked_by") @db.Uuid
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  scrim          Scrim @relation(fields: [scrimId], references: [id], onDelete: Cascade)
+  user           User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  noShowMarkedBy User? @relation("NoShowMarkedBy", fields: [noShowMarkedById], references: [id])
+
+  @@unique([scrimId, userId])
+  @@index([scrimId, status])
+  @@index([userId, status, noShowMarkedAt])
+  @@map("scrim_players")
+}
+
+/// 결과 입력과 운영진 승인. 문서 5장 + 상태·반려 컬럼(slice.md 결정)
+/// 반려 후 재입력은 새 행. 한 내전에 pending·approved 행은 최대 1개(서비스에서 보장)
+/// 자기 승인 금지: approved_by != submitted_by (S3 서비스에서 검사)
+model ScrimResult {
+  id            String            @id @default(uuid()) @db.Uuid
+  scrimId       String            @map("scrim_id") @db.Uuid
+  status        ScrimResultStatus @default(pending)
+  /// 팀 게임 승리 팀. 롤체(has_teams=false)는 null
+  winnerTeam    ScrimTeam?        @map("winner_team")
+  /// 개인 순위 게임 결과: [{ "user_id": uuid, "placement": 1..N }]. 팀 게임은 null
+  placements    Json?
+  submittedById String            @map("submitted_by") @db.Uuid
+  approvedById  String?           @map("approved_by") @db.Uuid
+  approvedAt    DateTime?         @map("approved_at") @db.Timestamptz(3)
+  rejectReason  String?           @map("reject_reason")
+  rejectedById  String?           @map("rejected_by") @db.Uuid
+  rejectedAt    DateTime?         @map("rejected_at") @db.Timestamptz(3)
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  scrim         Scrim                @relation(fields: [scrimId], references: [id], onDelete: Cascade)
+  submittedBy   User                 @relation("ResultSubmittedBy", fields: [submittedById], references: [id])
+  approvedBy    User?                @relation("ResultApprovedBy", fields: [approvedById], references: [id])
+  rejectedBy    User?                @relation("ResultRejectedBy", fields: [rejectedById], references: [id])
+  disputes      ScrimResultDispute[]
+  ratingHistory RatingHistory[]
+
+  @@index([scrimId, status])
+  @@index([status, createdAt])
+  @@map("scrim_results")
+}
+
+/// 결과 이의 제기(slice.md 결정, 목업 Admin)
+model ScrimResultDispute {
+  id            String        @id @default(uuid()) @db.Uuid
+  scrimResultId String        @map("scrim_result_id") @db.Uuid
+  userId        String        @map("user_id") @db.Uuid
+  reason        String
+  status        DisputeStatus @default(open)
+  resolvedById  String?       @map("resolved_by") @db.Uuid
+  resolvedAt    DateTime?     @map("resolved_at") @db.Timestamptz(3)
+  /// 처리 메모(선택)
+  resolution    String?
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  scrimResult ScrimResult @relation(fields: [scrimResultId], references: [id], onDelete: Cascade)
+  user        User        @relation("DisputeUser", fields: [userId], references: [id], onDelete: Cascade)
+  resolvedBy  User?       @relation("DisputeResolvedBy", fields: [resolvedById], references: [id])
+
+  @@index([scrimResultId, status])
+  @@index([status, createdAt])
+  @@map("scrim_result_disputes")
+}
+
+// -----------------------------------------------------------------------------
+// 활동·업적 (봇 연동 대비, 문서 10장 지침)
+// -----------------------------------------------------------------------------
+
+/// 봇이 보내는 음성·채팅·플레이 활동. idempotency_key 유일 = 재전송 중복 저장 방지
+model ActivityLog {
+  id             String       @id @default(uuid()) @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  type           ActivityType
+  gameId         String?      @map("game_id") @db.Uuid
+  startedAt      DateTime     @map("started_at") @db.Timestamptz(3)
+  durationSec    Int          @default(0) @map("duration_sec")
+  idempotencyKey String       @unique @map("idempotency_key")
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game Game? @relation(fields: [gameId], references: [id])
+
+  @@index([userId, startedAt])
+  @@index([startedAt])
+  @@map("activity_logs")
+}
+
+/// 업적 정의. 문서 5장
+model Badge {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  name        String
+  description String?
+  /// 획득 조건(사람이 읽는 설명 또는 규칙 식별자)
+  condition   String
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  userBadges UserBadge[]
+
+  @@map("badges")
+}
+
+/// 업적 획득 기록. 문서 5장 + season_id(시즌 보상 뱃지 구분, 선택)
+model UserBadge {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  badgeId   String   @map("badge_id") @db.Uuid
+  seasonId  String?  @map("season_id") @db.Uuid
+  earnedAt  DateTime @default(now()) @map("earned_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge  Badge   @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  season Season? @relation(fields: [seasonId], references: [id])
+
+  @@unique([userId, badgeId, seasonId])
+  @@index([userId])
+  @@map("user_badges")
+}
+
+// -----------------------------------------------------------------------------
+// 운영
+// -----------------------------------------------------------------------------
+
+/// 봇용 API 키. 원문은 저장하지 않고 해시만(문서 5장). key_prefix는 목록 식별용 앞 8자(비밀 아님)
+model ApiKey {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String
+  keyHash     String    @unique @map("key_hash")
+  keyPrefix   String    @map("key_prefix")
+  /// shared ApiKeyScope 값
+  scopes      String[]  @default([])
+  lastUsedAt  DateTime? @map("last_used_at") @db.Timestamptz(3)
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdById String?   @map("created_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@map("api_keys")
+}
+
+/// 공지(slice.md 결정, 목업 Admin 「공지 작성」)
+model Notice {
+  id                String    @id @default(uuid()) @db.Uuid
+  title             String
+  body              String
+  authorId          String    @map("author_id") @db.Uuid
+  /// 디스코드에도 알림(봇 연동 후)
+  notifyDiscord     Boolean   @default(false) @map("notify_discord")
+  /// 봇이 디스코드 알림을 보낸 시각. 보내기 전 null
+  discordNotifiedAt DateTime? @map("discord_notified_at") @db.Timestamptz(3)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  author User @relation(fields: [authorId], references: [id])
+
+  @@index([createdAt(sort: Desc)])
+  @@map("notices")
+}

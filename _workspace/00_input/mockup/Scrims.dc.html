@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>내전 목록</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=Chakra+Petch:wght@500;600;700&amp;display=swap">
+<style>
+body{margin:0;background:#0A0B14}
+body:has(.gcd[data-theme="light"]){background:#F3F4F8}
+.gcd{color-scheme:dark;--bg:#0A0B14;--nav:#0D0F1A;--nav-line:#1C1F2E;--surface:#11131F;--line:#1E2235;--surface-2:#171A29;--surface-3:#151827;--line-2:#252A40;--line-3:#2A2F47;--line-4:#3A4166;--hero:#10132A;--hero-2:#0C0F22;--hero-3:#131838;--hero-line:#252B52;--hero-line-2:#2E3560;--hero-faint:#8E96C8;--avatar-deep:#1B2A4D;--banner-lol:#0F1B24;--banner-tft:#17132A;--banner-steam:#21150F;--text:#F2F4FA;--text-2:#C9CEE0;--muted:#A3AAC0;--faint:#7F879E;--on-accent:#0A0B14;--overlay:#FFFFFF;--hi:#FFFFFF0A;--chip:#FFFFFF0F;--hair:#FFFFFF0D;--hair-2:#FFFFFF08;--shadow:#00000080;--hover:#FFFFFF0A;--lift:0 16px 32px #00000066;--seg-shadow:0 1px 0 #FFFFFF14 inset,0 2px 6px #00000059;--accent:#D4FF3A;--accent-ink:var(--accent);--accent-ink-hover:#E6FF85;--cyan:#3BD6C6;--cyan-text:#3BD6C6;--cyan-ink:#7FE8DC;--cyan-ink-2:#BDF3EC;--violet:#B18CFF;--violet-text:#B18CFF;--violet-ink:#CDB5FF;--orange:#FF8A3D;--orange-text:#FF8A3D;--orange-ink:#FFB98A;--orange-ink-2:#FFAA6E;--warn-text:#FFD3B3;--warn-text-2:#E9C3A8;--blue:#4C8DFF;--blue-text:#4C8DFF;--blue-ink:#9CC1FF;--gold:#F5C451;--gold-text:#F5C451;--gold-ink:#F8D883;--silver:#C9D1DC;--silver-text:#C9D1DC;--bronze:#E0A070;--bronze-text:#E0A070;--pink-ink:#FF9CB1}
+.gcd[data-theme="light"]{color-scheme:light;--bg:#F3F4F8;--nav:#FFFFFF;--nav-line:#E3E6EE;--surface:#FFFFFF;--line:#E3E6EE;--surface-2:#F6F7FA;--surface-3:#FFFFFF;--line-2:#E0E4EC;--line-3:#D2D7E2;--line-4:#B4BBCC;--hero:#EDEFFC;--hero-2:#E3E7FA;--hero-3:#DFE4F9;--hero-line:#D6DBF3;--hero-line-2:#BFC6EA;--hero-faint:#565E8C;--avatar-deep:#DCE6FF;--banner-lol:#E2F5F2;--banner-tft:#EEE8FC;--banner-steam:#FCEDE2;--text:#12141D;--text-2:#383E52;--muted:#535A6F;--faint:#656D84;--on-accent:#0A0B14;--overlay:#0A0B14;--hi:#FFFFFF00;--chip:#0A0B140A;--hair:#0A0B1412;--hair-2:#0A0B140A;--shadow:#1A1F3A2E;--hover:#0A0B140A;--lift:0 16px 32px #1A1F3A1F;--seg-shadow:0 1px 3px #1A1F3A26;--accent:#C6F135;--accent-ink:color-mix(in oklab,var(--accent) 36%,#000);--accent-ink-hover:color-mix(in oklab,var(--accent) 26%,#000);--cyan:#22BFAE;--cyan-text:#0B746A;--cyan-ink:#0B746A;--cyan-ink-2:#0B6A61;--violet:#9B72F5;--violet-text:#6236C8;--violet-ink:#6236C8;--orange:#FF8A3D;--orange-text:#A84B0C;--orange-ink:#A84B0C;--orange-ink-2:#A84B0C;--warn-text:#7C3307;--warn-text-2:#6E4128;--blue:#4C8DFF;--blue-text:#2457C2;--blue-ink:#2457C2;--gold:#E5AE22;--gold-text:#845C00;--gold-ink:#845C00;--silver:#A7B0C0;--silver-text:#586174;--bronze:#CF8550;--bronze-text:#94501F;--pink-ink:#B8264F}
+.gcd a{color:var(--accent-ink)}.gcd a:hover{color:var(--accent-ink-hover)}
+.gcd,.gcd section,.gcd nav,.gcd article,.gcd header,.gcd div,.gcd span,.gcd button,.gcd a,.gcd input,.gcd select,.gcd textarea,.gcd tr{transition:background-color .25s ease,border-color .25s ease,color .25s ease,box-shadow .25s ease,transform .2s ease}
+.gcd nav a:hover{background:var(--hover)}
+.gcd button:hover,.gcd a[href]:hover{filter:brightness(1.05)}
+.gcd article:hover{transform:translateY(-3px);box-shadow:var(--lift)}
+.gcd :focus-visible{outline:2px solid var(--accent-ink);outline-offset:2px}
+.gcd input::placeholder,.gcd textarea::placeholder{color:var(--faint)}
+@media (prefers-reduced-motion:reduce){.gcd,.gcd *{transition:none!important}.gcd article:hover{transform:none}}
+</style>
+</helmet>
+<div class="gcd" data-theme="{{themeAttr}}" style="min-height: 100vh; background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans KR', system-ui, sans-serif; display: flex; flex-wrap: wrap">
+  <nav aria-label="주 메뉴" style="flex: 1 1 232px; background: var(--nav); border-right: 1px solid var(--nav-line); padding: 22px 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 26px">
+    <div style="display: flex; align-items: center; gap: 12px; padding: 0 8px">
+      <svg aria-hidden="true" width="36" height="36" viewBox="0 0 36 36"><path d="M11 3h22l-7 30H4z" style="fill: var(--accent)"></path><path d="M15 10h9.5l-1.3 6H19l-2.3 10h-4.6z" style="fill: var(--on-accent)"></path></svg>
+      <div style="display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700; font-size: 17px; letter-spacing: -0.02em">롤생네컷</span><span style="font-family: 'Chakra Petch', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.16em; color: var(--faint)">GAME CLUB</span></div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <span style="padding: 0 12px 8px; font-family: 'Chakra Petch', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.16em; color: var(--faint)">MENU</span>
+      <a href="Main.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 12px; color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z"></path></svg>홈</a>
+      <a href="Scrims.dc.html" aria-current="page" style="display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 12px; background: #D4FF3A14; color: var(--text); text-decoration: none; font-size: 14px; font-weight: 600"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="stroke: var(--accent)"><path d="M14.5 17.5 3 6V3h3l11.5 11.5"></path><path d="m13 19 6-6"></path><path d="m16 16 4 4"></path><path d="m19 21 2-2"></path><path d="M9.5 17.5 21 6V3h-3L6.5 14.5"></path><path d="m11 19-6-6"></path><path d="m8 16-4 4"></path><path d="m5 21-2-2"></path></svg>내전<span style="margin-left: auto; font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--accent); color: var(--on-accent)">3</span></a>
+      <a href="Rankings.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 12px; color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4h8v6a4 4 0 0 1-8 0z"></path><path d="M8 6H5a3 3 0 0 0 3 5"></path><path d="M16 6h3a3 3 0 0 1-3 5"></path><path d="M12 14v4"></path><path d="M8 21h8"></path></svg>랭킹</a>
+      <a href="Profile.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 12px; color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path></svg>내 프로필</a>
+      <a href="Settings.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 12px; color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h9"></path><path d="M19 6h1"></path><circle cx="16" cy="6" r="2.5"></circle><path d="M4 12h3"></path><path d="M13 12h7"></path><circle cx="10" cy="12" r="2.5"></circle><path d="M4 18h11"></path><circle cx="18" cy="18" r="2.5"></circle></svg>설정</a>
+    </div>
+    <div role="group" aria-label="화면 테마" style="margin-top: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line)">
+      <button type="button" aria-pressed="{{themeLight.pressed}}" onClick="{{themeLight.pick}}" style="display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; border-radius: 10px; border: 0; background: {{themeLight.bg}}; color: {{themeLight.fg}}; box-shadow: {{themeLight.shadow}}; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" style="stroke: {{themeLight.icon}}" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>라이트</button>
+      <button type="button" aria-pressed="{{themeDark.pressed}}" onClick="{{themeDark.pick}}" style="display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; border-radius: 10px; border: 0; background: {{themeDark.bg}}; color: {{themeDark.fg}}; box-shadow: {{themeDark.shadow}}; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" style="stroke: {{themeDark.icon}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"></path></svg>다크</button>
+    </div>
+    <a href="Profile.dc.html" style="display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 14px; text-decoration: none; color: var(--text)">
+      <span aria-hidden="true" style="width: 38px; height: 38px; border-radius: 19px; background: #4C8DFF2E; color: var(--blue-ink); display: flex; align-items: center; justify-content: center; font-weight: 700; box-shadow: 0 0 0 2px var(--nav), 0 0 0 4px var(--accent)">새</span>
+      <span style="display: flex; flex-direction: column; line-height: 1.3"><span style="font-size: 14px; font-weight: 600">새벽감자</span><span style="font-family: 'Chakra Petch', sans-serif; font-size: 12px; color: var(--muted)">ELO 1421 · #3</span></span>
+    </a>
+  </nav>
+
+  <main style="flex: 999 1 560px; min-width: 0; padding: 28px 36px 56px; box-sizing: border-box">
+    <div style="max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px">
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px">
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <span style="font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.16em; color: var(--faint)">SCRIMS</span>
+          <h1 style="margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.03em">내전</h1>
+          <p style="margin: 0; color: var(--muted); font-size: 14px">정원이 차면 방장이 팀을 나누고, 정원을 넘으면 대기열에 들어갑니다.</p>
+        </div>
+        <a href="ScrimNew.dc.html" style="display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 18px; border-radius: 14px; background: var(--accent); color: var(--on-accent); text-decoration: none; font-weight: 700; font-size: 14px"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>모집글 작성</a>
+      </header>
+
+      <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px">
+        <div role="group" aria-label="게임 필터" style="display: flex; flex-wrap: wrap; gap: 6px">
+          <sc-for list="{{games}}" as="g" hint-placeholder-count="4">
+            <button type="button" aria-pressed="{{g.pressed}}" onClick="{{g.pick}}" style="display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 16px; border-radius: 12px; border: 0; background: {{g.bg}}; color: {{g.fg}}; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer"><span style="width: 8px; height: 8px; border-radius: 4px; background: {{g.dot}}"></span>{{g.label}}<span style="font-family: 'Chakra Petch', sans-serif; font-size: 12px; opacity: 0.75">{{g.n}}</span></button>
+          </sc-for>
+        </div>
+        <div role="group" aria-label="상태 필터" style="display: flex; gap: 4px; padding-right: 4px">
+          <button type="button" aria-pressed="true" style="height: 36px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--line-3); background: var(--surface-2); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">모집 중</button>
+          <button type="button" aria-pressed="false" style="height: 36px; padding: 0 14px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer">진행 중</button>
+          <button type="button" aria-pressed="false" style="height: 36px; padding: 0 14px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer">종료</button>
+        </div>
+      </div>
+
+      <section aria-label="내전 목록" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px">
+        <sc-for list="{{list}}" as="s" hint-placeholder-count="6">
+          <article style="background: var(--surface); border: 1px solid {{s.cardBorder}}; border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; min-width: 0; box-shadow: inset 0 1px 0 var(--hi)">
+            <div style="position: relative; height: 92px; background: {{s.bannerBg}}; overflow: hidden">
+              <svg aria-hidden="true" viewBox="0 0 360 92" preserveAspectRatio="xMidYMid slice" style="position: absolute; inset: 0; width: 100%; height: 100%"><polygon points="210,0 360,0 360,92 170,92" fill-opacity="0.16" style="fill: {{s.dot}}"></polygon><polygon points="250,0 290,0 250,92 210,92" fill-opacity="0.12" style="fill: {{s.dot}}"></polygon><line x1="210" y1="0" x2="170" y2="92" stroke-opacity="0.5" stroke-width="1.5" style="stroke: {{s.dot}}"></line></svg>
+              <div style="position: absolute; inset: 0; padding: 16px 18px; display: flex; justify-content: space-between; align-items: flex-start">
+                <span style="font-family: 'Chakra Petch', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 0.12em; color: {{s.tileFg}}">{{s.abbr}}</span>
+                <span style="font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: {{s.stBg}}; color: {{s.stFg}}">{{s.status}}</span>
+              </div>
+              <span style="position: absolute; left: 18px; bottom: 12px; font-family: 'Chakra Petch', sans-serif; font-size: 22px; font-weight: 700; color: var(--text)">{{s.clock}}</span>
+            </div>
+            <div style="padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 14px; flex: 1">
+              <div style="display: flex; flex-direction: column; gap: 4px">
+                <a href="ScrimDetail.dc.html" style="font-size: 16px; font-weight: 700; color: var(--text); text-decoration: none; letter-spacing: -0.02em">{{s.title}}</a>
+                <span style="font-size: 13px; color: var(--muted)">{{s.day}} · 방장 {{s.host}}</span>
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 6px">
+                <sc-for list="{{s.tags}}" as="tag" hint-placeholder-count="2"><span style="font-size: 12px; padding: 3px 9px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line-2); color: var(--text-2)">{{tag}}</span></sc-for>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 8px">
+                <div style="display: flex; justify-content: space-between; font-size: 13px"><span style="color: {{s.needColor}}">{{s.need}}</span><span style="font-family: 'Chakra Petch', sans-serif; font-weight: 600">{{s.count}}</span></div>
+                <div style="display: flex; gap: 3px">
+                  <sc-for list="{{s.pips}}" as="p" hint-placeholder-count="10"><span style="flex: 1; height: 8px; border-radius: 2px; background: {{p.c}}"></span></sc-for>
+                </div>
+              </div>
+              <a href="ScrimDetail.dc.html" style="margin-top: auto; display: flex; align-items: center; justify-content: center; height: 46px; border-radius: 14px; background: {{s.btnBg}}; color: {{s.btnFg}}; text-decoration: none; font-size: 14px; font-weight: 700">{{s.btn}}</a>
+            </div>
+          </article>
+        </sc-for>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light","system"],"default":"dark"},"$preview":{"width":1440,"height":1160}}'>
+class Component extends DCLogic {
+  componentDidMount() {
+    this._themeSync = () => this.forceUpdate();
+    try { window.addEventListener('storage', this._themeSync); } catch (e) {}
+    try { this._mq = window.matchMedia('(prefers-color-scheme: dark)'); this._mq.addEventListener('change', this._themeSync); } catch (e) {}
+    this.forceUpdate();
+  }
+  componentWillUnmount() {
+    try { window.removeEventListener('storage', this._themeSync); } catch (e) {}
+    try { this._mq.removeEventListener('change', this._themeSync); } catch (e) {}
+  }
+  componentDidUpdate(prev) {
+    if (prev.theme !== this.props.theme && this.props.theme) this.setThemeMode(this.props.theme);
+  }
+  setThemeMode(mode) {
+    try { window.localStorage.setItem('gcd-theme', mode); } catch (e) {}
+    this.setState({ themeMode: mode });
+  }
+  themeVals() {
+    let stored = null;
+    try { stored = window.localStorage.getItem('gcd-theme'); } catch (e) {}
+    const mode = stored || (this.state && this.state.themeMode) || this.props.theme || 'dark';
+    let sysDark = true;
+    try { sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches; } catch (e) {}
+    const resolved = mode === 'system' ? (sysDark ? 'dark' : 'light') : mode;
+    const opt = (id) => {
+      const on = mode === id;
+      return { pressed: on ? 'true' : 'false', bg: on ? 'var(--surface)' : 'transparent', fg: on ? 'var(--text)' : 'var(--muted)', icon: on ? 'var(--accent-ink)' : 'currentColor', shadow: on ? 'var(--seg-shadow)' : 'none', ring: on ? 'var(--accent)' : 'var(--line-2)', pick: () => this.setThemeMode(id) };
+    };
+    return {
+      themeAttr: resolved,
+      themeIsDark: resolved === 'dark',
+      themeIsLight: resolved === 'light',
+      themeToggle: () => this.setThemeMode(resolved === 'dark' ? 'light' : 'dark'),
+      themeToggleLabel: resolved === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환',
+      themeLight: opt('light'), themeDark: opt('dark'), themeSystem: opt('system')
+    };
+  }
+  renderVals() {
+    return Object.assign(this.screenVals(), this.themeVals());
+  }
+  constructor(props) {
+    super(props);
+    this.state = { game: 'all' };
+  }
+  screenVals() {
+    const lol = { code: 'lol', abbr: 'LEAGUE · 5V5', dot: 'var(--cyan)', tileFg: 'var(--cyan-ink)', bannerBg: 'var(--banner-lol)' };
+    const tft = { code: 'tft', abbr: 'TFT · LOBBY', dot: 'var(--violet)', tileFg: 'var(--violet-ink)', bannerBg: 'var(--banner-tft)' };
+    const steam = { code: 'steam', abbr: 'STEAM · SQUAD', dot: 'var(--orange)', tileFg: 'var(--orange-ink)', bannerBg: 'var(--banner-steam)' };
+    const open = { stBg: 'var(--accent)', stFg: 'var(--on-accent)', status: '모집 중', btnBg: 'var(--accent)', btnFg: 'var(--on-accent)', btn: '참가하기', cardBorder: 'var(--line)', needColor: 'var(--orange-ink-2)' };
+    const full = { stBg: 'var(--orange)', stFg: 'var(--on-accent)', status: '정원 마감', btnBg: 'var(--line-2)', btnFg: 'var(--text)', btn: '대기열 등록', cardBorder: 'var(--line)', needColor: 'var(--muted)' };
+    const joined = { stBg: 'var(--cyan)', stFg: 'var(--on-accent)', status: '참가 중', btnBg: 'var(--surface-2)', btnFg: 'var(--accent-ink)', btn: '참가 중 · 상세 보기', cardBorder: '#D4FF3A55', needColor: 'var(--orange-ink-2)' };
+    const pips = (n, cap, c) => Array.from({ length: cap }, (_, i) => ({ c: i < n ? c : 'var(--line-2)' }));
+    const all = [
+      { ...lol, ...open, title: '화요일 저녁 5:5 내전', clock: '21:00', day: '오늘', host: '미드고정', tags: ['자동 밸런스', '포지션 선택', 'ELO 반영'], count: '8 / 10', pips: pips(8, 10, 'var(--cyan)'), need: '서폿 1 · 정글 1 구함' },
+      { ...tft, ...open, title: '롤체 8인 친선 로비', clock: '22:30', day: '오늘', host: '체스왕', tags: ['8인 개인전', 'ELO 반영'], count: '5 / 8', pips: pips(5, 8, 'var(--violet)'), need: '3자리 남음' },
+      { ...lol, ...full, title: '주말 협곡 2판 연속', clock: '20:00', day: '토요일', host: '새벽감자', tags: ['자동 밸런스', '2판'], count: '10 / 10', pips: pips(10, 10, 'var(--orange)'), need: '대기 2명' },
+      { ...lol, ...joined, title: '골드 이하 초보 환영 내전', clock: '21:30', day: '수요일', host: '서폿요정', tags: ['골드 이하', '피드백 환영'], count: '6 / 10', pips: pips(6, 10, 'var(--cyan)'), need: '탑 · 원딜 · 서폿 구함' },
+      { ...steam, ...open, title: '배틀그라운드 스쿼드 2팀', clock: '22:00', day: '목요일', host: '바론스틸', tags: ['4:4', 'ELO 미반영'], count: '5 / 8', pips: pips(5, 8, 'var(--orange)'), need: '3자리 남음' },
+      { ...tft, ...open, title: '롤체 더블업 4팀', clock: '21:00', day: '금요일', host: '별빛미드', tags: ['2인 1팀', 'ELO 반영'], count: '4 / 8', pips: pips(4, 8, 'var(--violet)'), need: '2팀 남음' }
+    ];
+    const g = this.state.game;
+    const list = g === 'all' ? all : all.filter((s) => s.code === g);
+    const games = [
+      { id: 'all', label: '전체', n: '6', dot: 'var(--text)' }, { id: 'lol', label: '롤 협곡', n: '3', dot: 'var(--cyan)' },
+      { id: 'tft', label: '롤체', n: '2', dot: 'var(--violet)' }, { id: 'steam', label: '스팀', n: '1', dot: 'var(--orange)' }
+    ].map((x) => {
+      const on = x.id === g;
+      return { ...x, pressed: on ? 'true' : 'false', bg: on ? 'var(--accent)' : 'transparent', fg: on ? 'var(--on-accent)' : 'var(--text-2)', dot: on ? 'var(--on-accent)' : x.dot, pick: () => this.setState({ game: x.id }) };
+    });
+    return { games, list };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>모바일 홈</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=Chakra+Petch:wght@500;600;700&amp;display=swap">
+<style>
+body{margin:0;background:#0A0B14}
+body:has(.gcd[data-theme="light"]){background:#F3F4F8}
+.gcd{color-scheme:dark;--bg:#0A0B14;--nav:#0D0F1A;--nav-line:#1C1F2E;--surface:#11131F;--line:#1E2235;--surface-2:#171A29;--surface-3:#151827;--line-2:#252A40;--line-3:#2A2F47;--line-4:#3A4166;--hero:#10132A;--hero-2:#0C0F22;--hero-3:#131838;--hero-line:#252B52;--hero-line-2:#2E3560;--hero-faint:#8E96C8;--avatar-deep:#1B2A4D;--banner-lol:#0F1B24;--banner-tft:#17132A;--banner-steam:#21150F;--text:#F2F4FA;--text-2:#C9CEE0;--muted:#A3AAC0;--faint:#7F879E;--on-accent:#0A0B14;--overlay:#FFFFFF;--hi:#FFFFFF0A;--chip:#FFFFFF0F;--hair:#FFFFFF0D;--hair-2:#FFFFFF08;--shadow:#00000080;--hover:#FFFFFF0A;--lift:0 16px 32px #00000066;--seg-shadow:0 1px 0 #FFFFFF14 inset,0 2px 6px #00000059;--accent:#D4FF3A;--accent-ink:var(--accent);--accent-ink-hover:#E6FF85;--cyan:#3BD6C6;--cyan-text:#3BD6C6;--cyan-ink:#7FE8DC;--cyan-ink-2:#BDF3EC;--violet:#B18CFF;--violet-text:#B18CFF;--violet-ink:#CDB5FF;--orange:#FF8A3D;--orange-text:#FF8A3D;--orange-ink:#FFB98A;--orange-ink-2:#FFAA6E;--warn-text:#FFD3B3;--warn-text-2:#E9C3A8;--blue:#4C8DFF;--blue-text:#4C8DFF;--blue-ink:#9CC1FF;--gold:#F5C451;--gold-text:#F5C451;--gold-ink:#F8D883;--silver:#C9D1DC;--silver-text:#C9D1DC;--bronze:#E0A070;--bronze-text:#E0A070;--pink-ink:#FF9CB1}
+.gcd[data-theme="light"]{color-scheme:light;--bg:#F3F4F8;--nav:#FFFFFF;--nav-line:#E3E6EE;--surface:#FFFFFF;--line:#E3E6EE;--surface-2:#F6F7FA;--surface-3:#FFFFFF;--line-2:#E0E4EC;--line-3:#D2D7E2;--line-4:#B4BBCC;--hero:#EDEFFC;--hero-2:#E3E7FA;--hero-3:#DFE4F9;--hero-line:#D6DBF3;--hero-line-2:#BFC6EA;--hero-faint:#565E8C;--avatar-deep:#DCE6FF;--banner-lol:#E2F5F2;--banner-tft:#EEE8FC;--banner-steam:#FCEDE2;--text:#12141D;--text-2:#383E52;--muted:#535A6F;--faint:#656D84;--on-accent:#0A0B14;--overlay:#0A0B14;--hi:#FFFFFF00;--chip:#0A0B140A;--hair:#0A0B1412;--hair-2:#0A0B140A;--shadow:#1A1F3A2E;--hover:#0A0B140A;--lift:0 16px 32px #1A1F3A1F;--seg-shadow:0 1px 3px #1A1F3A26;--accent:#C6F135;--accent-ink:color-mix(in oklab,var(--accent) 36%,#000);--accent-ink-hover:color-mix(in oklab,var(--accent) 26%,#000);--cyan:#22BFAE;--cyan-text:#0B746A;--cyan-ink:#0B746A;--cyan-ink-2:#0B6A61;--violet:#9B72F5;--violet-text:#6236C8;--violet-ink:#6236C8;--orange:#FF8A3D;--orange-text:#A84B0C;--orange-ink:#A84B0C;--orange-ink-2:#A84B0C;--warn-text:#7C3307;--warn-text-2:#6E4128;--blue:#4C8DFF;--blue-text:#2457C2;--blue-ink:#2457C2;--gold:#E5AE22;--gold-text:#845C00;--gold-ink:#845C00;--silver:#A7B0C0;--silver-text:#586174;--bronze:#CF8550;--bronze-text:#94501F;--pink-ink:#B8264F}
+.gcd a{color:var(--accent-ink)}.gcd a:hover{color:var(--accent-ink-hover)}
+.gcd,.gcd section,.gcd nav,.gcd article,.gcd header,.gcd div,.gcd span,.gcd button,.gcd a,.gcd input,.gcd select,.gcd textarea,.gcd tr{transition:background-color .25s ease,border-color .25s ease,color .25s ease,box-shadow .25s ease,transform .2s ease}
+.gcd nav a:hover{background:var(--hover)}
+.gcd button:hover,.gcd a[href]:hover{filter:brightness(1.05)}
+.gcd article:hover{transform:translateY(-3px);box-shadow:var(--lift)}
+.gcd :focus-visible{outline:2px solid var(--accent-ink);outline-offset:2px}
+.gcd input::placeholder,.gcd textarea::placeholder{color:var(--faint)}
+@media (prefers-reduced-motion:reduce){.gcd,.gcd *{transition:none!important}.gcd article:hover{transform:none}}
+</style>
+</helmet>
+<div class="gcd" data-theme="{{themeAttr}}" style="width: 390px; height: 844px; background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans KR', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <header style="display: flex; align-items: center; justify-content: space-between; padding: 18px 16px 12px">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <svg aria-hidden="true" width="32" height="32" viewBox="0 0 36 36"><path d="M11 3h22l-7 30H4z" style="fill: var(--accent)"></path><path d="M15 10h9.5l-1.3 6H19l-2.3 10h-4.6z" style="fill: var(--on-accent)"></path></svg>
+      <div style="display: flex; flex-direction: column; line-height: 1.2"><span style="font-weight: 700; font-size: 16px">롤생네컷</span><span style="font-family: 'Chakra Petch', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0.16em; color: var(--faint)">SEASON 2 · D-34</span></div>
+    </div>
+    <div style="display: flex; gap: 8px">
+    <button type="button" aria-label="{{themeToggleLabel}}" onClick="{{themeToggle}}" style="width: 44px; height: 44px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); color: var(--text); display: flex; align-items: center; justify-content: center; cursor: pointer"><sc-if value="{{themeIsDark}}" hint-placeholder-val="{{true}}"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg></sc-if><sc-if value="{{themeIsLight}}" hint-placeholder-val="{{false}}"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"></path></svg></sc-if></button>
+    <button type="button" aria-label="알림 3건" style="position: relative; width: 44px; height: 44px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); color: var(--text); display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 8 2.5 8h-17S6 15 6 9z"></path><path d="M10 20a2 2 0 0 0 4 0"></path></svg><span style="position: absolute; top: 10px; right: 11px; width: 8px; height: 8px; border-radius: 4px; background: var(--orange); box-shadow: 0 0 0 2px var(--surface)"></span></button>
+    </div>
+  </header>
+
+  <div style="flex: 1; overflow-y: auto; padding: 4px 16px 110px; display: flex; flex-direction: column; gap: 16px">
+    <a href="ScrimDetail.dc.html" style="position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 12px; padding: 18px; border-radius: 22px; background: var(--hero); border: 1px solid var(--hero-line); color: var(--text); text-decoration: none">
+      <svg aria-hidden="true" viewBox="0 0 360 200" preserveAspectRatio="none" style="position: absolute; right: 0; top: 0; width: 46%; height: 100%"><polygon points="90,0 360,0 360,200 20,200" fill-opacity="0.16" style="fill: var(--orange)"></polygon><polygon points="0,0 90,0 20,200 0,200" fill-opacity="0.2" style="fill: var(--blue)"></polygon><line x1="90" y1="0" x2="20" y2="200" stroke-width="3" style="stroke: var(--accent)"></line></svg>
+      <span style="position: relative; align-self: flex-start; font-family: 'Chakra Petch', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; color: var(--on-accent); background: var(--accent); padding: 3px 8px; border-radius: 6px">NEXT MATCH</span>
+      <span style="position: relative; font-size: 19px; font-weight: 700; letter-spacing: -0.02em; max-width: 60%">화요일 저녁 5:5 내전</span>
+      <div style="position: relative; display: flex; flex-direction: column"><span style="font-size: 11px; color: var(--muted)">시작까지</span><span style="font-family: 'Chakra Petch', sans-serif; font-size: 32px; font-weight: 700; line-height: 1.05">02:14:33</span></div>
+      <div style="position: relative; display: flex; gap: 3px"><sc-for list="{{slots}}" as="s" hint-placeholder-count="10"><span style="flex: 1; height: 8px; border-radius: 2px; background: {{s.c}}"></span></sc-for></div>
+      <div style="position: relative; display: flex; justify-content: space-between; font-size: 12px"><span style="color: var(--orange-ink-2)">서폿 · 정글 구함</span><span style="font-family: 'Chakra Petch', sans-serif; font-weight: 600">8 / 10</span></div>
+    </a>
+
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+      <div style="background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 6px">
+        <span style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted)"><span style="width: 6px; height: 6px; border-radius: 3px; background: var(--accent)"></span>음성 접속</span>
+        <span style="font-family: 'Chakra Petch', sans-serif; font-size: 26px; font-weight: 700; line-height: 1">23<span style="font-family: 'IBM Plex Sans KR', sans-serif; font-size: 13px; font-weight: 500; color: var(--muted)"> 명</span></span>
+      </div>
+      <div style="background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 6px">
+        <span style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted)"><span style="width: 6px; height: 6px; border-radius: 3px; background: var(--cyan)"></span>모집 중 내전</span>
+        <span style="font-family: 'Chakra Petch', sans-serif; font-size: 26px; font-weight: 700; line-height: 1">3<span style="font-family: 'IBM Plex Sans KR', sans-serif; font-size: 13px; font-weight: 500; color: var(--muted)"> 건</span></span>
+      </div>
+    </div>
+
+    <section style="background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 6px">
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 4px"><div style="display: flex; flex-direction: column"><span style="font-family: 'Chakra Petch', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0.16em; color: var(--faint)">LEADERBOARD</span><h2 style="margin: 0; font-size: 16px; font-weight: 700">시즌 ELO TOP 3</h2></div><a href="Rankings.dc.html" style="font-size: 13px; font-weight: 600; text-decoration: none">전체 →</a></div>
+      <sc-for list="{{top}}" as="t" hint-placeholder-count="3">
+        <div style="display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 8px; border-radius: 12px; background: {{t.rowBg}}">
+          <span style="width: 18px; font-family: 'Chakra Petch', sans-serif; font-size: 15px; font-weight: 700; color: {{t.color}}">{{t.rank}}</span>
+          <span aria-hidden="true" style="width: 30px; height: 30px; border-radius: 15px; background: {{t.bg}}; color: {{t.fg}}; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700">{{t.i}}</span>
+          <span style="flex: 1; font-size: 14px; font-weight: 600">{{t.name}}</span>
+          <span style="font-family: 'Chakra Petch', sans-serif; font-size: 15px; font-weight: 700">{{t.elo}}</span>
+        </div>
+      </sc-for>
+    </section>
+  </div>
+
+  <nav aria-label="하단 탭" style="position: absolute; left: 12px; right: 12px; bottom: 18px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); background: var(--surface-3); border: 1px solid var(--line-2); border-radius: 22px; padding: 6px; box-shadow: 0 12px 30px var(--shadow)">
+    <a href="MobileHome.dc.html" aria-current="page" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 54px; border-radius: 16px; background: var(--accent); color: var(--on-accent); text-decoration: none; font-size: 11px; font-weight: 700"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z"></path></svg>홈</a>
+    <a href="Scrims.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 54px; color: var(--muted); text-decoration: none; font-size: 11px"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 17.5 3 6V3h3l11.5 11.5"></path><path d="m13 19 6-6"></path><path d="m16 16 4 4"></path><path d="M9.5 17.5 21 6V3h-3L6.5 14.5"></path><path d="m11 19-6-6"></path><path d="m8 16-4 4"></path></svg>내전</a>
+    <a href="Rankings.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 54px; color: var(--muted); text-decoration: none; font-size: 11px"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4h8v6a4 4 0 0 1-8 0z"></path><path d="M8 6H5a3 3 0 0 0 3 5"></path><path d="M16 6h3a3 3 0 0 1-3 5"></path><path d="M12 14v4"></path><path d="M8 21h8"></path></svg>랭킹</a>
+    <a href="Profile.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 54px; color: var(--muted); text-decoration: none; font-size: 11px"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path></svg>프로필</a>
+    <a href="Settings.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 54px; color: var(--muted); text-decoration: none; font-size: 11px"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h9"></path><path d="M19 6h1"></path><circle cx="16" cy="6" r="2.5"></circle><path d="M4 12h3"></path><path d="M13 12h7"></path><circle cx="10" cy="12" r="2.5"></circle><path d="M4 18h11"></path><circle cx="18" cy="18" r="2.5"></circle></svg>설정</a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light","system"],"default":"dark"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  componentDidMount() {
+    this._themeSync = () => this.forceUpdate();
+    try { window.addEventListener('storage', this._themeSync); } catch (e) {}
+    try { this._mq = window.matchMedia('(prefers-color-scheme: dark)'); this._mq.addEventListener('change', this._themeSync); } catch (e) {}
+    this.forceUpdate();
+  }
+  componentWillUnmount() {
+    try { window.removeEventListener('storage', this._themeSync); } catch (e) {}
+    try { this._mq.removeEventListener('change', this._themeSync); } catch (e) {}
+  }
+  componentDidUpdate(prev) {
+    if (prev.theme !== this.props.theme && this.props.theme) this.setThemeMode(this.props.theme);
+  }
+  setThemeMode(mode) {
+    try { window.localStorage.setItem('gcd-theme', mode); } catch (e) {}
+    this.setState({ themeMode: mode });
+  }
+  themeVals() {
+    let stored = null;
+    try { stored = window.localStorage.getItem('gcd-theme'); } catch (e) {}
+    const mode = stored || (this.state && this.state.themeMode) || this.props.theme || 'dark';
+    let sysDark = true;
+    try { sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches; } catch (e) {}
+    const resolved = mode === 'system' ? (sysDark ? 'dark' : 'light') : mode;
+    const opt = (id) => {
+      const on = mode === id;
+      return { pressed: on ? 'true' : 'false', bg: on ? 'var(--surface)' : 'transparent', fg: on ? 'var(--text)' : 'var(--muted)', icon: on ? 'var(--accent-ink)' : 'currentColor', shadow: on ? 'var(--seg-shadow)' : 'none', ring: on ? 'var(--accent)' : 'var(--line-2)', pick: () => this.setThemeMode(id) };
+    };
+    return {
+      themeAttr: resolved,
+      themeIsDark: resolved === 'dark',
+      themeIsLight: resolved === 'light',
+      themeToggle: () => this.setThemeMode(resolved === 'dark' ? 'light' : 'dark'),
+      themeToggleLabel: resolved === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환',
+      themeLight: opt('light'), themeDark: opt('dark'), themeSystem: opt('system')
+    };
+  }
+  renderVals() {
+    return Object.assign(this.screenVals(), this.themeVals());
+  }
+  screenVals() {
+    return {
+      slots: Array.from({ length: 10 }, (_, i) => ({ c: i < 8 ? 'var(--accent)' : 'var(--line-3)' })),
+      top: [
+        { rank: '1', color: 'var(--gold-text)', i: '미', bg: '#F5C4512E', fg: 'var(--gold-ink)', name: '미드고정', elo: '1512', rowBg: '#F5C4510D' },
+        { rank: '2', color: 'var(--silver-text)', i: '무', bg: '#3BD6C62E', fg: 'var(--cyan-ink)', name: '무한점멸', elo: '1448', rowBg: 'transparent' },
+        { rank: '3', color: 'var(--bronze-text)', i: '새', bg: '#4C8DFF2E', fg: 'var(--blue-ink)', name: '새벽감자', elo: '1421', rowBg: '#D4FF3A0D' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

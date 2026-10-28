@@ -1,0 +1,28 @@
+{
+  "name": "@gcd/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "순수 도메인 로직(레이팅, 팀 밸런스, 랭킹 집계, 노쇼 제한). @gcd/shared만 의존",
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@gcd/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

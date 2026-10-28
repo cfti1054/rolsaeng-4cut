@@ -1,0 +1,228 @@
+import {
+  API_PREFIX,
+  ApiPath,
+  AUTH_COOKIE,
+  DevLoginRequest,
+  ERROR_HTTP_STATUS,
+  Me,
+  UpdateMeRequest,
+  normalizeNickname,
+  type ErrorBody,
+  type ErrorCode,
+  type RefreshTokenResponse,
+} from '@gcd/shared';
+import type { FetchLike } from '../client';
+
+/**
+ * [목] 계약(_workspace/01_architect_contract.md 4·5절)을 흉내 내는 가짜 API.
+ * 백엔드가 준비되면 쓰지 않는다(NEXT_PUBLIC_API_MOCK을 끄면 lib/api/index.ts가 실제 fetch를 쓴다).
+ * 모든 응답은 shared 스키마를 통과하는 모양으로 만든다(mock.test.ts가 검사).
+ */
+
+export interface MockStorage {
+  get(): MockDb | null;
+  set(db: MockDb): void;
+}
+
+export interface MockCookieJar {
+  hasRefresh(): boolean;
+  setRefresh(value: string): void;
+  clearRefresh(): void;
+}
+
+export interface MockDb {
+  user: Me | null;
+}
+
+export interface MockBackendOptions {
+  storage: MockStorage;
+  cookies: MockCookieJar;
+  now?: () => number;
+  /** 액세스 토큰 수명(초). 재시도 흐름을 손으로 확인하려면 짧게 */
+  accessTtlSec?: number;
+  /** 응답 지연(ms). 로딩 상태 확인용 */
+  latencyMs?: number;
+}
+
+/** 다른 멤버가 이미 쓰는 것으로 치는 닉네임(NICKNAME_TAKEN 확인용) */
+export const MOCK_TAKEN_NICKNAMES = ['미드고정', '정글차이', 'admin'];
+
+const TOKEN_PREFIX = 'mock-access.';
+
+export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike; discordSignIn: () => Me } {
+  const now = opts.now ?? (() => Date.now());
+  const ttl = opts.accessTtlSec ?? 900;
+
+  const load = (): MockDb => opts.storage.get() ?? { user: null };
+  const save = (db: MockDb) => opts.storage.set(db);
+
+  function json(status: number, body: unknown): Response {
+    return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+  }
+  function error(code: ErrorCode, message: string, details?: ErrorBody['details']): Response {
+    const body: ErrorBody = details ? { code, message, details } : { code, message };
+    return json(ERROR_HTTP_STATUS[code], body);
+  }
+  function issue(user: Me): RefreshTokenResponse {
+    return {
+      access_token: `${TOKEN_PREFIX}${now() + ttl * 1000}`,
+      token_type: 'Bearer',
+      expires_in: ttl,
+      user,
+    };
+  }
+  function newUser(p: { username: string; nickname: string; discordId: string; role?: Me['role'] }): Me {
+    return {
+      id: crypto.randomUUID(),
+      nickname: p.nickname,
+      role: p.role ?? 'member',
+      email: null,
+      discord_id: p.discordId,
+      discord_username: p.username,
+      avatar_url: null,
+      discord_guild_verified_at: p.discordId.startsWith('dev-') ? null : new Date(now()).toISOString(),
+      needs_nickname_confirmation: true,
+      created_at: new Date(now()).toISOString(),
+    };
+  }
+
+  /** Authorization 검사: 없음·형식 오류 → UNAUTHENTICATED, 만료 → ACCESS_TOKEN_EXPIRED */
+  function authorize(init: RequestInit | undefined): Response | Me {
+    const headers = new Headers(init?.headers);
+    const auth = headers.get('Authorization') ?? '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+    if (!token.startsWith(TOKEN_PREFIX)) return error('UNAUTHENTICATED', '인증이 필요합니다.');
+    const exp = Number(token.slice(TOKEN_PREFIX.length));
+    if (!Number.isFinite(exp)) return error('UNAUTHENTICATED', '인증이 필요합니다.');
+    if (exp <= now()) return error('ACCESS_TOKEN_EXPIRED', '액세스 토큰이 만료되었습니다.');
+    const user = load().user;
+    if (!user) return error('UNAUTHENTICATED', '사용자가 없습니다.');
+    return user;
+  }
+
+  async function handle(input: string, init?: RequestInit): Promise<Response> {
+    const method = (init?.method ?? 'GET').toUpperCase();
+    const path = new URL(input, 'http://mock.local').pathname.replace(API_PREFIX, '');
+    const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : undefined;
+
+    if (method === 'POST' && path === ApiPath.authRefresh) {
+      const user = load().user;
+      if (!opts.cookies.hasRefresh() || !user) {
+        opts.cookies.clearRefresh();
+        return error('REFRESH_TOKEN_INVALID', '리프레시 토큰이 유효하지 않습니다.');
+      }
+      return json(200, issue(user));
+    }
+
+    if (method === 'POST' && path === ApiPath.authLogout) {
+      opts.cookies.clearRefresh();
+      return new Response(null, { status: 204 });
+    }
+
+    if (method === 'POST' && path === ApiPath.authDevLogin) {
+      const parsed = DevLoginRequest.safeParse(body);
+      if (!parsed.success) {
+        return error(
+          'VALIDATION_FAILED',
+          '요청 형식이 올바르지 않습니다.',
+          parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        );
+      }
+      const db = load();
+      const discordId = `dev-${parsed.data.username}`;
+      let user = db.user?.discord_id === discordId ? db.user : null;
+      if (!user) {
+        user = newUser({ username: parsed.data.username, nickname: parsed.data.username.slice(0, 12), discordId });
+      }
+      if (parsed.data.role) user = { ...user, role: parsed.data.role };
+      save({ user });
+      opts.cookies.setRefresh(`mock-rt-${user.id}`);
+      return json(200, issue(user));
+    }
+
+    if (path === ApiPath.me && method === 'GET') {
+      const r = authorize(init);
+      return r instanceof Response ? r : json(200, r);
+    }
+
+    if (path === ApiPath.me && method === 'PATCH') {
+      const r = authorize(init);
+      if (r instanceof Response) return r;
+      const parsed = UpdateMeRequest.safeParse(body);
+      if (!parsed.success) {
+        return error(
+          'VALIDATION_FAILED',
+          '요청 형식이 올바르지 않습니다.',
+          parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        );
+      }
+      if (MOCK_TAKEN_NICKNAMES.includes(parsed.data.nickname)) {
+        return error('NICKNAME_TAKEN', '이미 사용 중인 닉네임입니다.');
+      }
+      const user: Me = { ...r, nickname: parsed.data.nickname, needs_nickname_confirmation: false };
+      save({ user });
+      return json(200, user);
+    }
+
+    return error('NOT_FOUND', `목에 없는 경로: ${method} ${path}`);
+  }
+
+  return {
+    async fetch(input, init) {
+      if (opts.latencyMs) await new Promise((r) => setTimeout(r, opts.latencyMs));
+      return handle(input, init);
+    },
+    /**
+     * 디스코드 OAuth 왕복(GET /auth/discord → 디스코드 → /auth/discord/callback)을 대신한다.
+     * 신규 사용자를 만들고 리프레시 쿠키를 심는다. 기본 닉네임은 서버 닉네임을 다듬은 값처럼 만든다.
+     */
+    discordSignIn() {
+      const db = load();
+      const user =
+        db.user && !db.user.discord_id?.startsWith('dev-')
+          ? db.user
+          : newUser({
+              username: 'saebyeok_potato',
+              nickname: normalizeNickname('  새벽감자  '),
+              discordId: '123456789012345678',
+            });
+      save({ user });
+      opts.cookies.setRefresh(`mock-rt-${user.id}`);
+      return user;
+    },
+  };
+}
+
+/** 브라우저용 목: localStorage에 사용자, 일반 쿠키(gcd_rt)에 세션 표시 → middleware.ts도 실제와 같이 동작 */
+export function browserMockBackend() {
+  const KEY = 'gcd-mock-db';
+  return createMockBackend({
+    storage: {
+      get() {
+        try {
+          const raw = window.localStorage.getItem(KEY);
+          if (!raw) return null;
+          const db = JSON.parse(raw) as { user: unknown };
+          const user = Me.nullable().safeParse(db.user);
+          return user.success ? { user: user.data } : null;
+        } catch {
+          return null;
+        }
+      },
+      set(db) {
+        window.localStorage.setItem(KEY, JSON.stringify(db));
+      },
+    },
+    cookies: {
+      hasRefresh: () => document.cookie.split('; ').some((c) => c.startsWith(`${AUTH_COOKIE.refresh}=`)),
+      setRefresh: (v) => {
+        document.cookie = `${AUTH_COOKIE.refresh}=${encodeURIComponent(v)}; Path=/; SameSite=Lax; Max-Age=${30 * 86400}`;
+      },
+      clearRefresh: () => {
+        document.cookie = `${AUTH_COOKIE.refresh}=; Path=/; SameSite=Lax; Max-Age=0`;
+      },
+    },
+    accessTtlSec: Number(process.env.NEXT_PUBLIC_API_MOCK_ACCESS_TTL_SEC) || 900,
+    latencyMs: 250,
+  });
+}

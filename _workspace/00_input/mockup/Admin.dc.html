@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>관리자</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=Chakra+Petch:wght@500;600;700&amp;display=swap">
+<style>
+body{margin:0;background:#0A0B14}
+body:has(.gcd[data-theme="light"]){background:#F3F4F8}
+.gcd{color-scheme:dark;--bg:#0A0B14;--nav:#0D0F1A;--nav-line:#1C1F2E;--surface:#11131F;--line:#1E2235;--surface-2:#171A29;--surface-3:#151827;--line-2:#252A40;--line-3:#2A2F47;--line-4:#3A4166;--hero:#10132A;--hero-2:#0C0F22;--hero-3:#131838;--hero-line:#252B52;--hero-line-2:#2E3560;--hero-faint:#8E96C8;--avatar-deep:#1B2A4D;--banner-lol:#0F1B24;--banner-tft:#17132A;--banner-steam:#21150F;--text:#F2F4FA;--text-2:#C9CEE0;--muted:#A3AAC0;--faint:#7F879E;--on-accent:#0A0B14;--overlay:#FFFFFF;--hi:#FFFFFF0A;--chip:#FFFFFF0F;--hair:#FFFFFF0D;--hair-2:#FFFFFF08;--shadow:#00000080;--hover:#FFFFFF0A;--lift:0 16px 32px #00000066;--seg-shadow:0 1px 0 #FFFFFF14 inset,0 2px 6px #00000059;--accent:#D4FF3A;--accent-ink:var(--accent);--accent-ink-hover:#E6FF85;--cyan:#3BD6C6;--cyan-text:#3BD6C6;--cyan-ink:#7FE8DC;--cyan-ink-2:#BDF3EC;--violet:#B18CFF;--violet-text:#B18CFF;--violet-ink:#CDB5FF;--orange:#FF8A3D;--orange-text:#FF8A3D;--orange-ink:#FFB98A;--orange-ink-2:#FFAA6E;--warn-text:#FFD3B3;--warn-text-2:#E9C3A8;--blue:#4C8DFF;--blue-text:#4C8DFF;--blue-ink:#9CC1FF;--gold:#F5C451;--gold-text:#F5C451;--gold-ink:#F8D883;--silver:#C9D1DC;--silver-text:#C9D1DC;--bronze:#E0A070;--bronze-text:#E0A070;--pink-ink:#FF9CB1}
+.gcd[data-theme="light"]{color-scheme:light;--bg:#F3F4F8;--nav:#FFFFFF;--nav-line:#E3E6EE;--surface:#FFFFFF;--line:#E3E6EE;--surface-2:#F6F7FA;--surface-3:#FFFFFF;--line-2:#E0E4EC;--line-3:#D2D7E2;--line-4:#B4BBCC;--hero:#EDEFFC;--hero-2:#E3E7FA;--hero-3:#DFE4F9;--hero-line:#D6DBF3;--hero-line-2:#BFC6EA;--hero-faint:#565E8C;--avatar-deep:#DCE6FF;--banner-lol:#E2F5F2;--banner-tft:#EEE8FC;--banner-steam:#FCEDE2;--text:#12141D;--text-2:#383E52;--muted:#535A6F;--faint:#656D84;--on-accent:#0A0B14;--overlay:#0A0B14;--hi:#FFFFFF00;--chip:#0A0B140A;--hair:#0A0B1412;--hair-2:#0A0B140A;--shadow:#1A1F3A2E;--hover:#0A0B140A;--lift:0 16px 32px #1A1F3A1F;--seg-shadow:0 1px 3px #1A1F3A26;--accent:#C6F135;--accent-ink:color-mix(in oklab,var(--accent) 36%,#000);--accent-ink-hover:color-mix(in oklab,var(--accent) 26%,#000);--cyan:#22BFAE;--cyan-text:#0B746A;--cyan-ink:#0B746A;--cyan-ink-2:#0B6A61;--violet:#9B72F5;--violet-text:#6236C8;--violet-ink:#6236C8;--orange:#FF8A3D;--orange-text:#A84B0C;--orange-ink:#A84B0C;--orange-ink-2:#A84B0C;--warn-text:#7C3307;--warn-text-2:#6E4128;--blue:#4C8DFF;--blue-text:#2457C2;--blue-ink:#2457C2;--gold:#E5AE22;--gold-text:#845C00;--gold-ink:#845C00;--silver:#A7B0C0;--silver-text:#586174;--bronze:#CF8550;--bronze-text:#94501F;--pink-ink:#B8264F}
+.gcd a{color:var(--accent-ink)}.gcd a:hover{color:var(--accent-ink-hover)}
+.gcd,.gcd section,.gcd nav,.gcd article,.gcd header,.gcd div,.gcd span,.gcd button,.gcd a,.gcd input,.gcd select,.gcd textarea,.gcd tr{transition:background-color .25s ease,border-color .25s ease,color .25s ease,box-shadow .25s ease,transform .2s ease}
+.gcd nav a:hover{background:var(--hover)}
+.gcd button:hover,.gcd a[href]:hover{filter:brightness(1.05)}
+.gcd article:hover{transform:translateY(-3px);box-shadow:var(--lift)}
+.gcd :focus-visible{outline:2px solid var(--accent-ink);outline-offset:2px}
+.gcd input::placeholder,.gcd textarea::placeholder{color:var(--faint)}
+@media (prefers-reduced-motion:reduce){.gcd,.gcd *{transition:none!important}.gcd article:hover{transform:none}}
+</style>
+</helmet>
+<div class="gcd" data-theme="{{themeAttr}}" style="min-height: 100vh; background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans KR', system-ui, sans-serif; display: flex; flex-wrap: wrap">
+  <nav aria-label="주 메뉴" style="flex: 1 1 232px; background: var(--nav); border-right: 1px solid var(--nav-line); padding: 22px 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 26px">
+    <div style="display: flex; align-items: center; gap: 12px; padding: 0 8px">
+      <svg aria-hidden="true" width="36" height="36" viewBox="0 0 36 36"><path d="M11 3h22l-7 30H4z" style="fill: var(--accent)"></path><path d="M15 10h9.5l-1.3 6H19l-2.3 10h-4.6z" style="fill: var(--on-accent)"></path></svg>
+      <div style="display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700; font-size: 17px; letter-spacing: -0.02em">롤생네컷</span><span style="font-family: 'Chakra Petch', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.16em; color: var(--faint)">GAME CLUB</span></div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <span style="padding: 0 12px 8px; font-family: 'Chakra Petch', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.16em; color: var(--faint)">MENU</span>
+      <a href="Main.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 12px; color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z"></path></svg>홈</a>
+      <a href="Scrims.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 12px; color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 17.5 3 6V3h3l11.5 11.5"></path><path d="m13 19 6-6"></path><path d="m16 16 4 4"></path><path d="m19 21 2-2"></path><path d="M9.5 17.5 21 6V3h-3L6.5 14.5"></path><path d="m11 19-6-6"></path><path d="m8 16-4 4"></path><path d="m5 21-2-2"></path></svg>내전<span style="margin-left: auto; font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--accent); color: var(--on-accent)">3</span></a>
+      <a href="Rankings.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 12px; color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4h8v6a4 4 0 0 1-8 0z"></path><path d="M8 6H5a3 3 0 0 0 3 5"></path><path d="M16 6h3a3 3 0 0 1-3 5"></path><path d="M12 14v4"></path><path d="M8 21h8"></path></svg>랭킹</a>
+      <a href="Profile.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 12px; color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path></svg>내 프로필</a>
+      <a href="Settings.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 12px; color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h9"></path><path d="M19 6h1"></path><circle cx="16" cy="6" r="2.5"></circle><path d="M4 12h3"></path><path d="M13 12h7"></path><circle cx="10" cy="12" r="2.5"></circle><path d="M4 18h11"></path><circle cx="18" cy="18" r="2.5"></circle></svg>설정</a>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <span style="padding: 0 12px 8px; font-family: 'Chakra Petch', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.16em; color: var(--faint)">STAFF</span>
+      <a href="Admin.dc.html" aria-current="page" style="display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 12px; background: #D4FF3A14; color: var(--text); text-decoration: none; font-size: 14px; font-weight: 600"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" style="stroke: var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 7v6c0 4.5 3.4 7.4 8 8 4.6-.6 8-3.5 8-8V7z"></path><path d="m9 12 2 2 4-4"></path></svg>관리자<span style="margin-left: auto; font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--orange); color: var(--on-accent)">2</span></a>
+    </div>
+    <div role="group" aria-label="화면 테마" style="margin-top: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line)">
+      <button type="button" aria-pressed="{{themeLight.pressed}}" onClick="{{themeLight.pick}}" style="display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; border-radius: 10px; border: 0; background: {{themeLight.bg}}; color: {{themeLight.fg}}; box-shadow: {{themeLight.shadow}}; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" style="stroke: {{themeLight.icon}}" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>라이트</button>
+      <button type="button" aria-pressed="{{themeDark.pressed}}" onClick="{{themeDark.pick}}" style="display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; border-radius: 10px; border: 0; background: {{themeDark.bg}}; color: {{themeDark.fg}}; box-shadow: {{themeDark.shadow}}; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" style="stroke: {{themeDark.icon}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"></path></svg>다크</button>
+    </div>
+    <a href="Profile.dc.html" style="display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 14px; text-decoration: none; color: var(--text)">
+      <span aria-hidden="true" style="width: 38px; height: 38px; border-radius: 19px; background: #4C8DFF2E; color: var(--blue-ink); display: flex; align-items: center; justify-content: center; font-weight: 700; box-shadow: 0 0 0 2px var(--nav), 0 0 0 4px var(--accent)">새</span>
+      <span style="display: flex; flex-direction: column; line-height: 1.3"><span style="font-size: 14px; font-weight: 600">새벽감자</span><span style="font-family: 'Chakra Petch', sans-serif; font-size: 12px; color: var(--muted)">ELO 1421 · #3</span></span>
+    </a>
+  </nav>
+
+  <main style="flex: 999 1 560px; min-width: 0; padding: 28px 36px 56px; box-sizing: border-box">
+    <div style="max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px">
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px">
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <span style="font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.16em; color: var(--faint)">ADMIN</span>
+          <h1 style="margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.03em">관리자</h1>
+          <p style="margin: 0; color: var(--muted); font-size: 14px">결과 승인, 노쇼 처리, 멤버 관리를 한 화면에서 합니다. 운영진(admin)만 볼 수 있어요.</p>
+        </div>
+        <span style="display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px"><span style="width: 7px; height: 7px; border-radius: 4px; background: var(--accent)"></span>랭킹 캐시 23:05 갱신</span>
+      </header>
+
+      <section aria-label="운영 요약" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px">
+        <sc-for list="{{stats}}" as="s" hint-placeholder-count="4">
+          <div style="background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 22px; box-shadow: inset 0 1px 0 var(--hi); padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; min-width: 0">
+            <span style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted)"><span style="width: 8px; height: 8px; border-radius: 4px; background: {{s.dot}}"></span>{{s.label}}</span>
+            <span style="display: flex; align-items: baseline; gap: 4px"><span style="font-family: 'Chakra Petch', sans-serif; font-size: 34px; font-weight: 700; line-height: 1">{{s.value}}</span><span style="font-size: 14px; color: var(--muted)">{{s.unit}}</span></span>
+            <span style="font-size: 12px; color: var(--faint)">{{s.sub}}</span>
+          </div>
+        </sc-for>
+      </section>
+
+      <section style="background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 22px; box-shadow: inset 0 1px 0 var(--hi); display: flex; flex-direction: column; gap: 14px">
+        <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 8px">
+          <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-family: 'Chakra Petch', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.16em; color: var(--faint)">APPROVAL QUEUE</span><h2 style="margin: 0; font-size: 18px; font-weight: 700">결과 승인 대기</h2></div>
+          <span style="font-size: 12px; color: var(--faint)">승인하면 참가자 레이팅이 갱신되고 rating_history에 남아요</span>
+        </div>
+        <sc-for list="{{queue}}" as="q" hint-placeholder-count="3">
+          <article style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 16px; border-radius: 16px; background: var(--surface-2); border: 1px solid {{q.border}}">
+            <span aria-hidden="true" style="flex: 0 0 auto; width: 48px; height: 48px; border-radius: 14px; background: {{q.tileBg}}; color: {{q.tileFg}}; display: flex; align-items: center; justify-content: center; font-family: 'Chakra Petch', sans-serif; font-size: 13px; font-weight: 700">{{q.abbr}}</span>
+            <div style="flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+              <span style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px"><a href="ScrimDetail.dc.html" style="font-size: 15px; font-weight: 700; color: var(--text); text-decoration: none">{{q.title}}</a><sc-if value="{{q.disputed}}" hint-placeholder-val="{{false}}"><span style="font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px; background: #FF8A3D1F; color: var(--orange-ink-2)">이의 제기 1건</span></sc-if></span>
+              <span style="font-size: 13px; color: var(--muted)">{{q.when}} · 제출 {{q.by}}</span>
+            </div>
+            <div style="flex: 0 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+              <span style="font-size: 13px; font-weight: 700; color: {{q.winFg}}">{{q.winner}}</span>
+              <span style="font-family: 'Chakra Petch', sans-serif; font-size: 12px; color: var(--muted)">{{q.delta}}</span>
+            </div>
+            <sc-if value="{{q.pending}}" hint-placeholder-val="{{true}}">
+              <div style="display: flex; gap: 8px">
+                <button type="button" onClick="{{q.reject}}" style="height: 44px; padding: 0 16px; border-radius: 12px; border: 1px solid var(--line-3); background: transparent; color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">반려</button>
+                <button type="button" onClick="{{q.approve}}" style="height: 44px; padding: 0 18px; border-radius: 12px; border: 0; background: var(--accent); color: var(--on-accent); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer">승인 · 레이팅 반영</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{q.done}}" hint-placeholder-val="{{false}}">
+              <div style="display: flex; align-items: center; gap: 10px">
+                <span style="font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 999px; background: {{q.doneBg}}; color: {{q.doneFg}}">{{q.doneLabel}}</span>
+                <button type="button" onClick="{{q.undo}}" style="height: 44px; padding: 0 12px; border-radius: 12px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer">되돌리기</button>
+              </div>
+            </sc-if>
+          </article>
+        </sc-for>
+      </section>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: stretch">
+        <section style="flex: 3 1 520px; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 22px; box-shadow: inset 0 1px 0 var(--hi); display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 8px">
+            <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-family: 'Chakra Petch', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.16em; color: var(--faint)">NO-SHOW</span><h2 style="margin: 0; font-size: 18px; font-weight: 700">노쇼 표시 · 일요일 협곡 내전 2경기</h2></div>
+            <span style="font-size: 12px; color: var(--faint)">30일 안에 3회면 7일간 참가 제한</span>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+            <sc-for list="{{roster}}" as="r" hint-placeholder-count="10">
+              <button type="button" aria-pressed="{{r.pressed}}" onClick="{{r.toggle}}" style="display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 12px; border-radius: 14px; border: 1px solid {{r.border}}; background: {{r.bg}}; color: var(--text); font: inherit; text-align: left; cursor: pointer">
+                <span aria-hidden="true" style="flex: 0 0 auto; width: 30px; height: 30px; border-radius: 15px; background: {{r.avBg}}; color: {{r.avFg}}; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700">{{r.i}}</span>
+                <span style="flex: 1; min-width: 0; display: flex; flex-direction: column"><span style="font-size: 14px; font-weight: 600">{{r.name}}</span><span style="font-size: 11px; color: var(--faint)">최근 30일 노쇼 {{r.count}}회</span></span>
+                <span style="font-size: 12px; font-weight: 700; color: {{r.tagFg}}">{{r.tag}}</span>
+              </button>
+            </sc-for>
+          </div>
+          <sc-if value="{{willRestrict}}" hint-placeholder-val="{{false}}">
+            <div style="display: flex; gap: 10px; align-items: center; padding: 12px 14px; border-radius: 14px; background: #FF8A3D0F; border: 1px solid #FF8A3D40; font-size: 13px; color: var(--warn-text)"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" style="stroke: var(--orange)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"></path><path d="M12 10v4M12 17v.5"></path></svg>{{restrictText}}</div>
+          </sc-if>
+          <button type="button" style="align-self: flex-end; height: 44px; padding: 0 18px; border-radius: 12px; border: 0; background: var(--accent); color: var(--on-accent); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer">노쇼 {{marked}}명 저장</button>
+        </section>
+
+        <section style="flex: 2 1 320px; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 22px; box-shadow: inset 0 1px 0 var(--hi); display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-family: 'Chakra Petch', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.16em; color: var(--faint)">NOTICE</span><h2 style="margin: 0; font-size: 18px; font-weight: 700">공지 작성</h2></div>
+          <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-2)">제목<input type="text" placeholder="예: 시즌 2 종료 안내" style="height: 48px; padding: 0 16px; border-radius: 14px; border: 1px solid var(--line-3); background: var(--bg); color: var(--text); font: inherit; font-size: 15px; outline: none; box-sizing: border-box; width: 100%; font-size: 14px"></label>
+          <label style="flex: 1; display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-2)">내용<textarea rows="5" style="flex: 1; min-height: 120px; padding: 12px 16px; border-radius: 14px; border: 1px solid var(--line-3); background: var(--bg); color: var(--text); font: inherit; font-size: 14px; line-height: 1.6; resize: vertical; outline: none" placeholder="예: 시즌이 끝나면 최종 순위를 스냅샷으로 저장하고, 레이팅은 절반만 남기는 소프트 리셋을 적용해요."></textarea></label>
+          <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); min-height: 44px"><input type="checkbox" style="width: 18px; height: 18px; accent-color: var(--accent)">디스코드에도 알림 (봇 연동 후)</label>
+            <button type="button" style="height: 44px; padding: 0 18px; border-radius: 12px; border: 0; background: var(--accent); color: var(--on-accent); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer">게시</button>
+          </div>
+        </section>
+      </div>
+
+      <section style="background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 22px; box-shadow: inset 0 1px 0 var(--hi); padding: 22px 12px 12px; display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 10px; padding: 0 10px">
+          <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-family: 'Chakra Petch', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.16em; color: var(--faint)">MEMBERS</span><h2 style="margin: 0; font-size: 18px; font-weight: 700">멤버 관리</h2></div>
+          <label style="display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; color: var(--faint); width: 240px; max-width: 100%; box-sizing: border-box"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg><input type="search" aria-label="멤버 검색" placeholder="닉네임 검색" style="background: transparent; border: 0; outline: none; color: var(--text); font: inherit; font-size: 14px; width: 100%"></label>
+        </div>
+        <div style="overflow-x: auto">
+          <table style="width: 100%; border-collapse: separate; border-spacing: 0 4px; font-size: 14px; min-width: 720px">
+            <thead>
+              <tr style="font-family: 'Chakra Petch', sans-serif; color: var(--faint); font-size: 11px; letter-spacing: 0.14em; text-align: left">
+                <th style="padding: 8px 14px; font-weight: 600">MEMBER</th>
+                <th style="padding: 8px 14px; font-weight: 600">ROLE</th>
+                <th style="padding: 8px 14px; font-weight: 600">LINKED</th>
+                <th style="padding: 8px 14px; font-weight: 600; text-align: right">SCRIMS</th>
+                <th style="padding: 8px 14px; font-weight: 600; text-align: right">NO-SHOW 30D</th>
+                <th style="padding: 8px 14px; font-weight: 600">STATUS</th>
+              </tr>
+            </thead>
+            <tbody>
+              <sc-for list="{{members}}" as="m" hint-placeholder-count="6">
+                <tr style="background: var(--surface-2)">
+                  <td style="padding: 12px 14px; border-radius: 12px 0 0 12px"><div style="display: flex; align-items: center; gap: 12px"><span aria-hidden="true" style="width: 32px; height: 32px; border-radius: 16px; background: {{m.avBg}}; color: {{m.avFg}}; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex: 0 0 auto">{{m.i}}</span><span style="display: flex; flex-direction: column"><a href="Profile.dc.html" style="color: var(--text); text-decoration: none; font-weight: 600">{{m.name}}</a><span style="font-size: 12px; color: var(--faint)">가입 {{m.joined}}</span></span></div></td>
+                  <td style="padding: 12px 14px"><span style="font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: {{m.roleBg}}; color: {{m.roleFg}}">{{m.role}}</span></td>
+                  <td style="padding: 12px 14px; font-size: 13px; color: var(--text-2)">{{m.linked}}</td>
+                  <td style="padding: 12px 14px; text-align: right; font-family: 'Chakra Petch', sans-serif; font-weight: 600">{{m.scrims}}</td>
+                  <td style="padding: 12px 14px; text-align: right; font-family: 'Chakra Petch', sans-serif; font-weight: 700; color: {{m.nsFg}}">{{m.noshow}}</td>
+                  <td style="padding: 12px 14px; border-radius: 0 12px 12px 0"><span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: {{m.stFg}}"><span style="width: 7px; height: 7px; border-radius: 4px; background: {{m.stDot}}"></span>{{m.status}}</span></td>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light","system"],"default":"dark"},"$preview":{"width":1440,"height":1620}}'>
+class Component extends DCLogic {
+  componentDidMount() {
+    this._themeSync = () => this.forceUpdate();
+    try { window.addEventListener('storage', this._themeSync); } catch (e) {}
+    try { this._mq = window.matchMedia('(prefers-color-scheme: dark)'); this._mq.addEventListener('change', this._themeSync); } catch (e) {}
+    this.forceUpdate();
+  }
+  componentWillUnmount() {
+    try { window.removeEventListener('storage', this._themeSync); } catch (e) {}
+    try { this._mq.removeEventListener('change', this._themeSync); } catch (e) {}
+  }
+  componentDidUpdate(prev) {
+    if (prev.theme !== this.props.theme && this.props.theme) this.setThemeMode(this.props.theme);
+  }
+  setThemeMode(mode) {
+    try { window.localStorage.setItem('gcd-theme', mode); } catch (e) {}
+    this.setState({ themeMode: mode });
+  }
+  themeVals() {
+    let stored = null;
+    try { stored = window.localStorage.getItem('gcd-theme'); } catch (e) {}
+    const mode = stored || (this.state && this.state.themeMode) || this.props.theme || 'dark';
+    let sysDark = true;
+    try { sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches; } catch (e) {}
+    const resolved = mode === 'system' ? (sysDark ? 'dark' : 'light') : mode;
+    const opt = (id) => {
+      const on = mode === id;
+      return { pressed: on ? 'true' : 'false', bg: on ? 'var(--surface)' : 'transparent', fg: on ? 'var(--text)' : 'var(--muted)', icon: on ? 'var(--accent-ink)' : 'currentColor', shadow: on ? 'var(--seg-shadow)' : 'none', ring: on ? 'var(--accent)' : 'var(--line-2)', pick: () => this.setThemeMode(id) };
+    };
+    return {
+      themeAttr: resolved,
+      themeIsDark: resolved === 'dark',
+      themeIsLight: resolved === 'light',
+      themeToggle: () => this.setThemeMode(resolved === 'dark' ? 'light' : 'dark'),
+      themeToggleLabel: resolved === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환',
+      themeLight: opt('light'), themeDark: opt('dark'), themeSystem: opt('system')
+    };
+  }
+  renderVals() {
+    return Object.assign(this.screenVals(), this.themeVals());
+  }
+  constructor(props) {
+    super(props);
+    this.state = { q: {}, ns: { '원딜장인': true } };
+  }
+  screenVals() {
+    const av = { blue: ['#4C8DFF2E', 'var(--blue-ink)'], orange: ['#FF8A3D2E', 'var(--orange-ink)'], violet: ['#B18CFF2E', 'var(--violet-ink)'], cyan: ['#3BD6C62E', 'var(--cyan-ink)'], gold: ['#F5C4512E', 'var(--gold-ink)'], pink: ['#FF6B8B2E', 'var(--pink-ink)'] };
+    const setQ = (id, v) => this.setState({ q: { ...this.state.q, [id]: v } });
+    const queue = [
+      { id: 'a', abbr: 'LoL', tileBg: '#3BD6C624', tileFg: 'var(--cyan-ink)', title: '일요일 협곡 내전 2경기', when: '10.26 21:40', by: '미드고정(방장)', winner: '블루팀 승리', winFg: 'var(--blue-ink)', delta: '블루 +15 ~ +19 · 오렌지 −15 ~ −19', disputed: false },
+      { id: 'b', abbr: 'LoL', tileBg: '#3BD6C624', tileFg: 'var(--cyan-ink)', title: '토요일 초보 환영 내전', when: '10.25 22:10', by: '서폿요정(방장)', winner: '오렌지팀 승리', winFg: 'var(--orange-ink)', delta: '오렌지 +14 ~ +20 · 블루 −14 ~ −20', disputed: true },
+      { id: 'c', abbr: 'TFT', tileBg: '#B18CFF24', tileFg: 'var(--violet-ink)', title: '롤체 8인 친선 로비', when: '10.25 23:10', by: '체스왕(방장)', winner: '1위 체스왕 · 8위 칼바람러', winFg: 'var(--violet-ink)', delta: '개인 순위 기준 +24 ~ −22', disputed: false }
+    ].map((q) => {
+      const st = this.state.q[q.id];
+      return {
+        ...q, pending: !st, done: !!st,
+        border: st === 'ok' ? '#D4FF3A55' : q.disputed && !st ? '#FF8A3D55' : 'var(--line-2)',
+        doneLabel: st === 'ok' ? '승인 완료 · 레이팅 반영' : '반려 · 방장에게 재입력 요청',
+        doneBg: st === 'ok' ? '#D4FF3A1A' : '#FF8A3D1F', doneFg: st === 'ok' ? 'var(--accent-ink)' : 'var(--orange-ink-2)',
+        approve: () => setQ(q.id, 'ok'), reject: () => setQ(q.id, 'no'), undo: () => setQ(q.id, undefined)
+      };
+    });
+    const pendingCount = queue.filter((q) => q.pending).length;
+    const R = [['미드고정', 'gold', 0], ['새벽감자', 'blue', 0], ['정글차이', 'violet', 0], ['원딜장인', 'pink', 2], ['와드지기', 'blue', 0], ['한타각', 'orange', 1], ['바론스틸', 'violet', 0], ['별빛미드', 'cyan', 0], ['무한점멸', 'gold', 0], ['서폿요정', 'cyan', 0]];
+    const roster = R.map(([name, c, prior]) => {
+      const on = !!this.state.ns[name];
+      const count = prior + (on ? 1 : 0);
+      return {
+        name, i: name[0], avBg: av[c][0], avFg: av[c][1], count, pressed: on ? 'true' : 'false',
+        bg: on ? '#FF8A3D14' : 'var(--surface-2)', border: on ? '#FF8A3D55' : 'var(--line)',
+        tag: on ? '노쇼' : '참석', tagFg: on ? 'var(--orange-ink-2)' : 'var(--faint)',
+        toggle: () => this.setState({ ns: { ...this.state.ns, [name]: !on } })
+      };
+    });
+    const hit = roster.filter((r) => r.count >= 3).map((r) => r.name);
+    const marked = roster.filter((r) => r.pressed === 'true').length;
+    const ok = { stFg: 'var(--text-2)', stDot: 'var(--cyan)', status: '정상' };
+    const ban = { stFg: 'var(--orange-ink-2)', stDot: 'var(--orange)', status: '참가 제한 · D-5' };
+    const roleAdmin = { role: '운영진', roleBg: '#D4FF3A1A', roleFg: 'var(--accent-ink)' };
+    const roleMember = { role: '멤버', roleBg: 'var(--chip)', roleFg: 'var(--muted)' };
+    const m = (name, c, role, linked, scrims, noshow, st, joined) => ({ name, i: name[0], avBg: av[c][0], avFg: av[c][1], ...role, linked, scrims, noshow, nsFg: noshow >= 2 ? 'var(--orange-ink-2)' : 'var(--text)', ...st, joined });
+    return {
+      queue, roster, marked,
+      willRestrict: hit.length > 0,
+      restrictText: hit.join(', ') + '님은 저장하면 30일 노쇼 3회가 되어 7일간 내전 참가가 제한됩니다.',
+      stats: [
+        { label: '결과 승인 대기', value: String(pendingCount), unit: '건', sub: '가장 오래된 제출 · 14시간 전', dot: 'var(--accent)' },
+        { label: '결과 이의 제기', value: '1', unit: '건', sub: '토요일 초보 환영 내전', dot: 'var(--orange)' },
+        { label: '이번 달 노쇼', value: '3', unit: '회', sub: '지난달보다 2회 적어요', dot: 'var(--violet)' },
+        { label: '참가 제한 중', value: '1', unit: '명', sub: '자동 해제 11.02', dot: 'var(--cyan)' }
+      ],
+      members: [
+        m('미드고정', 'gold', roleAdmin, '라이엇 · 스팀 · 디스코드', 31, 0, ok, '2026.03'),
+        m('서폿요정', 'cyan', roleAdmin, '라이엇 · 디스코드', 34, 0, ok, '2026.03'),
+        m('새벽감자', 'blue', roleMember, '라이엇 · 스팀', 28, 0, ok, '2026.04'),
+        m('원딜장인', 'pink', roleMember, '라이엇', 24, 2, ok, '2026.05'),
+        m('칼바람러', 'orange', roleMember, '라이엇 · 디스코드', 9, 3, ban, '2026.08'),
+        m('용용이', 'violet', roleMember, '스팀', 6, 0, ok, '2026.09')
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

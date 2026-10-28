@@ -1,0 +1,139 @@
+/*
+ * 테마 색 토큰. 원본: _workspace/00_input/mockup/tokens.css (계약 9-1)
+ * 변수 이름과 값은 원본 그대로다. 바뀐 것은 선택자뿐이다.
+ *   .gcd                     -> :root, [data-theme="dark"]
+ *   .gcd[data-theme="light"] -> [data-theme="light"]
+ * data-theme 속성은 <html>에 단다(인라인 스크립트가 첫 페인트 전에 적용).
+ * 이 파일에 새 hex를 추가하지 않는다.
+ */
+
+:root,
+[data-theme="dark"] {
+  color-scheme:dark;
+  --bg:#0A0B14;
+  --nav:#0D0F1A;
+  --nav-line:#1C1F2E;
+  --surface:#11131F;
+  --line:#1E2235;
+  --surface-2:#171A29;
+  --surface-3:#151827;
+  --line-2:#252A40;
+  --line-3:#2A2F47;
+  --line-4:#3A4166;
+  --hero:#10132A;
+  --hero-2:#0C0F22;
+  --hero-3:#131838;
+  --hero-line:#252B52;
+  --hero-line-2:#2E3560;
+  --hero-faint:#8E96C8;
+  --avatar-deep:#1B2A4D;
+  --banner-lol:#0F1B24;
+  --banner-tft:#17132A;
+  --banner-steam:#21150F;
+  --text:#F2F4FA;
+  --text-2:#C9CEE0;
+  --muted:#A3AAC0;
+  --faint:#7F879E;
+  --on-accent:#0A0B14;
+  --overlay:#FFFFFF;
+  --hi:#FFFFFF0A;
+  --chip:#FFFFFF0F;
+  --hair:#FFFFFF0D;
+  --hair-2:#FFFFFF08;
+  --shadow:#00000080;
+  --hover:#FFFFFF0A;
+  --lift:0 16px 32px #00000066;
+  --seg-shadow:0 1px 0 #FFFFFF14 inset,0 2px 6px #00000059;
+  --accent:#D4FF3A;
+  --accent-ink:var(--accent);
+  --accent-ink-hover:#E6FF85;
+  --cyan:#3BD6C6;
+  --cyan-text:#3BD6C6;
+  --cyan-ink:#7FE8DC;
+  --cyan-ink-2:#BDF3EC;
+  --violet:#B18CFF;
+  --violet-text:#B18CFF;
+  --violet-ink:#CDB5FF;
+  --orange:#FF8A3D;
+  --orange-text:#FF8A3D;
+  --orange-ink:#FFB98A;
+  --orange-ink-2:#FFAA6E;
+  --warn-text:#FFD3B3;
+  --warn-text-2:#E9C3A8;
+  --blue:#4C8DFF;
+  --blue-text:#4C8DFF;
+  --blue-ink:#9CC1FF;
+  --gold:#F5C451;
+  --gold-text:#F5C451;
+  --gold-ink:#F8D883;
+  --silver:#C9D1DC;
+  --silver-text:#C9D1DC;
+  --bronze:#E0A070;
+  --bronze-text:#E0A070;
+  --pink-ink:#FF9CB1;
+}
+
+[data-theme="light"] {
+  color-scheme:light;
+  --bg:#F3F4F8;
+  --nav:#FFFFFF;
+  --nav-line:#E3E6EE;
+  --surface:#FFFFFF;
+  --line:#E3E6EE;
+  --surface-2:#F6F7FA;
+  --surface-3:#FFFFFF;
+  --line-2:#E0E4EC;
+  --line-3:#D2D7E2;
+  --line-4:#B4BBCC;
+  --hero:#EDEFFC;
+  --hero-2:#E3E7FA;
+  --hero-3:#DFE4F9;
+  --hero-line:#D6DBF3;
+  --hero-line-2:#BFC6EA;
+  --hero-faint:#565E8C;
+  --avatar-deep:#DCE6FF;
+  --banner-lol:#E2F5F2;
+  --banner-tft:#EEE8FC;
+  --banner-steam:#FCEDE2;
+  --text:#12141D;
+  --text-2:#383E52;
+  --muted:#535A6F;
+  --faint:#656D84;
+  --on-accent:#0A0B14;
+  --overlay:#0A0B14;
+  --hi:#FFFFFF00;
+  --chip:#0A0B140A;
+  --hair:#0A0B1412;
+  --hair-2:#0A0B140A;
+  --shadow:#1A1F3A2E;
+  --hover:#0A0B140A;
+  --lift:0 16px 32px #1A1F3A1F;
+  --seg-shadow:0 1px 3px #1A1F3A26;
+  --accent:#C6F135;
+  --accent-ink:color-mix(in oklab,var(--accent) 36%,#000);
+  --accent-ink-hover:color-mix(in oklab,var(--accent) 26%,#000);
+  --cyan:#22BFAE;
+  --cyan-text:#0B746A;
+  --cyan-ink:#0B746A;
+  --cyan-ink-2:#0B6A61;
+  --violet:#9B72F5;
+  --violet-text:#6236C8;
+  --violet-ink:#6236C8;
+  --orange:#FF8A3D;
+  --orange-text:#A84B0C;
+  --orange-ink:#A84B0C;
+  --orange-ink-2:#A84B0C;
+  --warn-text:#7C3307;
+  --warn-text-2:#6E4128;
+  --blue:#4C8DFF;
+  --blue-text:#2457C2;
+  --blue-ink:#2457C2;
+  --gold:#E5AE22;
+  --gold-text:#845C00;
+  --gold-ink:#845C00;
+  --silver:#A7B0C0;
+  --silver-text:#586174;
+  --bronze:#CF8550;
+  --bronze-text:#94501F;
+  --pink-ink:#B8264F;
+}

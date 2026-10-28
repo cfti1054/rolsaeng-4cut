@@ -1,0 +1,45 @@
+{
+  "name": "api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "NestJS API 서버 + Prisma + (S1부터) BullMQ 워커",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "prisma:validate": "prisma validate",
+    "prisma:generate": "prisma generate",
+    "prisma:format": "prisma format",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "prisma:seed": "prisma db seed"
+  },
+  "prisma": {
+    "seed": "tsx --conditions=source prisma/seed.ts"
+  },
+  "dependencies": {
+    "@gcd/core": "workspace:*",
+    "@gcd/shared": "workspace:*",
+    "@nestjs/common": "11.2.8",
+    "@nestjs/core": "11.2.8",
+    "@nestjs/platform-express": "11.2.8",
+    "@prisma/client": "6.19.3",
+    "cookie-parser": "1.4.7",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "11.2.8",
+    "@swc/core": "1.16.20",
+    "@types/cookie-parser": "1.4.10",
+    "@types/express": "5.0.6",
+    "@types/node": "24.19.2",
+    "prisma": "6.19.3",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "unplugin-swc": "1.6.0",
+    "vitest": "3.2.7"
+  }
+}

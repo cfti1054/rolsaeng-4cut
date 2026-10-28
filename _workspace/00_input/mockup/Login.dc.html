@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>디스코드 로그인</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=Chakra+Petch:wght@500;600;700&amp;display=swap">
+<style>
+body{margin:0;background:#0A0B14}
+body:has(.gcd[data-theme="light"]){background:#F3F4F8}
+.gcd{color-scheme:dark;--bg:#0A0B14;--nav:#0D0F1A;--nav-line:#1C1F2E;--surface:#11131F;--line:#1E2235;--surface-2:#171A29;--surface-3:#151827;--line-2:#252A40;--line-3:#2A2F47;--line-4:#3A4166;--hero:#10132A;--hero-2:#0C0F22;--hero-3:#131838;--hero-line:#252B52;--hero-line-2:#2E3560;--hero-faint:#8E96C8;--avatar-deep:#1B2A4D;--banner-lol:#0F1B24;--banner-tft:#17132A;--banner-steam:#21150F;--text:#F2F4FA;--text-2:#C9CEE0;--muted:#A3AAC0;--faint:#7F879E;--on-accent:#0A0B14;--overlay:#FFFFFF;--hi:#FFFFFF0A;--chip:#FFFFFF0F;--hair:#FFFFFF0D;--hair-2:#FFFFFF08;--shadow:#00000080;--hover:#FFFFFF0A;--lift:0 16px 32px #00000066;--seg-shadow:0 1px 0 #FFFFFF14 inset,0 2px 6px #00000059;--accent:#D4FF3A;--accent-ink:var(--accent);--accent-ink-hover:#E6FF85;--cyan:#3BD6C6;--cyan-text:#3BD6C6;--cyan-ink:#7FE8DC;--cyan-ink-2:#BDF3EC;--violet:#B18CFF;--violet-text:#B18CFF;--violet-ink:#CDB5FF;--orange:#FF8A3D;--orange-text:#FF8A3D;--orange-ink:#FFB98A;--orange-ink-2:#FFAA6E;--warn-text:#FFD3B3;--warn-text-2:#E9C3A8;--blue:#4C8DFF;--blue-text:#4C8DFF;--blue-ink:#9CC1FF;--gold:#F5C451;--gold-text:#F5C451;--gold-ink:#F8D883;--silver:#C9D1DC;--silver-text:#C9D1DC;--bronze:#E0A070;--bronze-text:#E0A070;--pink-ink:#FF9CB1}
+.gcd[data-theme="light"]{color-scheme:light;--bg:#F3F4F8;--nav:#FFFFFF;--nav-line:#E3E6EE;--surface:#FFFFFF;--line:#E3E6EE;--surface-2:#F6F7FA;--surface-3:#FFFFFF;--line-2:#E0E4EC;--line-3:#D2D7E2;--line-4:#B4BBCC;--hero:#EDEFFC;--hero-2:#E3E7FA;--hero-3:#DFE4F9;--hero-line:#D6DBF3;--hero-line-2:#BFC6EA;--hero-faint:#565E8C;--avatar-deep:#DCE6FF;--banner-lol:#E2F5F2;--banner-tft:#EEE8FC;--banner-steam:#FCEDE2;--text:#12141D;--text-2:#383E52;--muted:#535A6F;--faint:#656D84;--on-accent:#0A0B14;--overlay:#0A0B14;--hi:#FFFFFF00;--chip:#0A0B140A;--hair:#0A0B1412;--hair-2:#0A0B140A;--shadow:#1A1F3A2E;--hover:#0A0B140A;--lift:0 16px 32px #1A1F3A1F;--seg-shadow:0 1px 3px #1A1F3A26;--accent:#C6F135;--accent-ink:color-mix(in oklab,var(--accent) 36%,#000);--accent-ink-hover:color-mix(in oklab,var(--accent) 26%,#000);--cyan:#22BFAE;--cyan-text:#0B746A;--cyan-ink:#0B746A;--cyan-ink-2:#0B6A61;--violet:#9B72F5;--violet-text:#6236C8;--violet-ink:#6236C8;--orange:#FF8A3D;--orange-text:#A84B0C;--orange-ink:#A84B0C;--orange-ink-2:#A84B0C;--warn-text:#7C3307;--warn-text-2:#6E4128;--blue:#4C8DFF;--blue-text:#2457C2;--blue-ink:#2457C2;--gold:#E5AE22;--gold-text:#845C00;--gold-ink:#845C00;--silver:#A7B0C0;--silver-text:#586174;--bronze:#CF8550;--bronze-text:#94501F;--pink-ink:#B8264F}
+.gcd a{color:var(--accent-ink)}.gcd a:hover{color:var(--accent-ink-hover)}
+.gcd,.gcd section,.gcd nav,.gcd article,.gcd header,.gcd div,.gcd span,.gcd button,.gcd a,.gcd input,.gcd select,.gcd textarea,.gcd tr{transition:background-color .25s ease,border-color .25s ease,color .25s ease,box-shadow .25s ease,transform .2s ease}
+.gcd nav a:hover{background:var(--hover)}
+.gcd button:hover,.gcd a[href]:hover{filter:brightness(1.05)}
+.gcd article:hover{transform:translateY(-3px);box-shadow:var(--lift)}
+.gcd :focus-visible{outline:2px solid var(--accent-ink);outline-offset:2px}
+.gcd input::placeholder,.gcd textarea::placeholder{color:var(--faint)}
+@media (prefers-reduced-motion:reduce){.gcd,.gcd *{transition:none!important}.gcd article:hover{transform:none}}
+</style>
+</helmet>
+<div class="gcd" data-theme="{{themeAttr}}" style="min-height: 100vh; background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans KR', system-ui, sans-serif; display: flex; flex-wrap: wrap">
+  <section aria-label="롤생네컷 소개" style="flex: 1 1 520px; min-width: 0; position: relative; overflow: hidden; background: var(--hero); border-right: 1px solid var(--hero-line); padding: 40px 48px; box-sizing: border-box; display: flex; flex-direction: column; gap: 40px; min-height: 640px">
+    <svg aria-hidden="true" viewBox="0 0 600 900" preserveAspectRatio="xMidYMid slice" style="position: absolute; inset: 0; width: 100%; height: 100%">
+      <defs><pattern id="lst" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(-24)"><line x1="0" y1="0" x2="0" y2="12" style="stroke: var(--overlay)" stroke-opacity="0.04" stroke-width="5"></line></pattern></defs>
+      <polygon points="380,0 600,0 600,900 220,900" style="fill: var(--orange)" fill-opacity="0.16"></polygon>
+      <polygon points="300,0 380,0 220,900 140,900" style="fill: var(--blue)" fill-opacity="0.18"></polygon>
+      <rect width="600" height="900" fill="url(#lst)"></rect>
+      <line x1="380" y1="0" x2="220" y2="900" style="stroke: var(--accent)" stroke-width="3"></line>
+    </svg>
+    <div style="position: relative; display: flex; align-items: center; gap: 12px">
+      <svg aria-hidden="true" width="40" height="40" viewBox="0 0 36 36"><path d="M11 3h22l-7 30H4z" style="fill: var(--accent)"></path><path d="M15 10h9.5l-1.3 6H19l-2.3 10h-4.6z" style="fill: var(--on-accent)"></path></svg>
+      <div style="display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700; font-size: 18px; letter-spacing: -0.02em">롤생네컷</span><span style="font-family: 'Chakra Petch', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.16em; color: var(--faint)">GAME CLUB</span></div>
+    </div>
+    <div style="position: relative; display: flex; flex-direction: column; gap: 16px; max-width: 460px">
+      <span style="align-self: flex-start; font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: var(--on-accent); background: var(--accent); padding: 4px 10px; border-radius: 8px">SEASON 2 · D-34</span>
+      <h1 style="margin: 0; font-size: 44px; line-height: 1.15; font-weight: 700; letter-spacing: -0.04em">내전 모집부터<br>서버 랭킹까지,<br>한곳에서.</h1>
+      <p style="margin: 0; font-size: 15px; line-height: 1.7; color: var(--muted)">롤 · 롤체 · 스팀 게임방 멤버의 티어와 내전 레이팅을 모아 보고, 팀을 자동으로 나눠 바로 내전을 시작하세요.</p>
+    </div>
+    <ul style="position: relative; list-style: none; margin: auto 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; max-width: 420px">
+      <sc-for list="{{features}}" as="f" hint-placeholder-count="3">
+        <li style="display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line)">
+          <span aria-hidden="true" style="flex: 0 0 auto; width: 40px; height: 40px; border-radius: 12px; background: {{f.bg}}; color: {{f.fg}}; display: flex; align-items: center; justify-content: center; font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 700">{{f.mark}}</span>
+          <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 14px; font-weight: 700">{{f.title}}</span><span style="font-size: 12px; color: var(--muted)">{{f.desc}}</span></span>
+        </li>
+      </sc-for>
+    </ul>
+  </section>
+
+  <main style="flex: 1 1 480px; min-width: 0; padding: 32px 24px 48px; box-sizing: border-box; display: flex; flex-direction: column">
+    <div style="display: flex; justify-content: flex-end">
+      <button type="button" aria-label="{{themeToggleLabel}}" onClick="{{themeToggle}}" style="width: 44px; height: 44px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); color: var(--text); display: flex; align-items: center; justify-content: center; cursor: pointer"><sc-if value="{{themeIsDark}}" hint-placeholder-val="{{true}}"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg></sc-if><sc-if value="{{themeIsLight}}" hint-placeholder-val="{{false}}"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"></path></svg></sc-if></button>
+    </div>
+    <div style="flex: 1; display: flex; align-items: center; justify-content: center; padding-top: 16px">
+      <div style="width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 22px">
+        <ol aria-label="가입 단계" style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+          <sc-for list="{{steps}}" as="st" hint-placeholder-count="2">
+            <li style="display: flex; flex-direction: column; gap: 8px"><span style="height: 4px; border-radius: 2px; background: {{st.bar}}"></span><span style="font-size: 12px; font-weight: 600; color: {{st.fg}}">{{st.label}}</span></li>
+          </sc-for>
+        </ol>
+
+        <sc-if value="{{atSignIn}}" hint-placeholder-val="{{true}}">
+          <div style="display: flex; flex-direction: column; gap: 22px">
+            <div style="display: flex; flex-direction: column; gap: 8px">
+              <span style="font-family: 'Chakra Petch', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.16em; color: var(--faint)">SIGN IN</span>
+              <h2 style="margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.03em">디스코드로 입장하기</h2>
+              <p style="margin: 0; font-size: 14px; line-height: 1.7; color: var(--muted)">별도 비밀번호 없이 디스코드 계정으로 로그인해요. 처음이라면 자동으로 가입됩니다.</p>
+            </div>
+            <button type="button" onClick="{{signIn}}" style="display: flex; align-items: center; justify-content: center; gap: 12px; height: 56px; border-radius: 16px; border: 0; background: #5865F2; color: #FFFFFF; font: inherit; font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: 0 10px 24px #5865F240"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5.5c1.6-.7 3.3-1 5-1s3.4.3 5 1c1.8 2.6 2.7 5.6 2.5 9.2-1.5 1.2-3.1 2-4.8 2.5l-1-1.7"></path><path d="M7 5.5C5.2 8.1 4.3 11.1 4.5 14.7c1.5 1.2 3.1 2 4.8 2.5l1-1.7"></path><path d="M8 15c2.6 1.2 5.4 1.2 8 0"></path><circle cx="9.5" cy="11.5" r="1.2"></circle><circle cx="14.5" cy="11.5" r="1.2"></circle></svg>Discord로 로그인</button>
+            <div style="display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line)">
+              <span style="font-size: 13px; font-weight: 700">롤생네컷이 받는 정보</span>
+              <sc-for list="{{scopes}}" as="sc" hint-placeholder-count="4">
+                <span style="display: flex; align-items: center; gap: 10px; font-size: 13px; color: {{sc.fg}}"><sc-if value="{{sc.ok}}" hint-placeholder-val="{{true}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" style="stroke: var(--accent-ink)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"></path></svg></sc-if><sc-if value="{{sc.no}}" hint-placeholder-val="{{false}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" style="stroke: var(--faint)" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"></path></svg></sc-if>{{sc.text}}</span>
+              </sc-for>
+            </div>
+            <p style="margin: 0; font-size: 12px; line-height: 1.7; color: var(--faint)">롤생네컷 디스코드 서버 멤버만 입장할 수 있어요. 라이엇 · 스팀 연동은 로그인 후 <a href="Settings.dc.html" style="text-decoration: none">설정</a>에서 합니다.</p>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{atProfile}}" hint-placeholder-val="{{false}}">
+          <div style="display: flex; flex-direction: column; gap: 20px">
+            <div style="display: flex; flex-direction: column; gap: 8px">
+              <span style="font-family: 'Chakra Petch', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.16em; color: var(--faint)">WELCOME</span>
+              <h2 style="margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.03em">처음 오셨네요</h2>
+              <p style="margin: 0; font-size: 14px; line-height: 1.7; color: var(--muted)">커뮤니티에서 쓸 닉네임을 확인해 주세요. 디스코드 서버 닉네임을 기본값으로 가져왔어요.</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line)">
+              <span aria-hidden="true" style="flex: 0 0 auto; width: 48px; height: 48px; border-radius: 24px; background: #5865F22E; color: var(--blue-ink); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700">새</span>
+              <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px; font-weight: 700">saebyeok_potato</span><span style="font-size: 12px; color: var(--muted)">디스코드 계정 · 서버 멤버 확인됨</span></span>
+              <span style="font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: #D4FF3A1A; color: var(--accent-ink)">연결됨</span>
+            </div>
+            <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-2)">닉네임<input type="text" autocomplete="nickname" placeholder="새벽감자" style="height: 48px; padding: 0 16px; border-radius: 14px; border: 1px solid var(--line-3); background: var(--bg); color: var(--text); font: inherit; font-size: 15px; outline: none; box-sizing: border-box; width: 100%"><span style="font-size: 12px; font-weight: 400; color: var(--faint)">2–12자 · 나중에 설정에서 바꿀 수 있어요</span></label>
+            <div style="display: flex; gap: 10px">
+              <button type="button" onClick="{{back}}" style="height: 50px; padding: 0 18px; border-radius: 14px; border: 1px solid var(--line-3); background: transparent; color: var(--text); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer">뒤로</button>
+              <a href="Main.dc.html" style="flex: 1; display: flex; align-items: center; justify-content: center; height: 50px; border-radius: 14px; background: var(--accent); color: var(--on-accent); text-decoration: none; font-size: 15px; font-weight: 700">시작하기</a>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light","system"],"default":"dark"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  componentDidMount() {
+    this._themeSync = () => this.forceUpdate();
+    try { window.addEventListener('storage', this._themeSync); } catch (e) {}
+    try { this._mq = window.matchMedia('(prefers-color-scheme: dark)'); this._mq.addEventListener('change', this._themeSync); } catch (e) {}
+    this.forceUpdate();
+  }
+  componentWillUnmount() {
+    try { window.removeEventListener('storage', this._themeSync); } catch (e) {}
+    try { this._mq.removeEventListener('change', this._themeSync); } catch (e) {}
+  }
+  componentDidUpdate(prev) {
+    if (prev.theme !== this.props.theme && this.props.theme) this.setThemeMode(this.props.theme);
+  }
+  setThemeMode(mode) {
+    try { window.localStorage.setItem('gcd-theme', mode); } catch (e) {}
+    this.setState({ themeMode: mode });
+  }
+  themeVals() {
+    let stored = null;
+    try { stored = window.localStorage.getItem('gcd-theme'); } catch (e) {}
+    const mode = stored || (this.state && this.state.themeMode) || this.props.theme || 'dark';
+    let sysDark = true;
+    try { sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches; } catch (e) {}
+    const resolved = mode === 'system' ? (sysDark ? 'dark' : 'light') : mode;
+    const opt = (id) => {
+      const on = mode === id;
+      return { pressed: on ? 'true' : 'false', bg: on ? 'var(--surface)' : 'transparent', fg: on ? 'var(--text)' : 'var(--muted)', icon: on ? 'var(--accent-ink)' : 'currentColor', shadow: on ? 'var(--seg-shadow)' : 'none', ring: on ? 'var(--accent)' : 'var(--line-2)', pick: () => this.setThemeMode(id) };
+    };
+    return {
+      themeAttr: resolved,
+      themeIsDark: resolved === 'dark',
+      themeIsLight: resolved === 'light',
+      themeToggle: () => this.setThemeMode(resolved === 'dark' ? 'light' : 'dark'),
+      themeToggleLabel: resolved === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환',
+      themeLight: opt('light'), themeDark: opt('dark'), themeSystem: opt('system')
+    };
+  }
+  renderVals() {
+    return Object.assign(this.screenVals(), this.themeVals());
+  }
+  constructor(props) {
+    super(props);
+    this.state = { step: 'signin' };
+  }
+  screenVals() {
+    const atProfile = this.state.step === 'profile';
+    const steps = [{ label: '1 · 디스코드 로그인' }, { label: '2 · 닉네임 확인' }].map((st, i) => {
+      const lit = i === 0 || atProfile;
+      return { ...st, bar: lit ? 'var(--accent)' : 'var(--line-2)', fg: lit ? 'var(--text)' : 'var(--faint)' };
+    });
+    const scopes = [
+      { text: '디스코드 ID · 사용자명 · 프로필 이미지', ok: true },
+      { text: '롤생네컷 서버 가입 여부와 서버 닉네임', ok: true },
+      { text: '이메일 주소 (알림용, 선택)', ok: true },
+      { text: '메시지 내용 · 비밀번호 · 다른 서버 활동', ok: false }
+    ].map((x) => ({ ...x, no: !x.ok, fg: x.ok ? 'var(--text-2)' : 'var(--faint)' }));
+    return {
+      steps, scopes,
+      atSignIn: !atProfile, atProfile,
+      signIn: () => this.setState({ step: 'profile' }),
+      back: () => this.setState({ step: 'signin' }),
+      features: [
+        { mark: '5V5', bg: '#3BD6C624', fg: 'var(--cyan-ink)', title: '팀 자동 밸런스', desc: '티어와 내전 레이팅으로 126가지 조합 중 최적 3안' },
+        { mark: 'ELO', bg: '#D4FF3A1A', fg: 'var(--accent-ink)', title: '서버 자체 내전 랭킹', desc: '운영진 승인 결과만 반영 · 시즌 소프트 리셋' },
+        { mark: 'API', bg: '#B18CFF24', fg: 'var(--violet-ink)', title: '라이엇 · 스팀 연동', desc: '티어, 최근 전적, 플레이타임 자동 동기화' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
