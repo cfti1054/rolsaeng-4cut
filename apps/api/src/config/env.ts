@@ -124,7 +124,8 @@ export const APP_CONFIG = Symbol('APP_CONFIG');
 export class EnvValidationError extends Error {}
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): AppConfig {
-  const parsed = EnvSchema.safeParse(env);
+  // API_PORT가 없거나 비어 있으면 PaaS(Railway 등)가 주입하는 PORT를 쓴다
+  const parsed = EnvSchema.safeParse({ ...env, API_PORT: env.API_PORT || env.PORT });
   if (!parsed.success) {
     const lines = parsed.error.issues.map((i) => `- ${i.path.join('.')}: ${i.message}`);
     throw new EnvValidationError(`환경 변수 검증 실패\n${lines.join('\n')}`);

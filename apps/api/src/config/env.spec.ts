@@ -26,6 +26,14 @@ describe('환경 변수', () => {
     expect(c.devLoginEnabled).toBe(false);
   });
 
+  it('포트: API_PORT 우선, 없거나 비어 있으면 PaaS의 PORT', () => {
+    expect(loadConfig({ ...REQUIRED, API_PORT: '5000', PORT: '8080' }).port).toBe(5000);
+    expect(loadConfig({ ...REQUIRED, PORT: '8080' }).port).toBe(8080);
+    expect(loadConfig({ ...REQUIRED, API_PORT: '', PORT: '8080' }).port).toBe(8080);
+    expect(loadConfig({ ...REQUIRED }).port).toBe(4000);
+    expect(() => loadConfig({ ...REQUIRED, PORT: 'abc' })).toThrow(/API_PORT/);
+  });
+
   it('WEB_ORIGIN은 오리진으로 정규화(끝 슬래시 제거)', () => {
     expect(loadConfig({ ...REQUIRED, WEB_ORIGIN: 'https://club.example.com/' }).webOrigin).toBe(
       'https://club.example.com',
