@@ -196,7 +196,7 @@ FROM scrims WHERE id = $1 FOR UPDATE
 
 ### 5-5. 시작·모집 취소·자동 마감 (D78, D80)
 
-**시작 `POST /scrims/:id/start`** — 방장 또는 운영진. 잠금 → 권한(FORBIDDEN) → status ∉ {recruiting, full} → SCRIM_NOT_RECRUITING → `canStartScrim({requiresFull: game.start_requires_full, capacity, joinedCount})`(D96) false → SCRIM_CANNOT_START → status = playing, started_at = now. 시각 제한 없음(시작 시각 전이어도 시작 가능). 대기열 행은 그대로 둔다(D95).
+**시작 `POST /scrims/:id/start`** — 방장 또는 운영진. 잠금 → 권한(FORBIDDEN) → status ∉ {recruiting, full} → SCRIM_NOT_RECRUITING → `canStartScrim({requiresFull: game.start_requires_full, capacity, joinedCount})`(D97) false → SCRIM_CANNOT_START → status = playing, started_at = now. 시각 제한 없음(시작 시각 전이어도 시작 가능). 대기열 행은 그대로 둔다(D95).
 
 **모집 취소 `POST /scrims/:id/cancel`** — 방장(reason host) 또는 운영진(방장이 아니면 reason admin). 잠금 → 권한 → status ∉ {recruiting, full} → SCRIM_NOT_RECRUITING → status = cancelled, cancelled_at = now, cancel_reason. 참가자 행은 그대로(이력).
 
@@ -297,8 +297,8 @@ export type OpenScrimStatus = 'recruiting' | 'full';
 | planRosterAfterChange | `(input: { capacity: number; joinedCount: number; waitlist: readonly WaitlistRow[] }) => { promoteIds: string[]; nextStatus: OpenScrimStatus }` | 빈 자리 = max(0, capacity − joinedCount), `orderWaitlist` 앞에서 그만큼. nextStatus = statusForJoinedCount(joinedCount + 승격 수). joinedCount > capacity면 RangeError |
 | validatePreferredPositions | `(input: readonly string[], gamePositions: readonly string[], usePositions: boolean) => { ok: true } \| { ok: false; message: string }` | usePositions: 1–2개, 모두 gamePositions 안, 중복 없음. 아니면 `[]`만 허용 |
 | validateScrimSchedule | `(scheduledAt: Date, now: Date, maxDaysAhead: number) => 'ok' \| 'not_future' \| 'too_far'` | scheduledAt ≤ now → not_future, > now + maxDaysAhead일 → too_far |
-| isCapacityInRange | `(capacity: number, range: { min: number; max: number; step?: number }) => boolean` | 정수 && min ≤ capacity ≤ max && (capacity − min) % step = 0 (D96) |
-| canStartScrim | `(input: { requiresFull: boolean; capacity: number; joinedCount: number }) => boolean` | requiresFull → joinedCount = capacity, 아니면 joinedCount ≥ `SCRIM_MIN_PLAYERS_TO_START`(2) (D96) |
+| isCapacityInRange | `(capacity: number, range: { min: number; max: number; step?: number }) => boolean` | 정수 && min ≤ capacity ≤ max && (capacity − min) % step = 0 (D97) |
+| canStartScrim | `(input: { requiresFull: boolean; capacity: number; joinedCount: number }) => boolean` | requiresFull → joinedCount = capacity, 아니면 joinedCount ≥ `SCRIM_MIN_PLAYERS_TO_START`(2) (D97) |
 | decideOverdueScrim | `(input: { status: ScrimStatus; scheduledAt: Date; now: Date; autoCloseAfterMin: number; canStart: boolean }) => 'start' \| 'cancel' \| null` | status가 recruiting·full이고 now ≥ scheduledAt + autoCloseAfterMin분일 때만: canStart → start, 아니면 cancel. 그 외 null |
 | computeOpenPositions | `(positions: readonly string[], capacity: number, firstChoices: readonly (string \| null)[]) => { position: string; count: number }[]` | 빈 자리(capacity − firstChoices.length) 0이면 `[]`. capacity가 positions.length로 나누어떨어지지 않으면 `[]`. 포지션당 정원 = capacity / positions.length, 남은 수 = 그 값 − 1지망이 그 포지션인 수, 1 이상만 positions 순서로 |
 | isJoinClosed | `(scheduledAt: Date, now: Date) => boolean` | now ≥ scheduledAt |
@@ -511,9 +511,9 @@ architect(완료)
 | D93 | 버튼 노출(can_*)과 join_closed는 서버가 계산해 응답에 넣는다(표시용, 서버는 요청 때 다시 검사) | 클라이언트 시계 오차·역할 판단 중복 방지 |
 | D94 | 방장은 참가 취소 불가, 위임 없음. 방장의 포지션 변경은 같은 `POST /join` | 메인 기본값 4 |
 | D95 | 시작·모집 취소·자동 마감 때 대기열 행은 waitlist 그대로 둔다(자동 cancelled 하지 않음). 상세의 대기열 섹션은 모집 중일 때만 보인다 | 이력 보존, 전이 하나 덜 씀 |
-| D96 | (사용자 결정, D76·D78 수정) 롤 정원 10 고정 → 2–10명 2명 단위(1:1–5:5), 정한 정원이 꽉 차야 시작. games에 `capacity_step`(기본 1)·`start_requires_full`(기본 false) 추가(마이그레이션 `20261029160000_s2_capacity_step`), `GameCapacityRange`에 `step`·`start_requires_full`. core `isCapacityInRange(capacity, {min, max, step?})`는 (capacity − min)이 step의 배수인지도 검사, `canStartScrim({requiresFull, …})`. 롤체·스팀은 단위 1, 2명 이상 시작(변경 없음). 정원 6·8처럼 포지션 수(5)로 나누어떨어지지 않으면 open_positions는 [] | 소규모 내전 허용, 두 팀 인원 동일 유지 |
 | D96 | 자동 마감 cron은 `SCRIM_JOBS_ENABLED`로 따로 끈다(SYNC_JOBS_ENABLED와 분리), 5분 주기, `pg_try_advisory_xact_lock` | 동기화 작업과 성격이 달라 테스트에서 따로 끄고 싶다. D62 방식 재사용 |
-
+| D97 | (사용자 결정, D76·D78 수정) 롤 정원 10 고정 → 2–10명 2명 단위(1:1–5:5), 정한 정원이 꽉 차야 시작. games에 `capacity_step`(기본 1)·`start_requires_full`(기본 false) 추가(마이그레이션 `20261029160000_s2_capacity_step`), `GameCapacityRange`에 `step`·`start_requires_full`. core `isCapacityInRange(capacity, {min, max, step?})`는 (capacity − min)이 step의 배수인지도 검사, `canStartScrim({requiresFull, …})`. 롤체·스팀은 단위 1, 2명 이상 시작(변경 없음). 정원 6·8처럼 포지션 수(5)로 나누어떨어지지 않으면 open_positions는 [] | 소규모 내전 허용, 두 팀 인원 동일 유지 |
+| D98 | (사용자 결정) 스팀 내전은 어떤 스팀 게임인지 필수로 고른다. games에 `requires_steam_app`(기본 false, steam만 true), scrims에 `steam_app_id`·`steam_app_name`(nullable) 추가(마이그레이션 `20261029170000_s2_steam_app`). `GameView.requires_steam_app`, `ScrimSummary.steam_app: {app_id, name} \| null`, 작성 `steam_app_id`(requires_steam_app 게임만 필수, 다른 게임이면 400), 수정 `steam_app_id`(바꿀 때만). `GET /steam-apps?q=`(로그인 필요): q가 비면 멤버 보유 게임(steam_playtime 보유 계정 수 많은 순, 최대 20), q가 있으면 보유 게임 이름 일치(최대 10) 다음 스팀 상점 검색(키 불필요 `storesearch`, 검색어별 10분 캐시) — 합쳐 최대 20, 상점 실패는 `store_unavailable: true`로 보유 결과만. 이름은 보유 기록 → 최근 상점 검색 결과 → 상점 `appdetails` 순으로 서버가 정해 저장(상점에 없으면 400, 상점 오류면 502). 외부 호출은 잠금 트랜잭션 밖에서. 배너 이미지는 `steamAppHeaderImageUrl`(CDN header.jpg). 웹 배너 태그: 롤은 정원/2로 `LEAGUE · 2V2`처럼 표시 | 같은 "스팀" 내전이라도 게임이 달라 고르는 기준이 필요. 이름을 저장해 상점 장애에도 목록이 깨지지 않게 |
 ---
 
 ## 14. 확인 필요 (사용자 판단)

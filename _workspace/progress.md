@@ -87,6 +87,8 @@
 
 **명세 문서와 어긋난 부분(문서 갱신 필요):** 2장 모집글·참가 관리(제목, 진행 방식, 포지션 1·2지망, 자동 마감, 정원 범위, 방장 취소 불가), 5장 games·scrims·scrim_players 열 추가, 6장 scrims 경로·본문(탭 status, cursor, join 본문 필수, 추가 경로 6개), 7-4 노쇼(표시 기한·이동 구간·작성 제한·env), 8장 /scrims 탭·/scrims/new 입력·/scrims/[id] 메뉴. 상세 목록은 `03_qa-verifier_s2.md` 「명세 문서 갱신 필요 목록」
 
-**추가 변경(사용자 요청, D96):** 롤 정원 10 고정 → 2–10명 2명 단위, 꽉 차야 시작. games `capacity_step`·`start_requires_full` 열(마이그레이션 `20261029160000_s2_capacity_step`, prisma migrate diff와 일치 확인). 리더 직접 수정·실행: typecheck 4개 Done, test shared 53·core 150·web 126·api 333 passed / 27 skipped, web build 성공. QA 재검증 없음
+**추가 변경(사용자 요청, D97):** 롤 정원 10 고정 → 2–10명 2명 단위, 꽉 차야 시작. games `capacity_step`·`start_requires_full` 열(마이그레이션 `20261029160000_s2_capacity_step`, prisma migrate diff와 일치 확인). 리더 직접 수정·실행: typecheck 4개 Done, test shared 53·core 150·web 126·api 333 passed / 27 skipped, web build 성공. QA 재검증 없음
+
+**추가 변경(사용자 요청):** 내전 상세 「링크 복사」(제목·시각·인원 + URL을 메신저용 텍스트로, clipboard 실패 시 textarea 대체). 배너 태그 롤 `LEAGUE · {정원/2}V{정원/2}`. **D98** 스팀 내전 게임 선택 필수: `GET /steam-apps`(멤버 보유 게임 + 스팀 상점 검색), games `requires_steam_app`, scrims `steam_app_id`·`steam_app_name`(마이그레이션 `20261029170000_s2_steam_app`, prisma migrate diff와 일치 확인), 작성·수정 화면 「스팀 게임」 선택, 카드 배너·상세에 게임 이미지·이름. 리더 직접 수정·실행: typecheck 4개 Done, test shared 57·core 150·web 131·api 343 passed / 27 skipped(DB e2e, Docker 없음), web build 성공, 목 모드 브라우저 확인(검색·선택·작성·상세·수정 창). QA 재검증 없음
 
 **다음:** 남은 결함 s2-1~3 계약 결정 후 S3 팀 자동 밸런스, 결과 입력·승인, ELO 반영, 레이팅 그래프

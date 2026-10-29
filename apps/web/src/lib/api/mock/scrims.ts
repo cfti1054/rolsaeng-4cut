@@ -19,10 +19,15 @@ import {
   ScrimRestriction,
   ScrimStatus,
   ScrimSummary,
+  SearchSteamAppsQuery,
   SetScrimNoShowRequest,
+  STEAM_APP_SEARCH_LIMIT,
+  SteamAppRef,
   UpdateScrimRequest,
   Uuid,
   type ErrorCode,
+  type SearchSteamAppsResponse,
+  type SteamAppOption,
   type GameSeed,
   type GameView,
   type ListGamesResponse,
@@ -61,6 +66,8 @@ const MockScrim = z.object({
   rated: z.boolean(),
   auto_balance: z.boolean(),
   use_positions: z.boolean(),
+  /** 이 필드 전에 저장된 목 DB도 읽히도록 기본 null */
+  steam_app: SteamAppRef.nullable().default(null),
   started_at: IsoDateTime.nullable(),
   cancelled_at: IsoDateTime.nullable(),
   cancel_reason: ScrimCancelReason.nullable(),
@@ -68,6 +75,35 @@ const MockScrim = z.object({
   updated_at: IsoDateTime,
 });
 type MockScrim = z.infer<typeof MockScrim>;
+
+/**
+ * 스팀 게임 목(D98). owner_count > 0 = 멤버 보유 게임(검색어 없을 때 목록), 나머지는 상점에만 있는 게임.
+ * 검색어에 「상점오류」가 들어가면 상점 검색 실패(store_unavailable)를 흉내 낸다.
+ */
+export const MOCK_STEAM_APPS: readonly SteamAppOption[] = [
+  { app_id: 578080, name: 'PUBG: BATTLEGROUNDS', owner_count: 9 },
+  { app_id: 730, name: 'Counter-Strike 2', owner_count: 7 },
+  { app_id: 1966720, name: 'Lethal Company', owner_count: 6 },
+  { app_id: 945360, name: 'Among Us', owner_count: 5 },
+  { app_id: 1172470, name: 'Apex Legends', owner_count: 4 },
+  { app_id: 553850, name: 'HELLDIVERS 2', owner_count: 4 },
+  { app_id: 892970, name: 'Valheim', owner_count: 3 },
+  { app_id: 739630, name: 'Phasmophobia', owner_count: 3 },
+  { app_id: 548430, name: 'Deep Rock Galactic', owner_count: 2 },
+  { app_id: 1426210, name: 'It Takes Two', owner_count: 2 },
+  { app_id: 570, name: 'Dota 2', owner_count: 1 },
+  { app_id: 550, name: 'Left 4 Dead 2', owner_count: 1 },
+  { app_id: 1623730, name: 'Palworld', owner_count: 0 },
+  { app_id: 728880, name: 'Overcooked! 2', owner_count: 0 },
+  { app_id: 413150, name: 'Stardew Valley', owner_count: 0 },
+  { app_id: 105600, name: 'Terraria', owner_count: 0 },
+  { app_id: 2881650, name: 'Content Warning', owner_count: 0 },
+  { app_id: 1172620, name: 'Sea of Thieves', owner_count: 0 },
+];
+const steamApp = (id: number): SteamAppRef | null => {
+  const a = MOCK_STEAM_APPS.find((x) => x.app_id === id);
+  return a ? { app_id: a.app_id, name: a.name } : null;
+};
 
 const MockPlayer = z.object({
   id: Uuid,
@@ -149,6 +185,7 @@ export function mockGames(): GameView[] {
         step: g.capacity_step,
         start_requires_full: g.start_requires_full,
       },
+      requires_steam_app: g.requires_steam_app,
     }));
 }
 
@@ -210,6 +247,8 @@ function seed(me: Me, now: number): MockS2State {
     n += 1;
     return `5c1a0000-0000-4000-8000-${String(n).padStart(12, '0')}`;
   };
+  const steamPicks = [578080, 1966720, 730, 945360, 553850, 739630];
+  let steamPick = 0;
   const add = (
     s: Partial<MockScrim> & Pick<MockScrim, 'game' | 'title' | 'scheduled_at' | 'capacity' | 'host_id'>,
     joined: [string, string[]][],
@@ -225,6 +264,7 @@ function seed(me: Me, now: number): MockS2State {
       rated: true,
       auto_balance: game.has_teams,
       use_positions: game.has_positions,
+      steam_app: game.requires_steam_app ? steamApp(steamPicks[steamPick++ % steamPicks.length]!) : null,
       started_at: null,
       cancelled_at: null,
       cancel_reason: null,
@@ -430,7 +470,12 @@ const issues = (e: z.ZodError) => e.issues.map((i) => ({ path: i.path.join('.') 
 /** S2 경로가 아니면 null */
 export function handleS2(ctx: MockS2Context): Response | null {
   const { method, path, me, now, json, error } = ctx;
-  const isS2 = path === ApiPath.games || path === ApiPath.myScrimRestriction || path === ApiPath.scrims || path.startsWith('/scrims/');
+  const isS2 =
+    path === ApiPath.games ||
+    path === ApiPath.steamApps ||
+    path === ApiPath.myScrimRestriction ||
+    path === ApiPath.scrims ||
+    path.startsWith('/scrims/');
   if (!isS2) return null;
 
   let state = ctx.state;
@@ -501,6 +546,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
       joined_count: isOpen(s) ? joined.length : joined.length + noShow,
       waitlist_count: rows.filter((p) => p.status === 'waitlist').length,
       options: { rated: s.rated, auto_balance: s.auto_balance, use_positions: s.use_positions },
+      steam_app: s.steam_app,
       open_positions:
         isOpen(s) && s.use_positions
           ? computeOpenPositions(g.positions, s.capacity, joined.map((p) => p.preferred_positions[0] ?? null))
@@ -583,6 +629,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
     if (t > now + SCRIM_SCHEDULE_MAX_DAYS_AHEAD_DEFAULT * DAY_MS) return `시작 시각은 ${SCRIM_SCHEDULE_MAX_DAYS_AHEAD_DEFAULT}일 안이어야 해요`;
     return null;
   };
+  const notInStore = { path: 'steam_app_id', message: '스팀 상점에서 찾을 수 없는 게임입니다.' };
   const capacityIssue = (game: GameSeed, cap: number): string | null =>
     cap < game.capacity_min || cap > game.capacity_max || (cap - game.capacity_min) % game.capacity_step !== 0
       ? `정원은 ${game.capacity_min}–${game.capacity_max}명${game.capacity_step > 1 ? ` ${game.capacity_step}명 단위` : ''}이에요`
@@ -591,6 +638,24 @@ export function handleS2(ctx: MockS2Context): Response | null {
   // GET /games
   if (path === ApiPath.games && method === 'GET') {
     const res: ListGamesResponse = { items: mockGames(), next_cursor: null };
+    return json(200, res);
+  }
+
+  // GET /steam-apps?q=
+  if (path === ApiPath.steamApps && method === 'GET') {
+    const parsed = SearchSteamAppsQuery.safeParse(Object.fromEntries(ctx.search.entries()));
+    if (!parsed.success) return error('VALIDATION_FAILED', '검색어가 올바르지 않습니다.', { details: issues(parsed.error) });
+    const q = parsed.data.q.toLowerCase();
+    const owned = MOCK_STEAM_APPS.filter((a) => a.owner_count > 0);
+    let res: SearchSteamAppsResponse;
+    if (q === '') res = { items: owned.slice(0, STEAM_APP_SEARCH_LIMIT), store_unavailable: false };
+    else {
+      const storeDown = q.includes('상점오류');
+      const hit = (a: SteamAppOption) => a.name.toLowerCase().includes(q);
+      const mine = owned.filter(hit).slice(0, 10);
+      const store = storeDown ? [] : MOCK_STEAM_APPS.filter((a) => hit(a) && !mine.includes(a));
+      res = { items: [...mine, ...store].slice(0, STEAM_APP_SEARCH_LIMIT), store_unavailable: storeDown };
+    }
     return json(200, res);
   }
 
@@ -652,9 +717,14 @@ export function handleS2(ctx: MockS2Context): Response | null {
     if (ci) details.push({ path: 'capacity', message: ci });
     const pi = validatePositions(b.host_preferred_positions, game.positions, usePositions);
     if (pi) details.push({ path: 'host_preferred_positions', message: pi });
+    const appId = b.steam_app_id ?? null;
+    if (game.requires_steam_app && appId === null) details.push({ path: 'steam_app_id', message: '스팀 게임을 골라 주세요.' });
+    if (!game.requires_steam_app && appId !== null) details.push({ path: 'steam_app_id', message: '이 게임은 스팀 게임을 고를 수 없습니다.' });
     if (details.length) return error('VALIDATION_FAILED', '입력값을 확인해 주세요.', { details });
     const r = restrictionOf(me.id);
     if (r.restricted) return banned(r);
+    const app = appId === null ? null : steamApp(appId);
+    if (appId !== null && !app) return error('VALIDATION_FAILED', '입력값을 확인해 주세요.', { details: [notInStore] });
     const s: MockScrim = {
       id: crypto.randomUUID(),
       game: b.game,
@@ -667,6 +737,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
       rated: b.rated,
       auto_balance: b.auto_balance && game.has_teams,
       use_positions: usePositions,
+      steam_app: app,
       started_at: null,
       cancelled_at: null,
       cancel_reason: null,
@@ -825,6 +896,10 @@ export function handleS2(ctx: MockS2Context): Response | null {
       const ci = capacityIssue(game, b.capacity);
       if (ci) details.push({ path: 'capacity', message: ci });
     }
+    const app = b.steam_app_id === undefined ? undefined : steamApp(b.steam_app_id);
+    if (b.steam_app_id !== undefined && !game.requires_steam_app) {
+      details.push({ path: 'steam_app_id', message: '이 게임은 스팀 게임을 고를 수 없습니다.' });
+    } else if (app === null) details.push(notInStore);
     if (details.length) return error('VALIDATION_FAILED', '입력값을 확인해 주세요.', { details });
     if (b.capacity !== undefined && b.capacity < joinedRows(s.id).length) {
       return error('SCRIM_CAPACITY_BELOW_JOINED', '정원 < 참가 인원');
@@ -834,6 +909,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
     if (b.rules !== undefined) s.rules = b.rules ?? null;
     if (b.rated !== undefined) s.rated = b.rated;
     if (b.auto_balance !== undefined) s.auto_balance = b.auto_balance && game.has_teams;
+    if (app) s.steam_app = app;
     if (b.capacity !== undefined) {
       s.capacity = b.capacity;
       settleRoster(s);

@@ -23,6 +23,7 @@ import {
   type ScrimPlayerStatus,
   type ScrimStatus,
   type SetScrimNoShowRequest,
+  type SteamAppRef,
   type UpdateScrimRequest,
   canTransition,
 } from '@gcd/shared';
@@ -33,6 +34,7 @@ import type { AuthUser } from '../../common/decorators/current-user';
 import { type LockedScrim, lockScrim } from '../../common/scrim-lock';
 import { APP_CONFIG, type AppConfig } from '../../config/env';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SteamAppsService } from '../games/steam-apps.service';
 import { decodeScrimCursor, encodeScrimCursor } from './scrim-cursor';
 import { ScrimRestrictionService } from './scrim-restriction.service';
 import { ScrimViews, isOpenStatus } from './scrim-views.service';
@@ -90,6 +92,7 @@ export class ScrimsService {
     private readonly prisma: PrismaService,
     private readonly views: ScrimViews,
     private readonly restriction: ScrimRestrictionService,
+    private readonly steamApps: SteamAppsService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(APP_CLOCK) private readonly clock: Clock,
   ) {}
@@ -171,9 +174,16 @@ export class ScrimsService {
     if (cd) details.push(cd);
     const pv = validatePreferredPositions(body.host_preferred_positions, game.positions, usePositions);
     if (!pv.ok) details.push({ path: 'host_preferred_positions', message: pv.message });
+    const steamAppId = body.steam_app_id ?? null;
+    if (game.requiresSteamApp && steamAppId === null) {
+      details.push({ path: 'steam_app_id', message: '스팀 게임을 골라 주세요.' });
+    } else if (!game.requiresSteamApp && steamAppId !== null) {
+      details.push({ path: 'steam_app_id', message: '이 게임은 스팀 게임을 고를 수 없습니다.' });
+    }
     if (details.length > 0) throw new AppError('VALIDATION_FAILED', undefined, { details });
 
     await this.restriction.assertNotRestricted(user.id, now);
+    const steamApp = steamAppId === null ? null : await this.resolveSteamApp(steamAppId);
 
     const id = await this.prisma.$transaction(async (tx) => {
       const scrim = await tx.scrim.create({
@@ -188,6 +198,8 @@ export class ScrimsService {
           rated: body.rated,
           autoBalance,
           usePositions,
+          steamAppId: steamApp?.app_id ?? null,
+          steamAppName: steamApp?.name ?? null,
         },
       });
       // 방장 = 참가자 1번(메인 기본값 4)
@@ -205,9 +217,38 @@ export class ScrimsService {
     return this.views.detail(id, user, now);
   }
 
+  /** app id → 저장할 이름(D98). 외부 호출이 있어 트랜잭션 밖에서 부른다 */
+  private async resolveSteamApp(appId: number): Promise<SteamAppRef> {
+    const app = await this.steamApps.resolve(appId);
+    if (!app) {
+      throw new AppError('VALIDATION_FAILED', undefined, {
+        details: [{ path: 'steam_app_id', message: '스팀 상점에서 찾을 수 없는 게임입니다.' }],
+      });
+    }
+    return app;
+  }
+
+  /**
+   * PATCH의 steam_app_id는 잠금 트랜잭션 전에 이름을 정한다(외부 호출을 잠금 안에서 하지 않음).
+   * 권한·게임 검사를 먼저 해서 방장이 아니면 상점을 부르지 않는다. 상태 검사는 트랜잭션에서 다시 한다.
+   */
+  private async steamAppForUpdate(user: AuthUser, id: string, appId: number): Promise<SteamAppRef> {
+    const s = await this.prisma.scrim.findUnique({ where: { id } });
+    if (!s) throw new AppError('NOT_FOUND');
+    if (s.hostId !== user.id) throw new AppError('FORBIDDEN');
+    const game = await loadGame(this.prisma, s.gameId);
+    if (!game.requiresSteamApp) {
+      throw new AppError('VALIDATION_FAILED', undefined, {
+        details: [{ path: 'steam_app_id', message: '이 게임은 스팀 게임을 고를 수 없습니다.' }],
+      });
+    }
+    return this.resolveSteamApp(appId);
+  }
+
   /** PATCH /scrims/:id (5-4) */
   async update(user: AuthUser, id: string, body: UpdateScrimRequest): Promise<ScrimDetail> {
     const now = this.clock.now();
+    const steamApp = body.steam_app_id === undefined ? undefined : await this.steamAppForUpdate(user, id, body.steam_app_id);
     await this.prisma.$transaction(async (tx) => {
       const s = await lockOrNotFound(tx, id);
       if (s.hostId !== user.id) throw new AppError('FORBIDDEN');
@@ -240,6 +281,8 @@ export class ScrimsService {
           rules: body.rules === undefined ? undefined : body.rules,
           rated: body.rated,
           autoBalance: body.auto_balance === undefined ? undefined : body.auto_balance && game.hasTeams,
+          steamAppId: steamApp?.app_id,
+          steamAppName: steamApp?.name,
         },
       });
       if (body.capacity !== undefined) {

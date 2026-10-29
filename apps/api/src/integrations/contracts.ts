@@ -84,7 +84,13 @@ export interface SteamApi {
     query: Record<string, string>,
     expectedReturnTo: string,
   ): Promise<{ ok: true; steamId: string } | { ok: false }>;
+  /** 스팀 상점 이름 검색(키 불필요, interactive). 게임(type app)만, 상점 순서 그대로 */
+  searchStoreApps(term: string): Promise<SteamStoreApp[]>;
+  /** 상점 앱 이름(키 불필요, interactive). 상점에 없는 id → null */
+  getStoreApp(appId: number): Promise<SteamStoreApp | null>;
 }
+
+export type SteamStoreApp = { appId: number; name: string };
 
 export interface DataDragon {
   profileIconUrl(iconId: number): Promise<string | null>;

@@ -21,6 +21,7 @@ export function toGameView(g: Game): GameView | null {
       step: g.capacityStep,
       start_requires_full: g.startRequiresFull,
     },
+    requires_steam_app: g.requiresSteamApp,
   });
 }
 

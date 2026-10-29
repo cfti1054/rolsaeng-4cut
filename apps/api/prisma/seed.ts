@@ -21,6 +21,7 @@ async function main(): Promise<void> {
       capacityDefault: g.capacity_default,
       capacityStep: g.capacity_step,
       startRequiresFull: g.start_requires_full,
+      requiresSteamApp: g.requires_steam_app,
     };
     await prisma.game.upsert({
       where: { code: g.code },

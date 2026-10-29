@@ -109,6 +109,8 @@ export class ScrimViews {
       joined_count: joined.length + noShow.length,
       waitlist_count: waitlist.length,
       options: { rated: scrim.rated, auto_balance: scrim.autoBalance, use_positions: scrim.usePositions },
+      steam_app:
+        scrim.steamAppId !== null && scrim.steamAppName ? { app_id: scrim.steamAppId, name: scrim.steamAppName } : null,
       open_positions: openPositions,
       join_closed: isJoinClosed(scrim.scheduledAt, now),
       my_status: myStatus,

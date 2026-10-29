@@ -9,6 +9,7 @@ import {
   type CreateScrimRequestInput,
   type GameView,
   type ScrimSummary,
+  type SteamAppRef,
 } from '@gcd/shared';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -28,8 +29,10 @@ import { defaultScheduleInputs, isoToKstInputs, kstInputsToIso, toPreferredPosit
 import { PositionPicker } from './position-picker';
 import { RestrictionBanner, scrimErrorText, useRestriction } from './scrim-bits';
 import { ScrimCard } from './scrim-card';
+import { SteamAppPicker } from './steam-app-picker';
 
-type FieldErrors = Partial<Record<'game' | 'title' | 'scheduled_at' | 'capacity' | 'rules' | 'host_preferred_positions', string>>;
+const FIELDS = ['game', 'steam_app_id', 'title', 'scheduled_at', 'capacity', 'rules', 'host_preferred_positions'] as const;
+type FieldErrors = Partial<Record<(typeof FIELDS)[number], string>>;
 
 /** 게임 카드 설명(목업 「팀전 · 포지션 있음」「개인 순위전」) — 코드 대신 속성으로(설계 원칙 3) */
 export function gameDescription(g: Pick<GameView, 'has_teams' | 'has_positions'>): string {
@@ -42,7 +45,7 @@ function detailsToFields(details: { path: string; message: string }[] | undefine
   const out: FieldErrors = {};
   for (const d of details ?? []) {
     const key = d.path.split('.')[0] as keyof FieldErrors;
-    if (['game', 'title', 'scheduled_at', 'capacity', 'rules', 'host_preferred_positions'].includes(key)) out[key] ??= d.message;
+    if ((FIELDS as readonly string[]).includes(key)) out[key] ??= d.message;
   }
   return out;
 }
@@ -69,6 +72,7 @@ export function ScrimNewForm() {
   const [rated, setRated] = useState(true);
   const [first, setFirst] = useState<string | null>(null);
   const [second, setSecond] = useState<string | null>(null);
+  const [steamApp, setSteamApp] = useState<SteamAppRef | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
 
   // 기본 시작 시각은 마운트 후에(서버 렌더 시각과 달라 하이드레이션이 어긋나지 않게)
@@ -83,13 +87,14 @@ export function ScrimNewForm() {
   const cap = game ? (capacity ?? game.capacity.default) : null;
   const effPositions = !!game?.has_positions && usePositions;
   const effBalance = !!game?.has_teams && autoBalance;
+  const needsApp = !!game?.requires_steam_app;
 
   const pickGame = (g: GameView) => {
     setGameCode(g.code);
     setCapacity(g.capacity.default);
     setFirst(null);
     setSecond(null);
-    setErrors((e) => ({ ...e, game: undefined, capacity: undefined, host_preferred_positions: undefined }));
+    setErrors((e) => ({ ...e, game: undefined, steam_app_id: undefined, capacity: undefined, host_preferred_positions: undefined }));
   };
 
   const ids = { title: useId(), date: useId(), time: useId(), cap: useId(), rules: useId(), pos: useId() };
@@ -108,6 +113,7 @@ export function ScrimNewForm() {
     else if (Date.parse(scheduledIso) > Date.now() + SCRIM_SCHEDULE_MAX_DAYS_AHEAD_DEFAULT * 86_400_000) {
       next.scheduled_at = `${SCRIM_SCHEDULE_MAX_DAYS_AHEAD_DEFAULT}일 안의 시각만 고를 수 있어요.`;
     }
+    if (needsApp && !steamApp) next.steam_app_id = '어떤 스팀 게임으로 내전할지 골라 주세요.';
     if (effPositions && !first) next.host_preferred_positions = '방장도 참가자예요. 1지망 포지션을 골라 주세요.';
     if (rules.length > SCRIM_RULES_MAX_LENGTH) next.rules = `규칙은 ${SCRIM_RULES_MAX_LENGTH}자까지 쓸 수 있어요.`;
     if (Object.keys(next).length) {
@@ -124,6 +130,7 @@ export function ScrimNewForm() {
       auto_balance: effBalance,
       use_positions: effPositions,
       host_preferred_positions: effPositions ? toPreferredPositions(first, second) : [],
+      ...(needsApp && steamApp ? { steam_app_id: steamApp.app_id } : {}),
     };
     const parsed = CreateScrimRequest.safeParse(body);
     if (!parsed.success) {
@@ -152,6 +159,7 @@ export function ScrimNewForm() {
           joined_count: 1,
           waitlist_count: 0,
           options: { rated, auto_balance: effBalance, use_positions: effPositions },
+          steam_app: needsApp ? steamApp : null,
           open_positions: [],
           join_closed: false,
           my_status: 'joined',
@@ -227,6 +235,18 @@ export function ScrimNewForm() {
                       </button>
                     );
                   })}
+                </div>
+              )}
+              {needsApp && (
+                <div className="mt-4">
+                  <SteamAppPicker
+                    value={steamApp}
+                    error={errors.steam_app_id}
+                    onChange={(v) => {
+                      setSteamApp(v);
+                      setErrors((x) => ({ ...x, steam_app_id: undefined }));
+                    }}
+                  />
                 </div>
               )}
             </fieldset>

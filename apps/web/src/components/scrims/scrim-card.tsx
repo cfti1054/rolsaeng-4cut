@@ -1,9 +1,9 @@
 'use client';
 
-import type { ScrimSummary } from '@gcd/shared';
+import { steamAppHeaderImageUrl, type ScrimSummary } from '@gcd/shared';
 import Link from 'next/link';
 import { cn } from '@/lib/cn';
-import { GAME_SCRIM_META } from '@/lib/games';
+import { GAME_SCRIM_META, scrimGameTag } from '@/lib/games';
 import { routes } from '@/lib/routes';
 import {
   isOpenStatus,
@@ -45,9 +45,19 @@ export function ScrimCard({ s, now, preview = false }: { s: ScrimSummary; now: n
       )}
     >
       <div className={cn('relative h-[92px] overflow-hidden', meta.banner)}>
-        <BannerArt game={s.game.code} />
+        {s.steam_app ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={steamAppHeaderImageUrl(s.steam_app.app_id)}
+            alt=""
+            loading="lazy"
+            className="absolute inset-0 size-full object-cover opacity-35"
+          />
+        ) : (
+          <BannerArt game={s.game.code} />
+        )}
         <div className="absolute inset-0 flex items-start justify-between px-[18px] py-4">
-          <span className={cn('font-display text-[13px] font-bold tracking-[0.12em]', meta.ink)}>{meta.tag}</span>
+          <span className={cn('font-display text-[13px] font-bold tracking-[0.12em]', meta.ink)}>{scrimGameTag(s.game.code, s.capacity)}</span>
           <StatusPill label={badge.label} tone={badge.tone} />
         </div>
         <time
@@ -73,6 +83,7 @@ export function ScrimCard({ s, now, preview = false }: { s: ScrimSummary; now: n
               {s.title}
             </Link>
           )}
+          {s.steam_app && <span className="truncate text-[13px] font-semibold text-orange-ink">{s.steam_app.name}</span>}
           <span className="text-[13px] text-muted">
             {day && `${day} · `}방장 {s.host.nickname}
           </span>

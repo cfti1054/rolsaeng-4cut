@@ -3,6 +3,7 @@ import { PaginationQuery, paginated } from './common/pagination';
 import { IsoDateTime, Uuid } from './common/primitives';
 import { ScrimCancelReason, ScrimPlayerStatus, ScrimStatus, ScrimTeam } from './constants/enums';
 import { GameCode } from './constants/games';
+import { SteamAppId, SteamAppRef } from './steam-apps';
 
 // =============================================================================
 // S2 내전 모집·참가·대기열·노쇼 제한. 계약: _workspace/01_architect_contract.md(S2) 4–8절
@@ -153,6 +154,8 @@ export const ScrimSummary = z.object({
   /** 대기열(waitlist) 인원 */
   waitlist_count: z.number().int().min(0),
   options: ScrimOptions,
+  /** 스팀 내전에서 고른 게임(D98). 다른 게임과, 이 기능 전에 만든 스팀 내전은 null */
+  steam_app: SteamAppRef.nullable(),
   /** use_positions일 때만 값이 있고 그 외 []. 자리가 다 찼으면 [] */
   open_positions: z.array(OpenPosition),
   /** 서버 시각 ≥ scheduled_at → 참가·대기 등록·참가 취소 마감(시작·자동 마감 전이어도) */
@@ -257,6 +260,8 @@ export type GetScrimResponse = z.infer<typeof GetScrimResponse>;
  * - scheduled_at: now < scheduled_at ≤ now + SCRIM_SCHEDULE_MAX_DAYS_AHEAD일
  * - capacity: games.capacity_min ≤ capacity ≤ games.capacity_max
  * - host_preferred_positions: 포지션 받는 내전이면 1–2개·games.positions 안의 값, 아니면 []
+ * - steam_app_id: games.requires_steam_app이면 필수, 아니면 없거나 null(D98). 이름은 서버가 정한다
+ *   (멤버 보유 게임 이름 → 없으면 스팀 상점 조회. 상점에 없는 id면 VALIDATION_FAILED, 상점 오류는 GAME_PROVIDER_*)
  * 노쇼 제한 중이면 SCRIM_BANNED. 방장은 같은 트랜잭션에서 참가자 1번(joined)으로 들어간다.
  */
 export const CreateScrimRequest = z
@@ -270,6 +275,7 @@ export const CreateScrimRequest = z
     auto_balance: z.boolean().default(true),
     use_positions: z.boolean().default(true),
     host_preferred_positions: PreferredPositions.default([]),
+    steam_app_id: SteamAppId.nullable().optional(),
   })
   .strict();
 export type CreateScrimRequest = z.infer<typeof CreateScrimRequest>;
@@ -287,10 +293,12 @@ export type CreateScrimResponse = z.infer<typeof CreateScrimResponse>;
  * - capacity < 참가 확정 인원 → SCRIM_CAPACITY_BELOW_JOINED. 늘리면 같은 트랜잭션에서 대기열을 순서대로 승격.
  * - scheduled_at은 작성과 같은 범위. 시작 시각이 지난 모집글(join_closed)도 미래로 미루면 다시 참가를 받는다.
  * - rules: null 또는 빈 문자열이면 지운다.
+ * - steam_app_id: games.requires_steam_app인 내전만 바꿀 수 있다(그 밖은 VALIDATION_FAILED). 이름 결정은 작성과 같다.
  */
 export const UpdateScrimRequest = z
   .object({
     title: ScrimTitle.optional(),
+    steam_app_id: SteamAppId.optional(),
     scheduled_at: IsoDateTime.optional(),
     capacity: z.number().int().min(1).max(100).optional(),
     rules: ScrimRules.nullable().optional(),

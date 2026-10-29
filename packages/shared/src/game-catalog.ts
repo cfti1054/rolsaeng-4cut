@@ -35,6 +35,8 @@ export const GameView = z.object({
   positions: z.array(z.string()),
   sort_order: z.number().int(),
   capacity: GameCapacityRange,
+  /** true면 내전 작성 때 스팀 게임을 반드시 고른다(GET /steam-apps로 검색, D98) */
+  requires_steam_app: z.boolean(),
 });
 export type GameView = z.infer<typeof GameView>;
 

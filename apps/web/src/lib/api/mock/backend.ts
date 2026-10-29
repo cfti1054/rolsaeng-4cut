@@ -200,7 +200,13 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
     }
 
     // S2 내전·게임·노쇼 제한
-    if (path === ApiPath.games || path === ApiPath.scrims || path.startsWith('/scrims/') || path === ApiPath.myScrimRestriction) {
+    if (
+      path === ApiPath.games ||
+      path === ApiPath.steamApps ||
+      path === ApiPath.scrims ||
+      path.startsWith('/scrims/') ||
+      path === ApiPath.myScrimRestriction
+    ) {
       const r = authorize(init);
       if (r instanceof Response) return r;
       const res = handleS2({

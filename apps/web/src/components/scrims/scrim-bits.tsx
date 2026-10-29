@@ -6,7 +6,7 @@ import { Notice } from '@/components/ui/controls';
 import { isApiError } from '@/lib/api/client';
 import { cn } from '@/lib/cn';
 import { errorMessage, errorMessageWithRetry } from '@/lib/errors';
-import { GAME_SCRIM_META, positionLabel } from '@/lib/games';
+import { GAME_SCRIM_META, positionLabel, scrimGameTag } from '@/lib/games';
 import { useMyScrimRestriction } from '@/lib/hooks/scrims';
 import {
   kstMonthDayTime,
@@ -45,7 +45,7 @@ export function BannerArt({ game }: { game: GameCode }) {
 }
 
 /** 게임 태그(「LEAGUE · 5V5」) */
-export function GameTag({ game, boxed = false }: { game: GameCode; boxed?: boolean }) {
+export function GameTag({ game, capacity, boxed = false }: { game: GameCode; capacity: number; boxed?: boolean }) {
   const meta = GAME_SCRIM_META[game];
   return (
     <span
@@ -54,7 +54,7 @@ export function GameTag({ game, boxed = false }: { game: GameCode; boxed?: boole
         boxed ? cn('rounded-lg px-2.5 py-1', meta.tile) : cn('text-[13px]', meta.ink),
       )}
     >
-      {meta.tag}
+      {scrimGameTag(game, capacity)}
     </span>
   );
 }

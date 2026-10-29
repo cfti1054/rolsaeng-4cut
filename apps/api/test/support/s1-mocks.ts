@@ -84,6 +84,8 @@ export function mockSteam(): MockSteam {
       if (!m || query['openid.identity'] !== query['openid.claimed_id']) return { ok: false };
       return { ok: true, steamId: m[1] as string };
     }),
+    searchStoreApps: vi.fn<SteamApi['searchStoreApps']>(async () => []),
+    getStoreApp: vi.fn<SteamApi['getStoreApp']>(async () => null),
   };
 }
 

@@ -9,6 +9,7 @@ import {
   LinkGameAccountResponse,
   ListGamesResponse,
   ListScrimsResponse,
+  SearchSteamAppsResponse,
   SetScrimNoShowResponse,
   StartScrimResponse,
   CancelScrimResponse,
@@ -186,7 +187,7 @@ describe('S2 목: 참가·취소·대기열', () => {
   it('대기열 없는 정원 마감에서 취소하면 full → recruiting, 멱등 취소는 200', async () => {
     const t = setup();
     await t.ready;
-    const created = await t.create({ game: 'steam', title: '두 명 파티', scheduled_at: t.kst(5), capacity: 2 });
+    const created = await t.create({ game: 'steam', title: '두 명 파티', scheduled_at: t.kst(5), capacity: 2, steam_app_id: 892970 });
     const scrim = t.db().s2!.players;
     scrim.push({
       id: crypto.randomUUID(),
@@ -250,7 +251,7 @@ describe('S2 목: 작성·수정·시작·취소', () => {
   it('수정: 정원을 참가 인원 아래로 → SCRIM_CAPACITY_BELOW_JOINED, 방장 아님 → FORBIDDEN', async () => {
     const t = setup();
     await t.ready;
-    const d = await t.create({ game: 'steam', title: '스팀 파티', scheduled_at: t.kst(3), capacity: 4 });
+    const d = await t.create({ game: 'steam', title: '스팀 파티', scheduled_at: t.kst(3), capacity: 4, steam_app_id: 578080 });
     const patch = (id: string, body: object) =>
       t.api.request(fillPath(ApiPath.scrim, { id }), UpdateScrimResponse, { method: 'PATCH', body });
     t.db().s2!.players.push({
@@ -291,6 +292,39 @@ describe('S2 목: 작성·수정·시작·취소', () => {
     expect(started.started_at).not.toBeNull();
     expect(started.waitlist).toHaveLength(2);
     await expect(t.join(s.id, ['top'])).rejects.toMatchObject({ code: 'SCRIM_NOT_RECRUITING' });
+  });
+});
+
+describe('스팀 게임 선택 목(D98)', () => {
+  it('GET /steam-apps: 검색어 없으면 보유 게임만(보유 많은 순), 검색은 보유 먼저 + 상점, 「상점오류」는 store_unavailable', async () => {
+    const t = setup();
+    await t.ready;
+    const search = (q?: string) =>
+      t.api.request(q === undefined ? ApiPath.steamApps : `${ApiPath.steamApps}?q=${encodeURIComponent(q)}`, SearchSteamAppsResponse);
+    const all = await search();
+    expect(all.items.length).toBeGreaterThan(0);
+    expect(all.items.every((a) => a.owner_count > 0)).toBe(true);
+    expect(all.items.map((a) => a.owner_count)).toEqual([...all.items.map((a) => a.owner_count)].sort((a, b) => b - a));
+    const pal = await search('pal');
+    expect(pal.items.map((a) => [a.name, a.owner_count])).toEqual([['Palworld', 0]]);
+    expect((await search('상점오류')).store_unavailable).toBe(true);
+  });
+
+  it('작성: 스팀은 steam_app_id 필수·목록에 없는 id는 VALIDATION_FAILED, 롤에 보내면 VALIDATION_FAILED, 응답 steam_app', async () => {
+    const t = setup();
+    await t.ready;
+    const base = { game: 'steam' as const, title: '스팀 같이', scheduled_at: t.kst(3), capacity: 4 };
+    await expect(t.create(base)).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: [{ path: 'steam_app_id' }] });
+    await expect(t.create({ ...base, steam_app_id: 1 })).rejects.toMatchObject({ details: [{ path: 'steam_app_id' }] });
+    await expect(
+      t.create({ game: 'lol', title: '롤 내전', scheduled_at: t.kst(3), capacity: 10, host_preferred_positions: ['mid'], steam_app_id: 730 }),
+    ).rejects.toMatchObject({ details: [{ path: 'steam_app_id' }] });
+    const d = await t.create({ ...base, steam_app_id: 1966720 });
+    expect(d.steam_app).toEqual({ app_id: 1966720, name: 'Lethal Company' });
+    const u = await t.api.request(fillPath(ApiPath.scrim, { id: d.id }), UpdateScrimResponse, { method: 'PATCH', body: { steam_app_id: 730 } });
+    expect(u.steam_app).toEqual({ app_id: 730, name: 'Counter-Strike 2' });
+    const seeded = (await t.list('open', { game: 'steam', limit: '100' })).items;
+    expect(seeded.every((s) => s.steam_app !== null)).toBe(true);
   });
 });
 

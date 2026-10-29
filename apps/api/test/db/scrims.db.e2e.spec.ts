@@ -57,6 +57,7 @@ describe.skipIf(!DB_URL)('[DB] 내전 동시성·불변식 e2e (PostgreSQL)', ()
           capacityDefault: g.capacity_default,
           capacityStep: g.capacity_step,
           startRequiresFull: g.start_requires_full,
+          requiresSteamApp: g.requires_steam_app,
         },
         create: {
           code: g.code,
@@ -70,6 +71,7 @@ describe.skipIf(!DB_URL)('[DB] 내전 동시성·불변식 e2e (PostgreSQL)', ()
           capacityDefault: g.capacity_default,
           capacityStep: g.capacity_step,
           startRequiresFull: g.start_requires_full,
+          requiresSteamApp: g.requires_steam_app,
         },
       });
     }

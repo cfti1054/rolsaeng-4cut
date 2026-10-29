@@ -7,6 +7,7 @@ import {
   UpdateScrimRequest,
   type GameView,
   type ScrimDetail,
+  type SteamAppRef,
 } from '@gcd/shared';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Button, InlineError } from '@/components/ui/controls';
@@ -15,8 +16,9 @@ import { useUpdateScrim } from '@/lib/hooks/scrims';
 import { buildScrimPatch, capacityFloor, isoToKstInputs, kstInputsToIso } from '@/lib/scrims';
 import { scrimErrorText } from './scrim-bits';
 import { CapacityStepper, Toggle } from './scrim-new-form';
+import { SteamAppPicker } from './steam-app-picker';
 
-/** 방장 「수정」 대화상자(계약 8절: 제목·날짜·시간·정원·규칙·ELO 반영·자동 밸런스) */
+/** 방장 「수정」 대화상자(계약 8절: 제목·날짜·시간·정원·규칙·ELO 반영·자동 밸런스, 스팀 내전은 게임도 D98) */
 export function ScrimEditDialog({
   s,
   game,
@@ -38,6 +40,7 @@ export function ScrimEditDialog({
   const [rules, setRules] = useState(s.rules ?? '');
   const [rated, setRated] = useState(s.options.rated);
   const [autoBalance, setAutoBalance] = useState(s.options.auto_balance);
+  const [steamApp, setSteamApp] = useState<SteamAppRef | null>(s.steam_app);
   const [error, setError] = useState<string | null>(null);
   const ids = { title: useId(), date: useId(), time: useId(), cap: useId(), rules: useId(), head: useId() };
 
@@ -53,7 +56,16 @@ export function ScrimEditDialog({
     if (!iso) return setError('날짜와 시작 시간을 골라 주세요.');
     if (Date.parse(iso) <= Date.now() && Date.parse(iso) !== Date.parse(s.scheduled_at)) return setError('시작 시각은 지금보다 뒤여야 해요.');
     if (capacity < s.joined_count) return setError(`지금 참가 확정이 ${s.joined_count}명이라 정원을 그보다 줄일 수 없어요.`);
-    const patch = buildScrimPatch(s, { title, scheduledIso: iso, capacity, rules, rated, autoBalance: game.has_teams && autoBalance });
+    if (game.requires_steam_app && !steamApp) return setError('스팀 게임을 골라 주세요.');
+    const patch = buildScrimPatch(s, {
+      title,
+      scheduledIso: iso,
+      capacity,
+      rules,
+      rated,
+      autoBalance: game.has_teams && autoBalance,
+      steamAppId: game.requires_steam_app ? steamApp?.app_id : null,
+    });
     if (!patch) return onClose();
     const parsed = UpdateScrimRequest.safeParse(patch);
     if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? '입력값을 확인해 주세요.');
@@ -85,6 +97,7 @@ export function ScrimEditDialog({
         <h2 id={ids.head} className="m-0 text-lg font-bold">
           모집글 수정
         </h2>
+        {game.requires_steam_app && <SteamAppPicker value={steamApp} onChange={setSteamApp} />}
         <div className="flex flex-col gap-1.5">
           <label htmlFor={ids.title} className="text-[13px] text-muted">
             제목

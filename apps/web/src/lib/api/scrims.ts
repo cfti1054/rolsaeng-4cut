@@ -8,6 +8,7 @@ import {
   LeaveScrimResponse,
   ListGamesResponse,
   ListScrimsResponse,
+  SearchSteamAppsResponse,
   SetScrimNoShowResponse,
   StartScrimResponse,
   UpdateScrimResponse,
@@ -89,6 +90,12 @@ export function setScrimNoShow(id: string, userId: string, body: SetScrimNoShowR
     method: 'PUT',
     body,
   });
+}
+
+/** GET /steam-apps?q= — 스팀 내전 게임 검색(D98). q 없으면 멤버 보유 게임 */
+export function searchSteamApps(q: string, signal?: AbortSignal) {
+  const qs = q === '' ? '' : `?${new URLSearchParams({ q }).toString()}`;
+  return apiClient.request(`${ApiPath.steamApps}${qs}`, SearchSteamAppsResponse, { signal });
 }
 
 /** GET /me/scrim-restriction */

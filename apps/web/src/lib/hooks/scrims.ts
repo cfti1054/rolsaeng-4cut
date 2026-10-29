@@ -8,6 +8,7 @@ import type {
   UpdateScrimRequestInput,
 } from '@gcd/shared';
 import {
+  keepPreviousData,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -24,6 +25,7 @@ import {
   leaveScrim,
   listGames,
   listScrims,
+  searchSteamApps,
   setScrimNoShow,
   startScrim,
   updateScrim,
@@ -31,7 +33,7 @@ import {
 import { isOpenStatus } from '@/lib/scrims';
 
 /**
- * S2 데이터 훅 11개(계약 8절). 엔드포인트 하나당 훅 하나.
+ * S2 데이터 훅 11개(계약 8절) + 스팀 게임 검색(D98). 엔드포인트 하나당 훅 하나.
  * 상태를 바꾸는 응답은 모두 갱신 후 ScrimDetail(D87) → 상세 캐시를 바로 교체하고 목록 캐시만 무효화한다.
  */
 
@@ -42,6 +44,7 @@ export const scrimKeys = {
   list: (q: { game?: GameCode; status: ScrimListStatus }) => ['scrims', 'list', q.game ?? 'all', q.status] as const,
   detail: (id: string) => ['scrims', 'detail', id] as const,
   restriction: ['me', 'scrim-restriction'] as const,
+  steamApps: (q: string) => ['steam-apps', q.toLowerCase()] as const,
 };
 
 /** 목록 페이지 크기(3열 × 4줄) */
@@ -84,6 +87,18 @@ export function useScrim(id: string, enabled = true) {
     retry: noRetryOn4xx,
     refetchInterval: (query) => (query.state.data && isOpenStatus(query.state.data.status) ? SCRIM_DETAIL_POLL_MS : false),
     refetchOnWindowFocus: (query) => !!query.state.data && isOpenStatus(query.state.data.status),
+  });
+}
+
+/** GET /steam-apps?q= — 같은 검색어는 5분 재사용, 입력이 바뀌는 동안 이전 결과를 보여 준다 */
+export function useSteamApps(q: string, enabled = true) {
+  return useQuery({
+    queryKey: scrimKeys.steamApps(q),
+    queryFn: ({ signal }) => searchSteamApps(q, signal),
+    enabled,
+    staleTime: 5 * 60_000,
+    placeholderData: keepPreviousData,
+    retry: noRetryOn4xx,
   });
 }
 

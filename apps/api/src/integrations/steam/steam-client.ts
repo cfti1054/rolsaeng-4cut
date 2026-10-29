@@ -5,6 +5,7 @@ import {
   ExternalApiError,
   type SteamApi,
   type SteamOwnedGame,
+  type SteamStoreApp,
 } from '../contracts';
 import {
   type Clock,
@@ -19,6 +20,7 @@ import type { HostRateLimiter } from '../rate-limiter';
 import { withRetry } from '../retry';
 
 const STEAM_API_HOST = 'api.steampowered.com';
+const STEAM_STORE_HOST = 'store.steampowered.com';
 const OPENID_NS = 'http://specs.openid.net/auth/2.0';
 
 const OwnedGamesSchema = z.object({
@@ -41,6 +43,14 @@ const OwnedGamesSchema = z.object({
 const PlayerSummariesSchema = z.object({
   response: z.object({ players: z.array(z.object({ personaname: z.string() })).default([]) }),
 });
+const StoreSearchSchema = z.object({
+  items: z
+    .array(z.object({ type: z.string().optional(), id: z.number().int(), name: z.string() }))
+    .default([]),
+});
+const StoreAppDetailsSchema = z.record(
+  z.object({ success: z.boolean(), data: z.object({ name: z.string() }).optional() }),
+);
 
 export class SteamHttpApi implements SteamApi {
   /**
@@ -140,7 +150,30 @@ export class SteamHttpApi implements SteamApi {
     return valid ? { ok: true, steamId } : { ok: false };
   }
 
-  private async getJson<T>(
+  async searchStoreApps(term: string): Promise<SteamStoreApp[]> {
+    const body = await this.request(
+      STEAM_STORE_HOST,
+      '/api/storesearch/',
+      { term, l: 'korean', cc: 'KR' },
+      StoreSearchSchema,
+      'interactive',
+    );
+    return body.items.filter((i) => i.type === undefined || i.type === 'app').map((i) => ({ appId: i.id, name: i.name }));
+  }
+
+  async getStoreApp(appId: number): Promise<SteamStoreApp | null> {
+    const body = await this.request(
+      STEAM_STORE_HOST,
+      '/api/appdetails',
+      { appids: String(appId), l: 'korean', filters: 'basic' },
+      StoreAppDetailsSchema,
+      'interactive',
+    );
+    const entry = body[String(appId)];
+    return entry?.success && entry.data ? { appId, name: entry.data.name } : null;
+  }
+
+  private getJson<T>(
     path: string,
     params: Record<string, string>,
     schema: z.ZodType<T, z.ZodTypeDef, unknown>,
@@ -148,16 +181,26 @@ export class SteamHttpApi implements SteamApi {
   ): Promise<T> {
     const key = this.opts.steamApiKey;
     if (!key) throw new ExternalApiError('not_configured', 'STEAM_API_KEY 없음');
-    // 키는 쿼리 문자열에만 들어가며 오류 메시지·로그에는 URL을 싣지 않는다
-    const url = `https://${STEAM_API_HOST}${path}?${new URLSearchParams({ key, ...params }).toString()}`;
+    return this.request(STEAM_API_HOST, path, { key, ...params }, schema, mode);
+  }
+
+  /** 키는 쿼리 문자열에만 들어가며 오류 메시지·로그에는 URL을 싣지 않는다 */
+  private async request<T>(
+    host: string,
+    path: string,
+    params: Record<string, string>,
+    schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+    mode: CallMode,
+  ): Promise<T> {
+    const url = `https://${host}${path}?${new URLSearchParams(params).toString()}`;
 
     return withRetry(this.clock, mode, async () => {
-      await this.limiter.acquire(STEAM_API_HOST, mode === 'interactive' ? { maxWaitMs: this.opts.interactiveMaxWaitMs } : {});
+      await this.limiter.acquire(host, mode === 'interactive' ? { maxWaitMs: this.opts.interactiveMaxWaitMs } : {});
       const res = await rawRequest(this.fetchFn, url, { method: 'GET', headers: { Accept: 'application/json' } }, this.opts.timeoutMs, this.clock);
       const err = classifyStatus(res);
       if (err) {
-        if (err.kind === 'rate_limited' && err.retryAfterSec !== undefined) this.limiter.pause(STEAM_API_HOST, err.retryAfterSec);
-        if (err.kind === 'auth') console.error('[steam] 401/403: 스팀 키 확인 필요');
+        if (err.kind === 'rate_limited' && err.retryAfterSec !== undefined) this.limiter.pause(host, err.retryAfterSec);
+        if (err.kind === 'auth' && host === STEAM_API_HOST) console.error('[steam] 401/403: 스팀 키 확인 필요');
         throw err;
       }
       const parsed = schema.safeParse(parseJson(res.text));

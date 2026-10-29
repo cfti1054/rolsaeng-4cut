@@ -26,6 +26,8 @@ export const ApiPath = {
   userProfile: '/users/:id/profile',
   // S2 게임 목록(작성 폼·필터용)
   games: '/games',
+  // 스팀 내전 게임 검색(D98)
+  steamApps: '/steam-apps',
   // S2 내전
   scrims: '/scrims',
   scrim: '/scrims/:id',

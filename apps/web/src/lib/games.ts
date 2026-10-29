@@ -21,7 +21,7 @@ export const GAME_SCRIM_META: Record<
 > = {
   lol: {
     label: '롤 협곡',
-    tag: 'LEAGUE · 5V5',
+    tag: 'LEAGUE',
     abbr: 'LoL',
     dot: 'bg-cyan',
     ink: 'text-cyan-ink',
@@ -53,6 +53,13 @@ export const GAME_SCRIM_META: Record<
     stroke: 'stroke-orange',
   },
 };
+
+/** 배너 태그. 롤은 정원을 두 팀으로 나눈 대진(정원 4 → 「LEAGUE · 2V2」), 정원이 홀수면 게임 이름만 */
+export function scrimGameTag(code: GameCode, capacity: number): string {
+  const base = GAME_SCRIM_META[code].tag;
+  if (code !== 'lol' || capacity % 2 !== 0) return base;
+  return `${base} · ${capacity / 2}V${capacity / 2}`;
+}
 
 /** 포지션 코드 → 한글(games.positions는 데이터라 모르는 코드는 그대로 보여 준다) */
 export function positionLabel(code: string): string {

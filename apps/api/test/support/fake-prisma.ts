@@ -89,6 +89,7 @@ export class FakePrisma {
     capacityDefault: 8,
     capacityStep: 1,
     startRequiresFull: false,
+    requiresSteamApp: false,
   }));
 
   // ---- S2 테이블 ----
@@ -103,6 +104,8 @@ export class FakePrisma {
     rated: true,
     autoBalance: true,
     usePositions: true,
+    steamAppId: null,
+    steamAppName: null,
     startedAt: null,
     cancelledAt: null,
     cancelReason: null,
@@ -239,6 +242,7 @@ export class FakePrisma {
         capacityDefault: g.capacity_default,
         capacityStep: g.capacity_step,
         startRequiresFull: g.start_requires_full,
+        requiresSteamApp: g.requires_steam_app,
       });
     }
   }

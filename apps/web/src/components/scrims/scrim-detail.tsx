@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Badge, Button, ConfirmDialog, InlineError, Notice, Toast } from '@/components/ui/controls';
 import { Avatar, Card, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
 import { isApiError } from '@/lib/api/client';
+import { copyText } from '@/lib/clipboard';
 import { cn } from '@/lib/cn';
 import { errorMessage } from '@/lib/errors';
 import { formatFull } from '@/lib/format';
@@ -30,6 +31,7 @@ import {
   restrictionText,
   samePositions,
   scrimDetailBadge,
+  scrimShareText,
   scrimSteps,
   scrimWhen,
   startBlockedReason,
@@ -39,6 +41,7 @@ import {
 import { PositionPicker } from './position-picker';
 import { GameTag, PositionChips, SectionHead, StatusPill, scrimErrorText, useRestriction } from './scrim-bits';
 import { ScrimEditDialog } from './scrim-edit-dialog';
+import { SteamAppImage, steamStoreUrl } from './steam-app-picker';
 
 type ToastState = { message: string; tone: 'success' | 'error' } | null;
 
@@ -127,7 +130,10 @@ function DetailBody({
   const s = joinClosed === data.join_closed ? data : { ...data, join_closed: joinClosed };
   return (
     <>
-      <BackLink />
+      <div className="flex items-center justify-between gap-3">
+        <BackLink />
+        <ShareButton s={s} onToast={setToast} />
+      </div>
       <Hero s={s} />
       <HostMenu s={s} onToast={setToast} />
       <div className="flex flex-wrap items-start gap-5">
@@ -170,6 +176,23 @@ function BackLink() {
   );
 }
 
+function ShareButton({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => void }) {
+  const onClick = async () => {
+    const url = `${window.location.origin}${routes.scrim(s.id)}`;
+    const ok = await copyText(scrimShareText(s, url));
+    onToast(
+      ok
+        ? { message: '모집 링크를 복사했어요. 메신저에 붙여 넣어 공유하세요.', tone: 'success' }
+        : { message: '복사하지 못했어요. 주소창의 링크를 직접 복사해 주세요.', tone: 'error' },
+    );
+  };
+  return (
+    <Button onClick={() => void onClick()} aria-label="모집 링크 복사">
+      링크 복사
+    </Button>
+  );
+}
+
 function DetailSkeleton() {
   return (
     <div aria-busy="true" aria-label="내전 불러오는 중" className="flex flex-col gap-5">
@@ -207,7 +230,7 @@ function Hero({ s }: { s: ScrimDetail }) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 flex-col gap-2.5">
           <div className="flex flex-wrap gap-2">
-            <GameTag game={s.game.code} boxed />
+            <GameTag game={s.game.code} capacity={s.capacity} boxed />
             <StatusPill label={badge.label} tone={badge.tone} className="rounded-lg" />
             {s.viewer.status === 'joined' && open && <StatusPill label="참가 중" tone="cyan" className="rounded-lg" />}
             {s.viewer.status === 'waitlist' && open && (
@@ -217,6 +240,20 @@ function Hero({ s }: { s: ScrimDetail }) {
           <h1 id="scrim-title" className="m-0 break-words text-[26px] font-bold tracking-[-0.03em] md:text-[30px]">
             {s.title}
           </h1>
+          {s.steam_app && (
+            <a
+              href={steamStoreUrl(s.steam_app.app_id)}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-3 self-start rounded-2xl border border-line-2 bg-surface p-2 pr-4 text-text no-underline hover:border-line-3 hover:text-text"
+            >
+              <SteamAppImage appId={s.steam_app.app_id} className="w-[100px]" />
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="text-xs text-faint">스팀 게임</span>
+                <span className="break-words text-[15px] font-bold">{s.steam_app.name}</span>
+              </span>
+            </a>
+          )}
           <span className="text-sm text-muted">
             <time dateTime={s.scheduled_at} title={formatFull(s.scheduled_at)}>
               {meta[0]}

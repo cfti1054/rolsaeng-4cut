@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { scrimGameTag } from './games';
 import {
   buildScrimPatch,
   capacityFloor,
@@ -15,6 +16,7 @@ import {
   scrimDetailBadge,
   scrimNeedLine,
   scrimOptionTags,
+  scrimShareText,
   scrimSteps,
   startBlockedReason,
   toPreferredPositions,
@@ -31,6 +33,34 @@ describe('KST 시각', () => {
     expect(scrimDayLabel('2026-10-31T11:00:00.000Z', NOW)).toBe('토요일');
     expect(scrimDayLabel('2026-11-04T11:00:00.000Z', NOW)).toBe('11.04 (수)');
     expect(kstClock('2026-10-28T12:00:00.000Z')).toBe('21:00');
+  });
+
+  it('공유 문구: 게임·제목, KST 일시·인원, 마지막 줄 주소', () => {
+    const text = scrimShareText(
+      { title: '목요일 칼바람', game: { code: 'lol' }, scheduled_at: '2026-10-29T12:00:00.000Z', capacity: 10, joined_count: 4 },
+      'https://example.com/scrims/abc',
+    );
+    expect(text).toBe('[롤 협곡 내전] 목요일 칼바람\n10/29(목) 21:00 시작 · 4/10명\nhttps://example.com/scrims/abc');
+    const steam = scrimShareText(
+      {
+        title: '금요일 밤',
+        game: { code: 'steam' },
+        steam_app: { app_id: 1966720, name: 'Lethal Company' },
+        scheduled_at: '2026-10-30T13:00:00.000Z',
+        capacity: 4,
+        joined_count: 1,
+      },
+      'https://example.com/scrims/s',
+    );
+    expect(steam.split('\n')[0]).toBe('[스팀 내전 · Lethal Company] 금요일 밤');
+  });
+
+  it('배너 태그: 롤은 정원을 반으로 나눈 대진, 다른 게임은 그대로', () => {
+    expect(scrimGameTag('lol', 10)).toBe('LEAGUE · 5V5');
+    expect(scrimGameTag('lol', 4)).toBe('LEAGUE · 2V2');
+    expect(scrimGameTag('lol', 2)).toBe('LEAGUE · 1V1');
+    expect(scrimGameTag('tft', 8)).toBe('TFT · LOBBY');
+    expect(scrimGameTag('steam', 6)).toBe('STEAM · SQUAD');
   });
 
   it('입력값 ↔ ISO(+09:00), 없는 날짜는 null', () => {
@@ -157,5 +187,11 @@ describe('수정 PATCH 조립', () => {
     expect(buildScrimPatch(s, { ...same, scheduledIso: '2026-10-28T22:00:00+09:00' })).toEqual({
       scheduled_at: '2026-10-28T22:00:00+09:00',
     });
+  });
+  it('스팀 게임: 다른 게임을 고르면 steam_app_id, 같거나 안 골랐으면 보내지 않음', () => {
+    const steam = { ...s, steam_app: { app_id: 730, name: 'Counter-Strike 2' } };
+    expect(buildScrimPatch(steam, { ...same, steamAppId: 570 })).toEqual({ steam_app_id: 570 });
+    expect(buildScrimPatch(steam, { ...same, steamAppId: 730 })).toBeNull();
+    expect(buildScrimPatch(steam, { ...same, steamAppId: null })).toBeNull();
   });
 });

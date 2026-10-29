@@ -1,5 +1,6 @@
 import type {
   GameCapacityRange,
+  GameCode,
   OpenPosition,
   ScrimCancelReason,
   ScrimDetail,
@@ -11,7 +12,7 @@ import type {
   UpdateScrimRequestInput,
 } from '@gcd/shared';
 import { SCRIM_MIN_PLAYERS_TO_START } from '@gcd/shared';
-import { positionLabel } from './games';
+import { GAME_SCRIM_META, positionLabel } from './games';
 
 /**
  * 내전 화면 로직(순수 함수, 단위 테스트 대상). 계약 S2 6·8절.
@@ -98,6 +99,24 @@ export function kstDateTime(iso: string): string {
 export function kstMonthDayTime(iso: string): string {
   const k = kst(Date.parse(iso));
   return `${p2(k.m)}.${p2(k.d)} ${p2(k.hh)}:${p2(k.mm)}`;
+}
+
+/** 메신저 공유용 문구. 카톡·디스코드가 마지막 줄 주소를 링크로 바꾼다 */
+export function scrimShareText(
+  s: Pick<ScrimDetail, 'title' | 'scheduled_at' | 'capacity' | 'joined_count'> & {
+    game: { code: GameCode };
+    steam_app?: ScrimDetail['steam_app'];
+  },
+  url: string,
+): string {
+  const k = kst(Date.parse(s.scheduled_at));
+  const when = `${k.m}/${k.d}(${WEEKDAYS[k.weekday]}) ${p2(k.hh)}:${p2(k.mm)}`;
+  const app = s.steam_app ? ` · ${s.steam_app.name}` : '';
+  return [
+    `[${GAME_SCRIM_META[s.game.code].label} 내전${app}] ${s.title}`,
+    `${when} 시작 · ${s.joined_count}/${s.capacity}명`,
+    url,
+  ].join('\n');
 }
 
 /** ISO → KST 입력값(`<input type=date>`·`<input type=time>`) */
@@ -304,8 +323,17 @@ export function scrimBannedUntilFromRetry(retryAfterSec: number | undefined, now
 
 /** 바뀐 필드만 담는다(PATCH는 1개 이상 필요). 바뀐 게 없으면 null */
 export function buildScrimPatch(
-  s: Pick<ScrimDetail, 'title' | 'scheduled_at' | 'capacity' | 'rules' | 'options'>,
-  next: { title: string; scheduledIso: string; capacity: number; rules: string; rated: boolean; autoBalance: boolean },
+  s: Pick<ScrimDetail, 'title' | 'scheduled_at' | 'capacity' | 'rules' | 'options'> & { steam_app?: ScrimDetail['steam_app'] },
+  next: {
+    title: string;
+    scheduledIso: string;
+    capacity: number;
+    rules: string;
+    rated: boolean;
+    autoBalance: boolean;
+    /** 스팀 게임(D98). 고르지 않았으면(null·생략) 보내지 않는다 */
+    steamAppId?: number | null;
+  },
 ): UpdateScrimRequestInput | null {
   const patch: UpdateScrimRequestInput = {};
   if (next.title.trim().replace(/\s+/g, ' ') !== s.title) patch.title = next.title;
@@ -315,6 +343,7 @@ export function buildScrimPatch(
   if (rules !== (s.rules ?? '')) patch.rules = rules === '' ? null : next.rules;
   if (next.rated !== s.options.rated) patch.rated = next.rated;
   if (next.autoBalance !== s.options.auto_balance) patch.auto_balance = next.autoBalance;
+  if (next.steamAppId != null && next.steamAppId !== s.steam_app?.app_id) patch.steam_app_id = next.steamAppId;
   return Object.keys(patch).length ? patch : null;
 }
 

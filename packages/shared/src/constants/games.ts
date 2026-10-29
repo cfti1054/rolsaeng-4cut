@@ -29,6 +29,8 @@ export type GameSeed = {
   capacity_step: number;
   /** true면 정원이 꽉 차야 시작(롤), false면 2명 이상이면 시작 */
   start_requires_full: boolean;
+  /** true면 내전 작성 때 스팀 게임(app id)을 반드시 고른다(D98) */
+  requires_steam_app: boolean;
 };
 
 /** games 테이블 시드. apps/api/prisma/seed.ts가 이 값으로 upsert(code 기준)한다. */
@@ -40,12 +42,13 @@ export const GAME_SEED: readonly GameSeed[] = [
     has_teams: true,
     positions: ['top', 'jungle', 'mid', 'bot', 'support'],
     sort_order: 1,
-    // 1:1–5:5. 두 팀 인원이 같도록 짝수만, 정한 정원이 꽉 차야 시작(D96)
+    // 1:1–5:5. 두 팀 인원이 같도록 짝수만, 정한 정원이 꽉 차야 시작(D97)
     capacity_min: 2,
     capacity_max: 10,
     capacity_default: 10,
     capacity_step: 2,
     start_requires_full: true,
+    requires_steam_app: false,
   },
   {
     code: 'tft',
@@ -60,6 +63,7 @@ export const GAME_SEED: readonly GameSeed[] = [
     capacity_default: 8,
     capacity_step: 1,
     start_requires_full: false,
+    requires_steam_app: false,
   },
   {
     code: 'steam',
@@ -74,6 +78,7 @@ export const GAME_SEED: readonly GameSeed[] = [
     capacity_default: 8,
     capacity_step: 1,
     start_requires_full: false,
+    requires_steam_app: true,
   },
 ];
 

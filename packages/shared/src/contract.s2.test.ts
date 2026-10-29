@@ -18,6 +18,7 @@ import {
   STEAM_LINK_MESSAGE_TYPE,
   ScrimDetail,
   ScrimStatus,
+  SearchSteamAppsQuery,
   SetScrimNoShowParams,
   SetScrimNoShowRequest,
   SteamLinkCallbackQuery,
@@ -26,6 +27,7 @@ import {
   UpdateScrimRequest,
   canTransition,
   fillPath,
+  steamAppHeaderImageUrl,
 } from './index';
 
 const ID = '7d1f0b5e-4a7a-4c9b-9f5c-2b1a3c4d5e6f';
@@ -51,6 +53,7 @@ const detail = {
   joined_count: 1,
   waitlist_count: 1,
   options: { rated: true, auto_balance: true, use_positions: true },
+  steam_app: null,
   open_positions: [{ position: 'top', count: 1 }],
   join_closed: false,
   my_status: 'joined',
@@ -146,10 +149,39 @@ describe('games', () => {
   });
   it('ListGamesResponse', () => {
     const r = ListGamesResponse.parse({
-      items: [{ ...lolGame, sort_order: 1, capacity: { min: 2, max: 10, default: 10, step: 2, start_requires_full: true } }],
+      items: [
+        {
+          ...lolGame,
+          sort_order: 1,
+          capacity: { min: 2, max: 10, default: 10, step: 2, start_requires_full: true },
+          requires_steam_app: false,
+        },
+      ],
       next_cursor: null,
     });
     expect(r.items[0]?.capacity.default).toBe(10);
+  });
+  it('스팀만 게임 선택 필수(D98)', () => {
+    expect(GAME_SEED.filter((g) => g.requires_steam_app).map((g) => g.code)).toEqual(['steam']);
+  });
+});
+
+describe('steam apps (D98)', () => {
+  it('SearchSteamAppsQuery: 공백 정리, 기본 빈 문자열, 50자 초과 거부', () => {
+    expect(SearchSteamAppsQuery.parse({}).q).toBe('');
+    expect(SearchSteamAppsQuery.parse({ q: '  counter   strike ' }).q).toBe('counter strike');
+    expect(SearchSteamAppsQuery.safeParse({ q: 'a'.repeat(51) }).success).toBe(false);
+  });
+  it('CreateScrimRequest.steam_app_id: 양의 정수·null·생략, UpdateScrimRequest는 null 불가', () => {
+    const base = { game: 'steam', title: '스팀', scheduled_at: '2026-11-01T12:00:00.000Z', capacity: 4 };
+    expect(CreateScrimRequest.parse({ ...base, steam_app_id: 730 }).steam_app_id).toBe(730);
+    expect(CreateScrimRequest.parse({ ...base, steam_app_id: null }).steam_app_id).toBeNull();
+    expect(CreateScrimRequest.safeParse({ ...base, steam_app_id: 0 }).success).toBe(false);
+    expect(UpdateScrimRequest.parse({ steam_app_id: 570 }).steam_app_id).toBe(570);
+    expect(UpdateScrimRequest.safeParse({ steam_app_id: null }).success).toBe(false);
+  });
+  it('헤더 이미지 주소', () => {
+    expect(steamAppHeaderImageUrl(730)).toBe('https://cdn.cloudflare.steamstatic.com/steam/apps/730/header.jpg');
   });
 });
 

@@ -209,6 +209,8 @@ model Game {
   capacityStep    Int      @default(1) @map("capacity_step")
   /// true면 정원이 꽉 차야 시작(롤), false면 2명 이상
   startRequiresFull Boolean @default(false) @map("start_requires_full")
+  /// true면 내전 작성 때 스팀 게임(app id)을 반드시 고른다(D98)
+  requiresSteamApp Boolean @default(false) @map("requires_steam_app")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   gameAccounts    GameAccount[]
@@ -473,6 +475,9 @@ model Scrim {
   rated        Boolean            @default(true)
   autoBalance  Boolean            @default(true) @map("auto_balance")
   usePositions Boolean            @default(true) @map("use_positions")
+  /// 스팀 내전에서 고른 게임(D98). 이름은 고른 시점의 값(멤버 보유 게임 이름 또는 스팀 상점)
+  steamAppId   Int?               @map("steam_app_id")
+  steamAppName String?            @map("steam_app_name")
   /// S2. playing으로 바뀐 시각(방장·운영진 시작 또는 자동 시작)
   startedAt    DateTime?          @map("started_at") @db.Timestamptz(3)
   /// S2. cancelled로 바뀐 시각과 이유
