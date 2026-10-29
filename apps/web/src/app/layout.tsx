@@ -17,7 +17,6 @@ import './globals.css';
 export const metadata: Metadata = {
   title: { default: '롤생네컷', template: '%s · 롤생네컷' },
   description: '롤 · 롤체 · 스팀 게임방 내전과 서버 랭킹',
-  icons: { icon: brand.appIcon, apple: brand.appIcon },
   openGraph: {
     title: '롤생네컷',
     description: '롤 · 롤체 · 스팀 게임방 내전과 서버 랭킹',

@@ -38,8 +38,6 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-r from-hero via-hero/88 to-hero/25" />
 
         <div className="relative flex items-center gap-3">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={brand.appIcon} alt="" width={40} height={40} className="size-10 rounded-xl object-cover" />
           <span className="flex flex-col leading-tight">
             <span className="text-lg font-bold tracking-[-0.02em]">롤생네컷</span>
             <Eyebrow>GAME CLUB</Eyebrow>
@@ -84,8 +82,6 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
       <main className="flex min-w-0 flex-[1_1_480px] flex-col px-6 pb-12 pt-6 md:pt-8">
         <div className="flex items-center justify-between lg:justify-end">
           <span className="flex items-center gap-2.5 lg:hidden">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={brand.appIcon} alt="" width={32} height={32} className="size-8 rounded-[10px] object-cover" />
             <span className="flex flex-col leading-tight">
               <span className="text-base font-bold">롤생네컷</span>
               <Eyebrow className="text-[10px]">GAME CLUB</Eyebrow>

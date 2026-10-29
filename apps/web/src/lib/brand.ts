@@ -3,7 +3,6 @@ import type { GameCode } from '@gcd/shared';
 /** 마스코트 브랜드 이미지. 파일은 apps/web/public/brand 에 있다. */
 export const brand = {
   avatar: '/brand/mascot-avatar.jpg',
-  appIcon: '/brand/app-icon.jpg',
   loginHero: '/brand/login-hero.jpg',
   profileBanner: '/brand/profile-banner.jpg',
   homeBanner: '/brand/home-banner.jpg',

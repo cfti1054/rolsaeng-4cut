@@ -11,7 +11,6 @@ import { isApiError } from '@/lib/api/client';
 import { cn } from '@/lib/cn';
 import { errorMessage } from '@/lib/errors';
 import { useLogout, useMe } from '@/lib/hooks/auth';
-import { brand } from '@/lib/brand';
 import { routes } from '@/lib/routes';
 import { navItems } from './nav-items';
 
@@ -63,14 +62,6 @@ export function AppShell({ children }: { children: ReactNode }) {
 function Logo({ compact = false }: { compact?: boolean }) {
   return (
     <Link href={routes.home()} className="flex items-center gap-3 text-text no-underline hover:text-text">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={brand.appIcon}
-        alt=""
-        width={compact ? 32 : 36}
-        height={compact ? 32 : 36}
-        className={cn('rounded-xl object-cover', compact ? 'size-8' : 'size-9')}
-      />
       <span className="flex flex-col leading-tight">
         <span className={cn('font-bold tracking-[-0.02em]', compact ? 'text-base' : 'text-[17px]')}>롤생네컷</span>
         <Eyebrow className={compact ? 'text-[10px]' : undefined}>GAME CLUB</Eyebrow>
