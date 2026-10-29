@@ -1,7 +1,7 @@
 // =============================================================================
 // 게임 커뮤니티 대시보드 — 전체 스키마 (S0에서 일괄 생성)
 // 명세: 게임 커뮤니티 대시보드 개발 문서.md 5장 + _workspace/00_input/slice.md 결정 사항
-// 계약: _workspace/01_architect_contract.md 「스키마 변경」
+// 계약: _workspace/S0/01_architect_contract.md 6절(S0 전체), _workspace/01_architect_contract.md 3절(S1 변경)
 //
 // 규칙
 // - 모든 테이블: id uuid(@default(uuid())), created_at.
@@ -80,6 +80,25 @@ enum ActivityType {
   @@map("activity_type")
 }
 
+/// S1. 수동·연동 직후 동기화 진행 표시. 전이: shared GAME_ACCOUNT_SYNC_STATE_TRANSITIONS
+enum GameAccountSyncState {
+  idle
+  queued
+  running
+
+  @@map("game_account_sync_state")
+}
+
+/// S1. 라이엇 소유 확인 상태. 전이: shared RIOT_LINK_VERIFICATION_TRANSITIONS
+enum RiotLinkVerificationStatus {
+  pending
+  verified
+  expired
+  cancelled
+
+  @@map("riot_link_verification_status")
+}
+
 // -----------------------------------------------------------------------------
 // 계정
 // -----------------------------------------------------------------------------
@@ -113,24 +132,25 @@ model User {
   createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  refreshTokens    RefreshToken[]
-  gameAccounts     GameAccount[]
-  syncRequests     GameAccountSyncRequest[]
-  hostedScrims     Scrim[]                  @relation("ScrimHost")
-  scrimPlayers     ScrimPlayer[]
-  noShowsMarked    ScrimPlayer[]            @relation("NoShowMarkedBy")
-  submittedResults ScrimResult[]            @relation("ResultSubmittedBy")
-  approvedResults  ScrimResult[]            @relation("ResultApprovedBy")
-  rejectedResults  ScrimResult[]            @relation("ResultRejectedBy")
-  disputes         ScrimResultDispute[]     @relation("DisputeUser")
-  resolvedDisputes ScrimResultDispute[]     @relation("DisputeResolvedBy")
-  ratings          Rating[]
-  ratingHistory    RatingHistory[]
-  seasonStandings  SeasonStanding[]
-  activityLogs     ActivityLog[]
-  userBadges       UserBadge[]
-  notices          Notice[]
-  apiKeysCreated   ApiKey[]
+  refreshTokens     RefreshToken[]
+  gameAccounts      GameAccount[]
+  syncRequests      GameAccountSyncRequest[]
+  riotVerifications RiotLinkVerification[]
+  hostedScrims      Scrim[]                  @relation("ScrimHost")
+  scrimPlayers      ScrimPlayer[]
+  noShowsMarked     ScrimPlayer[]            @relation("NoShowMarkedBy")
+  submittedResults  ScrimResult[]            @relation("ResultSubmittedBy")
+  approvedResults   ScrimResult[]            @relation("ResultApprovedBy")
+  rejectedResults   ScrimResult[]            @relation("ResultRejectedBy")
+  disputes          ScrimResultDispute[]     @relation("DisputeUser")
+  resolvedDisputes  ScrimResultDispute[]     @relation("DisputeResolvedBy")
+  ratings           Rating[]
+  ratingHistory     RatingHistory[]
+  seasonStandings   SeasonStanding[]
+  activityLogs      ActivityLog[]
+  userBadges        UserBadge[]
+  notices           Notice[]
+  apiKeysCreated    ApiKey[]
 
   @@map("users")
 }
@@ -184,27 +204,36 @@ model Game {
   @@map("games")
 }
 
-/// 연동 계정(라이엇 PUUID, 스팀 ID 등). 문서 5장 + 소유 확인·동기화 오류 컬럼(S1)
+/// 연동 계정(라이엇 PUUID, 스팀 ID 등). 문서 5장 + 동기화 상태 컬럼(S1)
+/// S1: 행은 소유 확인이 끝난 계정만 만든다(verified=true). 진행 중인 라이엇 확인은 riot_link_verifications.
+/// 라이엇 ID는 사용자당 최대 RIOT_ACCOUNTS_MAX개(기본 3, 각 lol·tft 2행, D25), 스팀은 1개(서비스 보장, D37)
+/// 대표 계정: 사용자·게임별 is_primary=true 최대 1행 — 부분 고유 인덱스 game_accounts_one_primary_per_user_game
+/// (Prisma 스키마로 표현 불가, 마이그레이션 20261028120000_s1 SQL에 직접 추가. 계약 3절)
 model GameAccount {
-  id                    String    @id @default(uuid()) @db.Uuid
-  userId                String    @map("user_id") @db.Uuid
-  gameId                String    @map("game_id") @db.Uuid
+  id              String               @id @default(uuid()) @db.Uuid
+  userId          String               @map("user_id") @db.Uuid
+  gameId          String               @map("game_id") @db.Uuid
   /// 라이엇 PUUID, 스팀 64비트 ID
-  externalId            String    @map("external_id")
+  externalId      String               @map("external_id")
   /// 라이엇 ID(이름#태그), 스팀 표시 이름
-  displayName           String    @map("display_name")
-  verified              Boolean   @default(false)
-  verifiedAt            DateTime? @map("verified_at") @db.Timestamptz(3)
-  /// 소유 확인 과제(예: 바꿔야 할 프로필 아이콘 번호). 확인 끝나면 null
-  verificationChallenge String?   @map("verification_challenge")
-  verificationExpiresAt DateTime? @map("verification_expires_at") @db.Timestamptz(3)
-  /// 마지막 성공 동기화 시각(문서 9장 갱신 시각 표시)
-  lastSyncedAt          DateTime? @map("last_synced_at") @db.Timestamptz(3)
-  /// 마지막 동기화 실패 사유 코드(예: STEAM_PROFILE_PRIVATE). 성공하면 null
-  lastSyncError         String?   @map("last_sync_error")
-  lastSyncErrorAt       DateTime? @map("last_sync_error_at") @db.Timestamptz(3)
-  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  displayName     String               @map("display_name")
+  verified        Boolean              @default(false)
+  /// S1. 대표 계정. 라이엇은 같은 라이엇 ID의 lol·tft 두 행이 함께 true/false. 스팀 행은 항상 true
+  isPrimary       Boolean              @default(false) @map("is_primary")
+  verifiedAt      DateTime?            @map("verified_at") @db.Timestamptz(3)
+  /// 마지막 성공 동기화 시각(문서 9장 갱신 시각 표시). 라이엇: 티어, 스팀: 플레이타임
+  lastSyncedAt    DateTime?            @map("last_synced_at") @db.Timestamptz(3)
+  /// 마지막 동기화 실패 사유 코드(shared GameAccountSyncError). 성공하면 null
+  lastSyncError   String?              @map("last_sync_error")
+  lastSyncErrorAt DateTime?            @map("last_sync_error_at") @db.Timestamptz(3)
+  /// S1. 진행 표시(idle/queued/running). 라이엇 lol·tft 두 행은 항상 같은 값으로 함께 바꾼다
+  syncState       GameAccountSyncState @default(idle) @map("sync_state")
+  /// S1. sync_state를 마지막으로 바꾼 시각. running·queued가 10분 넘게 그대로면 멈춘 작업으로 보고 정리
+  syncStateAt     DateTime?            @map("sync_state_at") @db.Timestamptz(3)
+  /// S1. 라이엇 lol 행만: 최근 전적(Match-V5) 마지막 성공 시각. 6시간 캐시 판단용
+  matchesSyncedAt DateTime?            @map("matches_synced_at") @db.Timestamptz(3)
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user          User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
   game          Game                     @relation(fields: [gameId], references: [id])
@@ -214,22 +243,51 @@ model GameAccount {
   syncRequests  GameAccountSyncRequest[]
 
   @@unique([gameId, externalId])
-  @@index([userId])
+  @@index([userId, gameId])
   @@map("game_accounts")
 }
 
 /// 수동 새로고침 기록. 사용자당 하루 5회 제한을 Redis 없이 DB로 셀 때 사용(문서 9장)
+/// S1: 계정을 해제해도 기록은 남긴다(game_account_id SetNull) — 해제·재연동으로 횟수를 되살리지 못하게
 model GameAccountSyncRequest {
   id            String   @id @default(uuid()) @db.Uuid
   userId        String   @map("user_id") @db.Uuid
-  gameAccountId String   @map("game_account_id") @db.Uuid
+  gameAccountId String?  @map("game_account_id") @db.Uuid
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  gameAccount GameAccount @relation(fields: [gameAccountId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gameAccount GameAccount? @relation(fields: [gameAccountId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt])
   @@map("game_account_sync_requests")
+}
+
+/// S1. 라이엇 소유 확인(프로필 아이콘 변경). 확인 성공 시에만 game_accounts lol·tft 행을 만든다
+/// 사용자당 pending은 최대 1개(서비스 보장: 새 시작 시 기존 pending → cancelled)
+model RiotLinkVerification {
+  id            String                     @id @default(uuid()) @db.Uuid
+  userId        String                     @map("user_id") @db.Uuid
+  /// Account-V1 PUUID. 응답에 노출 금지
+  puuid         String
+  /// Account-V1 응답 표기 그대로(대소문자 포함)
+  gameName      String                     @map("game_name")
+  tagLine       String                     @map("tag_line")
+  /// 바꿔야 할 프로필 아이콘 번호(시작 시 현재 아이콘과 다른 값)
+  iconId        Int                        @map("icon_id")
+  status        RiotLinkVerificationStatus @default(pending)
+  expiresAt     DateTime                   @map("expires_at") @db.Timestamptz(3)
+  /// "확인" 요청 횟수와 마지막 시각(최소 간격 5초)
+  checkCount    Int                        @default(0) @map("check_count")
+  lastCheckedAt DateTime?                  @map("last_checked_at") @db.Timestamptz(3)
+  verifiedAt    DateTime?                  @map("verified_at") @db.Timestamptz(3)
+  createdAt     DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([userId, createdAt])
+  @@map("riot_link_verifications")
 }
 
 /// 티어 변화 기록. 문서 5장 + queue(솔로/자유 등 구분)
@@ -264,7 +322,7 @@ model RecentMatch {
   win             Boolean?
   /// 롤체 순위(1–8). 팀 게임은 null
   placement       Int?
-  /// 챔피언·KDA 등 화면 표시용 요약(형식은 S1 계약에서 확정)
+  /// 화면 표시용 요약. 롤: shared LolMatchSummary 형식(S1 계약 확정)
   summary         Json     @default("{}")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 

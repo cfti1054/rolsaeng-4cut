@@ -14,5 +14,27 @@ export const ApiPath = {
   authDevLogin: '/auth/dev-login',
   // S0 내 정보
   me: '/me',
+  // S1 게임 계정 연동 (`:id`는 Nest 라우트 파라미터. 웹은 fillPath로 채운다)
+  myGameAccounts: '/me/game-accounts',
+  myGameAccount: '/me/game-accounts/:id',
+  myGameAccountSync: '/me/game-accounts/:id/sync',
+  myGameAccountPrimary: '/me/game-accounts/:id/primary',
+  riotVerification: '/me/game-accounts/riot-verifications/:id',
+  riotVerificationConfirm: '/me/game-accounts/riot-verifications/:id/confirm',
+  steamLinkCallback: '/me/game-accounts/steam/callback',
+  // S1 프로필
+  userProfile: '/users/:id/profile',
 } as const;
 export type ApiPath = (typeof ApiPath)[keyof typeof ApiPath];
+
+/**
+ * 경로 템플릿의 `:name`을 값으로 채운다(encodeURIComponent 적용). 빠진 파라미터가 있으면 예외.
+ * 예: fillPath(ApiPath.userProfile, { id }) → '/users/{id}/profile'
+ */
+export function fillPath(template: string, params: Readonly<Record<string, string>>): string {
+  return template.replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, (_, name: string) => {
+    const v = params[name];
+    if (v === undefined) throw new Error(`fillPath: '${name}' 값 없음 (${template})`);
+    return encodeURIComponent(v);
+  });
+}

@@ -37,3 +37,45 @@ export const ApiKeyScope = z.enum([
   'bot:rankings:read',
 ]);
 export type ApiKeyScope = z.infer<typeof ApiKeyScope>;
+
+// ---- S1 게임 계정 연동·동기화 ----
+
+/** 연동 계정 제공자. lol·tft는 라이엇 계정 하나를 공유한다(D25). 게임 → 제공자는 GAME_PROVIDER_BY_CODE */
+export const GameProvider = z.enum(['riot', 'steam']);
+export type GameProvider = z.infer<typeof GameProvider>;
+
+/**
+ * game_accounts.sync_state — 수동·연동 직후 동기화 진행 표시(계약 S1 6절).
+ * idle: 대기 없음, queued: 수동/연동 직후 요청이 큐에 있음, running: 작업자가 실행 중.
+ * 주기 작업(cron)과 프로필 조회로 생긴 전적 갱신은 queued를 거치지 않고 실행할 때만 running으로 바꾼다.
+ */
+export const GameAccountSyncState = z.enum(['idle', 'queued', 'running']);
+export type GameAccountSyncState = z.infer<typeof GameAccountSyncState>;
+
+/**
+ * game_accounts.last_sync_error 값. 동기화는 비동기라 HTTP 오류가 아니라 이 코드로 기록·표시한다.
+ * - STEAM_PROFILE_PRIVATE: GetOwnedGames 응답에 game_count가 없음(게임 세부 정보 비공개)
+ * - ACCOUNT_NOT_FOUND: PUUID·스팀 ID로 더 이상 조회되지 않음(404)
+ * - PROVIDER_AUTH_FAILED: 401/403(라이엇 개발 키 만료 등). 재시도하지 않는다
+ * - PROVIDER_RATE_LIMITED: 429 대기를 최대 횟수만큼 반복해도 끝나지 않음
+ * - PROVIDER_UNAVAILABLE: 5xx·타임아웃이 백오프 3회 후에도 계속됨
+ * - PROVIDER_NOT_CONFIGURED: RIOT_API_KEY / STEAM_API_KEY 없음
+ * - INTERNAL_ERROR: 그 밖의 예외(응답 형식 불일치 포함)
+ */
+export const GameAccountSyncError = z.enum([
+  'STEAM_PROFILE_PRIVATE',
+  'ACCOUNT_NOT_FOUND',
+  'PROVIDER_AUTH_FAILED',
+  'PROVIDER_RATE_LIMITED',
+  'PROVIDER_UNAVAILABLE',
+  'PROVIDER_NOT_CONFIGURED',
+  'INTERNAL_ERROR',
+]);
+export type GameAccountSyncError = z.infer<typeof GameAccountSyncError>;
+
+/**
+ * riot_link_verifications.status — 라이엇 소유 확인(프로필 아이콘 변경).
+ * pending → verified(아이콘 일치) | expired(제한 시간 경과) | cancelled(사용자 취소·새 확인 시작으로 대체)
+ */
+export const RiotLinkVerificationStatus = z.enum(['pending', 'verified', 'expired', 'cancelled']);
+export type RiotLinkVerificationStatus = z.infer<typeof RiotLinkVerificationStatus>;

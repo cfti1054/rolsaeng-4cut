@@ -1,4 +1,4 @@
-import { API_PREFIX, ApiPath, SafeRedirectPath, type OAuthLoginErrorCode } from '@gcd/shared';
+import { API_PREFIX, ApiPath, SafeRedirectPath, type OAuthLoginErrorCode, type SettingsPageQuery } from '@gcd/shared';
 
 /**
  * 웹 라우트. 링크는 반드시 이 함수들로 만든다(nextjs-dashboard-ui 1절).
@@ -8,7 +8,8 @@ export const routes = {
   scrims: () => '/scrims',
   rankings: () => '/rankings',
   member: (id: string) => `/members/${encodeURIComponent(id)}`,
-  settings: () => '/settings',
+  /** 스팀 콜백 결과는 API가 302로 붙여 준다(steam=linked / steam_error). 웹이 직접 만들 일은 목뿐 */
+  settings: (q: SettingsPageQuery = {}) => withQuery('/settings', q),
   admin: () => '/admin',
   login: (q: { redirect?: string; error?: OAuthLoginErrorCode } = {}) => withQuery('/login', q),
   welcome: (redirect?: string) => withQuery('/welcome', { redirect }),

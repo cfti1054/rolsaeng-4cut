@@ -159,3 +159,23 @@ export function LogoMark({ size = 36 }: { size?: number }) {
     </svg>
   );
 }
+
+export function RefreshIcon(p: IconProps) {
+  return (
+    <svg {...base({ strokeWidth: 2, ...p })}>
+      <path d="M20 11a8 8 0 0 0-14.6-4.5L4 8" />
+      <path d="M4 3v5h5" />
+      <path d="M4 13a8 8 0 0 0 14.6 4.5L20 16" />
+      <path d="M20 21v-5h-5" />
+    </svg>
+  );
+}
+
+export function ShieldCheckIcon(p: IconProps) {
+  return (
+    <svg {...base({ strokeWidth: 1.6, ...p })}>
+      <path d="M12 3 4 7v6c0 4.5 3.4 7.4 8 8 4.6-.6 8-3.5 8-8V7z" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  );
+}

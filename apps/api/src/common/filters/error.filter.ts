@@ -42,13 +42,19 @@ function bodyParserStatus(exception: unknown): number | undefined {
   return undefined;
 }
 
-export function toErrorResponse(exception: unknown): { status: number; body: ErrorBody } {
+export function toErrorResponse(exception: unknown): {
+  status: number;
+  body: ErrorBody;
+  retryAfterSec?: number;
+} {
   if (exception instanceof AppError) {
     const body: ErrorBody = { code: exception.code, message: exception.message };
     if (exception.code === 'VALIDATION_FAILED' && exception.details?.length) {
       body.details = exception.details;
     }
-    return { status: exception.status, body };
+    return exception.retryAfterSec === undefined
+      ? { status: exception.status, body }
+      : { status: exception.status, body, retryAfterSec: exception.retryAfterSec };
   }
   const httpStatus =
     exception instanceof HttpException ? exception.getStatus() : bodyParserStatus(exception);
@@ -70,13 +76,14 @@ export class ErrorFilter implements ExceptionFilter {
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const res = host.switchToHttp().getResponse<Response>();
-    const { status, body } = toErrorResponse(exception);
+    const { status, body, retryAfterSec } = toErrorResponse(exception);
     if (status >= 500) {
       this.logger.error(
         exception instanceof Error ? (exception.stack ?? exception.message) : String(exception),
       );
     }
     if (res.headersSent) return;
+    if (retryAfterSec !== undefined) res.setHeader('Retry-After', String(retryAfterSec));
     res.status(status).json(body);
   }
 }

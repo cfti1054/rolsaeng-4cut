@@ -25,6 +25,22 @@ export const ErrorCode = z.enum([
 
   // ---- S0 내 정보 ----
   'NICKNAME_TAKEN', // 409 다른 사용자가 쓰는 닉네임
+
+  // ---- S1 게임 계정 연동·동기화 ----
+  'GAME_PROVIDER_NOT_CONFIGURED', // 503 RIOT_API_KEY 또는 STEAM_API_KEY 미설정
+  'GAME_PROVIDER_ERROR', // 502 라이엇·스팀 호출 실패(401/403 키 문제, 5xx, 타임아웃)
+  'GAME_PROVIDER_RATE_LIMITED', // 503 라이엇·스팀 429 또는 서버 호출 한도 소진. Retry-After 헤더(초) 동반
+  'GAME_ACCOUNT_LIMIT_REACHED', // 409 라이엇 ID가 이미 RIOT_ACCOUNTS_MAX개(기본 3), 또는 스팀을 이미 1개 연동함
+  'GAME_ACCOUNT_ALREADY_LINKED', // 409 그 외부 계정(PUUID·스팀 ID)이 다른 멤버에게 연동됨 → 운영진 문의(D45)
+  'GAME_ACCOUNT_ALREADY_LINKED_TO_ME', // 409 내가 이미 연동한 라이엇 ID를 다시 추가하려 함
+  'RIOT_ID_NOT_FOUND', // 404 Account-V1에 없는 라이엇 ID
+  'RIOT_SUMMONER_NOT_FOUND', // 404 라이엇 계정은 있으나 KR 롤 소환사 정보 없음(아이콘 확인 불가)
+  'OWNERSHIP_CHECK_FAILED', // 409 현재 프로필 아이콘이 지정 아이콘과 다름(pending 유지, 다시 확인 가능)
+  'OWNERSHIP_CHECK_EXPIRED', // 410 소유 확인 제한 시간 경과 또는 취소됨 → 처음부터 다시 시작
+  'STEAM_LINK_STATE_INVALID', // 400 스팀 연동 state 쿠키 없음·서명 불일치·만료·state 불일치
+  'STEAM_LINK_CANCELLED', // 400 스팀 로그인 화면에서 취소(openid.mode=cancel)
+  'STEAM_OPENID_INVALID', // 400 OpenID 응답 검증 실패(check_authentication is_valid:false, 형식·return_to 불일치)
+  'SYNC_LIMIT_EXCEEDED', // 429 수동 새로고침 하루(KST) 한도 소진. Retry-After 헤더 = 다음 KST 자정까지 초
 ]);
 export type ErrorCode = z.infer<typeof ErrorCode>;
 
@@ -45,6 +61,20 @@ export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
   OAUTH_PROVIDER_ERROR: 502,
   DISCORD_NOT_GUILD_MEMBER: 403,
   NICKNAME_TAKEN: 409,
+  GAME_PROVIDER_NOT_CONFIGURED: 503,
+  GAME_PROVIDER_ERROR: 502,
+  GAME_PROVIDER_RATE_LIMITED: 503,
+  GAME_ACCOUNT_LIMIT_REACHED: 409,
+  GAME_ACCOUNT_ALREADY_LINKED: 409,
+  GAME_ACCOUNT_ALREADY_LINKED_TO_ME: 409,
+  RIOT_ID_NOT_FOUND: 404,
+  RIOT_SUMMONER_NOT_FOUND: 404,
+  OWNERSHIP_CHECK_FAILED: 409,
+  OWNERSHIP_CHECK_EXPIRED: 410,
+  STEAM_LINK_STATE_INVALID: 400,
+  STEAM_LINK_CANCELLED: 400,
+  STEAM_OPENID_INVALID: 400,
+  SYNC_LIMIT_EXCEEDED: 429,
 };
 
 /** VALIDATION_FAILED일 때만 채우는 필드별 상세. path는 snake_case 필드 경로(`nickname`, `events.0.type`). */

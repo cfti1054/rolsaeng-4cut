@@ -40,4 +40,35 @@ describe('환경 변수', () => {
       loadConfig({ ...REQUIRED, AUTH_DEV_LOGIN: 'true', NODE_ENV: 'production' }).devLoginEnabled,
     ).toBe(false);
   });
+
+  it('S1 외부 API·동기화 기본값(계약 S1 11절)', () => {
+    const c = loadConfig({ ...REQUIRED, RIOT_API_KEY: '', STEAM_API_KEY: ' ' });
+    expect(c.riot).toEqual({
+      apiKey: undefined,
+      regionalRouting: 'asia',
+      platformRouting: 'kr',
+      rateLimitPerSec: 20,
+      rateLimitPer2Min: 100,
+      verificationTtlSec: 600,
+      accountsMax: 3,
+      ddragonVersion: undefined,
+    });
+    expect(c.steam.apiKey).toBeUndefined();
+    expect(c.externalApiTimeoutMs).toBe(5000);
+    expect(c.syncDailyLimit).toBe(5);
+    expect(c.syncJobsEnabled).toBe(true);
+    expect(c.redisUrl).toBeUndefined();
+  });
+
+  it('S1 값 검증: 양의 정수, 라우팅 소문자 정규화, SYNC_JOBS_ENABLED', () => {
+    const c = loadConfig({ ...REQUIRED, RIOT_ACCOUNTS_MAX: '2', RIOT_REGIONAL_ROUTING: 'ASIA', SYNC_JOBS_ENABLED: 'false', RIOT_API_KEY: 'k' });
+    expect(c.riot.accountsMax).toBe(2);
+    expect(c.riot.regionalRouting).toBe('asia');
+    expect(c.riot.apiKey).toBe('k');
+    expect(c.syncJobsEnabled).toBe(false);
+    expect(() => loadConfig({ ...REQUIRED, RIOT_ACCOUNTS_MAX: '0' })).toThrow(/RIOT_ACCOUNTS_MAX/);
+    expect(() => loadConfig({ ...REQUIRED, SYNC_DAILY_LIMIT: '1.5' })).toThrow(/SYNC_DAILY_LIMIT/);
+    expect(() => loadConfig({ ...REQUIRED, RIOT_PLATFORM_ROUTING: 'k r' })).toThrow(/RIOT_PLATFORM_ROUTING/);
+    expect(() => loadConfig({ ...REQUIRED, SYNC_JOBS_ENABLED: 'yes' })).toThrow(/SYNC_JOBS_ENABLED/);
+  });
 });

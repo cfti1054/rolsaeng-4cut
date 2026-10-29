@@ -1,209 +1,287 @@
-# QA 계획: S0 골격
+# QA 계획: S1 게임 계정 연동·티어 동기화, 프로필·설정 화면
 
 작성: qa-verifier, 2026-10-28
-기준: `_workspace/01_architect_contract.md`(이하 "계약"), `packages/shared/src/**`(코드 우선), `_workspace/00_input/slice.md`, `게임 커뮤니티 대시보드 개발 문서.md`(이하 "문서"), 목업 `_workspace/00_input/mockup/`
+기준: `_workspace/01_architect_contract.md`(이하 "계약", 절 번호는 이 문서), 코드 우선 `packages/shared/src/**`·`apps/api/prisma/schema.prisma`·`apps/api/prisma/migrations/20261028120000_s1/migration.sql`, `_workspace/00_input/slice.md`, 명세 `게임 커뮤니티 대시보드 개발 문서.md`(이하 "문서") 2·5·6·8·9장, 목업 `_workspace/00_input/mockup/Profile.dc.html`·`Settings.dc.html`, S0 계획 `_workspace/S0/03_qa-verifier_plan.md`(S0 항목은 회귀로만 재확인).
 규칙: `.claude/skills/qa-boundary-check/SKILL.md`. QA는 코드를 고치지 않는다. 근거는 직접 실행한 출력과 파일:줄만.
 
 ## 사용 가능한 도구 (실제 확인)
 
-Read, Grep, Glob, Bash(Git Bash), Write. `corepack pnpm` 사용, `node_modules` 설치됨. Docker·PostgreSQL 없음 → DB 의존 항목은 「미실행」. 디스코드 앱 키 없음 → 실제 OAuth 왕복은 「키 필요」.
+Read, Grep, Glob, Bash(Git Bash), Write. `corepack pnpm` 동작, `node_modules` 설치됨, `npx prisma`(6.19.3) 동작.
+없음: Docker·PostgreSQL·Redis → DB 통합 테스트·마이그레이션 적용·BullMQ 실행은 「미실행」. `RIOT_API_KEY`·`STEAM_API_KEY` 없음 → 실제 외부 호출은 「키 필요」. 브라우저 렌더는 도구 한계로 「미실행」(코드·빌드 산출물 정적 검사로 대체).
 
-## 예상 검증 대상(리더가 보낼 이름)
+### 계획 시점 기준선 (2026-10-28 13:44, 구현 전 계약 코드만)
+- `corepack pnpm --filter @*/shared test`: 2 files, 34 passed(contract.s1.test.ts 25개)
+- `corepack pnpm -r typecheck`: shared·core·web·api Done
+- `npx prisma validate`: valid
+- `prisma migrate diff --from-schema-datamodel <450b091 schema> --to-schema-datamodel prisma/schema.prisma --script` 출력 = migration.sql 1–62줄(주석·빈 줄 제외) **동일**. 63줄 이후 수동 블록에 부분 고유 인덱스 1개 존재.
+- `--from-migrations`는 shadow DB 필요 → 미실행.
+
+## 검증 대상(리더가 보낼 이름)
 
 | target | 구현자 보고서 | 범위 |
 | --- | --- | --- |
-| `auth` (또는 `api`) | `_workspace/02_backend-dev_auth.md` | `apps/api/**`, prisma |
-| `shell` (또는 `web`) | `_workspace/02_frontend-dev_shell.md` | `apps/web/**` |
-| `s0` | 둘 다 | 교차 대조 + 슬라이스 전체 |
+| `core` | `_workspace/02_logic-dev_s1.md` | `packages/core/src/**` |
+| `integration` | `_workspace/02_integration-dev_s1.md` | `apps/api/src/integrations/**`, `apps/api/src/jobs/**`, `apps/api/test/fixtures/{riot,steam}/**` |
+| `backend` | `_workspace/02_backend-dev_s1.md` | `apps/api/src/modules/game-accounts/**`, `modules/profile/**`(또는 users), `config/env.ts`, `common/**`, prisma |
+| `web` | `_workspace/02_frontend-dev_s1.md` | `apps/web/**` |
+| `s1` | 전부 | 교차 대조 + 명세·목업 대조 + 보안 경계 + 계약 13절 qa 항목 전체 |
 
-판정: blocker 또는 major 1개 이상 → `fail`. 환경 때문에 검사 불가 → `blocked`.
+판정: blocker 또는 major 1개 이상 → `fail`. 환경 때문에 핵심 검사 불가 → `blocked`. 보고서 `_workspace/03_qa-verifier_{target}.md`, 재검증 `_r2`, `_r3`.
 
 ---
 
-## A. 기계 검사 (모든 대상에서 먼저 실행, 출력 그대로 기록)
+## A. 기계 검사 (모든 대상에서 먼저, 출력 그대로 기록)
 
 | # | 명령 | 통과 조건 |
 | --- | --- | --- |
-| A1 | `corepack pnpm install --frozen-lockfile` | 오류 없음(lockfile 불일치 없음) |
+| A1 | `corepack pnpm install --frozen-lockfile` | lockfile 불일치 없음(`@nestjs/schedule`, `bullmq` 추가분 포함, 고정 버전 표기) |
 | A2 | `corepack pnpm -r typecheck` | 4개 패키지 0 오류 |
-| A3 | `corepack pnpm -r test` | 실패 0. DB 테스트는 skip 표시가 명확할 것(조용히 pass 처리 금지) |
-| A4 | `corepack pnpm -r build` | shared → core → api → web 순서 성공 |
-| A5 | `corepack pnpm --filter api prisma:validate` | valid |
+| A3 | `corepack pnpm -r test` | 실패 0. DB·Redis 필요 테스트는 **skip이 명시적**(조용히 pass 금지). S0 테스트 수(shared 9, web 44, api 135/5 skip)보다 줄지 않음 |
+| A4 | `corepack pnpm -r build` | shared → core → api → web 성공 |
+| A5 | `corepack pnpm --filter api prisma:validate` (`.env` 또는 DATABASE_URL 필요) | valid |
 | A6 | `corepack pnpm --filter api prisma:generate` | 성공 |
-| A7 | `prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url …` | **미실행**(shadow DB 필요). 대신 A8 |
-| A8 | `prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script` 출력과 `migrations/20261028000000_s0/migration.sql` 비교 | 차이 없음(스키마 수정 후 마이그레이션 미갱신 탐지) |
-| A9 | DB 필요 테스트(리프레시 회전, 동시 refresh, NICKNAME_TAKEN, 시드) | **미실행** — 테스트 코드 존재·내용만 정적 확인 |
-| A10 | `grep -rn "RGAPI-\|client_secret=\|DISCORD_CLIENT_SECRET=[^\s]" --exclude-dir=node_modules .` | 실제 비밀값 없음 |
+| A7 | `prisma migrate diff --from-schema-datamodel <git show 450b091:apps/api/prisma/schema.prisma> --to-schema-datamodel prisma/schema.prisma --script` vs `migration.sql` 수동 블록 앞부분 | 차이 없음(스키마 수정 후 마이그레이션 미갱신 탐지) |
+| A8 | **부분 고유 인덱스**: `grep -n 'game_accounts_one_primary_per_user_game' migration.sql` | `CREATE UNIQUE INDEX … ("user_id","game_id") WHERE "is_primary"` 1줄 존재, 「수동 추가」 블록 안. `grep -rn 'DROP INDEX "game_accounts_one_primary_per_user_game"' apps/api/prisma/migrations` 결과 0 |
+| A9 | 마이그레이션 디렉터리 | `20261028000000_s0`, `20261028120000_s1` 외 새 디렉터리가 생겼다면 그 SQL에 위 DROP INDEX가 없는지, S0 마이그레이션 SQL이 바뀌지 않았는지(`git diff 450b091 -- apps/api/prisma/migrations/20261028000000_s0`) |
+| A10 | 비밀값·실제 식별자: `grep -rnE "RGAPI-[0-9a-f-]{8,}" --exclude-dir=node_modules --exclude-dir=.next .`, `grep -rnE "key=[A-F0-9]{32}" …`, `.env` 미추적(`git ls-files .env`) | 0건 |
+| A11 | DB 필요 테스트(동시 sync 5회 경계, P2002, 부분 고유 인덱스가 대표 2개 거부, 작업자 DB 기록) | **미실행** — 존재·내용만 정적 확인 |
+| A12 | 실제 라이엇·스팀·Steam OpenID 왕복 | **키 필요** |
 
 ---
 
-## B. 백엔드 (`auth` 대상)
+## B. core (`core` 대상, 계약 10절)
 
-### B1. 부트스트랩·공통 (계약 11절 backend 1–3)
-- [ ] `main.ts`: `setGlobalPrefix(API_PREFIX)` — 상수 import(문자열 하드코딩 아님), `cookie-parser(COOKIE_SECRET)`, `API_PORT`.
-- [ ] `config/env.ts`: zod 검증. 필수 3개(JWT_ACCESS_SECRET, COOKIE_SECRET, DATABASE_URL) 없으면 기동 실패. 디스코드 값·REDIS_URL 없어도 기동. `.env.example` 변수 목록과 env 스키마 키 1:1 대조.
-- [ ] 오류 필터: 모든 예외 → `ErrorBody`(`code`가 shared `ErrorCode`, `details`는 VALIDATION_FAILED에서만). Nest 내장 `NotFoundException`(없는 라우트) → `{code:'NOT_FOUND'}` 404. 알 수 없는 예외 → INTERNAL_ERROR 500, 스택 미노출.
-- [ ] 상태 코드 = `ERROR_HTTP_STATUS[code]`(필터가 임의 상태를 쓰지 않는지).
-- [ ] zod 파이프: 실패 시 400 VALIDATION_FAILED + `details[{path,message}]`, path는 snake_case 그대로.
-- [ ] `serialize(Schema, data)`: camel→snake 변환 후 parse. **grep**: 컨트롤러의 `return` 중 `serialize(`를 거치지 않는 것(204 제외) 전부 목록화.
-- [ ] Date → ISO 문자열 변환이 `IsoDateTime`(오프셋 필수) 통과하는지(`toISOString()`은 `Z` → 통과).
-
-### B2. 엔드포인트 대조 (계약 4절)
-
-| 메서드 | 경로(`ApiPath`) | 확인 |
-| --- | --- | --- |
-| GET | /auth/discord | 302, `gcd_oauth` 쿠키(서명, HttpOnly, Lax, **Path=/api/v1/auth**, Max-Age=600), authorize URL의 scope=`identify email guilds.members.read`, redirect_uri, state, `prompt=none`. 설정 누락 → 302 `/login?error=OAUTH_NOT_CONFIGURED`. 잘못된 redirect → `/`로 대체(400 아님) |
-| GET | /auth/discord/callback | 아래 B3 분기 전부 |
-| POST | /auth/refresh | 200 `RefreshTokenResponse`, Set-Cookie 회전 |
-| POST | /auth/logout | 204 본문 없음, 쿠키 없어도 204, `gcd_rt` Max-Age=0 같은 속성 |
-| POST | /auth/dev-login | 닫힘 → 404 NOT_FOUND(없는 라우트와 동일 본문) |
-| GET | /me | JWT 필수 |
-| PATCH | /me | `UpdateMeRequest`(.strict → 모르는 필드 400) |
-
-- [ ] 컨트롤러 경로가 `ApiPath.*` 상수를 쓰는지(하드코딩이면 minor).
-- [ ] 계약 외 추가 엔드포인트가 없는지(있으면 보고).
-
-### B3. OAuth 콜백 분기 (5-5, 5-6) — 목 `DiscordOAuthClient` 테스트로 확인
-- [ ] 쿠키 `gcd_oauth` 성공·실패 모두 삭제.
-- [ ] `error=access_denied` → OAUTH_DENIED / 기타 error → OAUTH_PROVIDER_ERROR.
-- [ ] 쿠키 없음·서명 불일치·600초 초과·state 불일치 → OAUTH_STATE_INVALID. state 비교가 상수 시간(`timingSafeEqual`, 길이 다를 때 예외 안 남).
-- [ ] 토큰 교환·사용자 조회 실패 → OAUTH_PROVIDER_ERROR. 타임아웃 5초(`AbortSignal.timeout` 등) 존재.
-- [ ] 길드: GUILD_ID 비면 검사 생략 + `discord_guild_verified_at` 미갱신 / 200 non-pending 통과(+nick 후보) / `pending=true` → DISCORD_NOT_GUILD_MEMBER / 404 → DISCORD_NOT_GUILD_MEMBER(기존 사용자도) / 401·403·429·5xx·타임아웃 → OAUTH_PROVIDER_ERROR.
-- [ ] upsert: 신규 nickname=기본 닉네임, role(ADMIN_DISCORD_IDS), `nickname_confirmed_at=null`. 기존: 닉네임 **덮어쓰지 않음**, email은 `verified=true`일 때만, admin 승격만(강등 없음). `last_login_at` 갱신.
-- [ ] 디스코드 액세스 토큰을 저장하지 않음(스키마·코드 grep).
-- [ ] 성공 리다이렉트: `{WEB_ORIGIN}/welcome?redirect={encodeURIComponent(redirect)}`(확인 필요 시) 또는 `{WEB_ORIGIN}{redirect}`. 실패: `{WEB_ORIGIN}/login?error={code}[&redirect=]`, code ∈ `OAuthLoginErrorCode`.
-- [ ] 예상 못한 예외 → `error=INTERNAL_ERROR`(JSON 500이 아니라 302).
-
-### B4. 토큰·리프레시 (5-2 ~ 5-4)
-- [ ] JWT HS256, 클레임 = `AccessTokenClaims`(`typ:'access'`), TTL = `JWT_ACCESS_TTL_SEC`, 응답 `expires_in`과 일치.
-- [ ] 가드: 헤더 없음/`Bearer ` 아님/서명 불일치/`typ≠access` → UNAUTHENTICATED, exp 경과 → ACCESS_TOKEN_EXPIRED(구분되는지가 웹 재시도의 전제 — **major**), 사용자 없음 → UNAUTHENTICATED.
-- [ ] 리프레시 원문 32바이트 base64url, DB엔 SHA-256 hex만(`token_hash`). 원문을 DB·로그에 쓰는 곳 grep.
-- [ ] 회전: 같은 family_id, **같은 expires_at**(연장 없음), 조건부 update `WHERE id AND revoked_at IS NULL` + 영향 0행 → 유예 판단. 한 트랜잭션.
-- [ ] 유예 10초: `replaced_by_id` 있고 ≤10초 → 회전 없이 200, Set-Cookie 없음. 초과 → family 전체 폐기 + REFRESH_TOKEN_REUSED + 쿠키 삭제. 로그아웃 폐기(replaced_by 없음) → REFRESH_TOKEN_INVALID.
-- [ ] 만료·모르는 토큰 → REFRESH_TOKEN_INVALID + 쿠키 삭제.
-- [ ] 응답 `user.role`은 DB 최신값.
-- [ ] 쿠키 `gcd_rt`: HttpOnly, SameSite=Lax, Path=/, production Secure, Max-Age=남은 수명(30일 고정값 아님).
-- [ ] Origin 가드: refresh·logout·dev-login에 적용, `Origin` 있고 ≠ WEB_ORIGIN → 403 FORBIDDEN, Origin 없으면 통과. `/me`엔 불필요.
-
-### B5. dev-login (5-8)
-- [ ] 열림 = `AUTH_DEV_LOGIN==='true' && NODE_ENV!=='production'`. 테스트: production+true → 404, development+false → 404.
-- [ ] `discord_id='dev-'+username`, 길드 검사 없음, role 지정 시 신규·기존 모두 적용, 새 family.
-
-### B6. /me (4절 Me, 5-7)
-- [ ] `Me` 10개 필드 전부·이름 정확(snake_case). `avatar_url` = `https://cdn.discordapp.com/avatars/{discord_id}/{hash}.png?size=128`, 해시 없거나 `dev-` 사용자면 null.
-- [ ] `needs_nickname_confirmation = nickname_confirmed_at IS NULL`.
-- [ ] PATCH: zod 파싱 결과(정규화 값)로 저장·중복 비교(원본 body 사용 시 **major**). 중복 → 409 NICKNAME_TAKEN(자기 자신 현재 닉네임 재전송은 409 아님). P2002 경합도 NICKNAME_TAKEN으로 변환. `nickname_confirmed_at` null일 때만 now.
-- [ ] `deriveDefaultNickname` 단위 테스트: 후보 순서(nick→global_name→username), 허용 외 문자 제거, 12자 자르기 후 trim, 2자 미만 건너뜀, 폴백 `user{끝4자리}`, 충돌 시 `앞10자 trimEnd + 2..99` → `앞8자 + 난수4`, 결과가 `Nickname` 통과 + `normalizeNickname(x)===x`. 경계 사례 직접 확인: `"ab cdefghij k"`(자른 뒤 끝 공백), 이모지만 있는 이름, 한글 자모(ㄱ) 포함.
-
-### B7. 스키마·마이그레이션·시드 (계약 6절, 문서 5장·10장)
-- [ ] 모델 21개 = 계약 6절 표 21개, 이름·`@@map` snake_case 일치.
-- [ ] 문서 5장 필수: `users.discord_id`(UNIQUE, nullable), `activity_logs.idempotency_key` **UNIQUE**, `api_keys.key_hash` UNIQUE + 원문 컬럼 없음.
-- [ ] 문서 5장 인덱스 3개: `ratings(game_id, season_id, elo desc)`, `activity_logs(user_id, started_at)`, `scrim_players(scrim_id, status)` — migration.sql에서 확인.
-- [ ] `rating_history (scrim_id, user_id)` UNIQUE(D12, 이중 반영 방지 — 없으면 blocker 성격이나 S0에선 major로 기록).
-- [ ] Prisma enum 7종 값 = shared enum 값(순서 무관, 집합 동일). DB enum 이름 `user_role` 등.
-- [ ] 계약 표의 각 컬럼 존재(특히 `refresh_tokens` 7컬럼, `scrim_results.status/reject_*`, `scrim_result_disputes`, `notices`, users 알림 4개).
-- [ ] 시각 컬럼 `@db.Timestamptz(3)`, id `@db.Uuid @default(uuid())`, 모든 테이블 `created_at`.
-- [ ] 삭제 정책: 본인 소유 Cascade, host/submitted_by/approved_by/notices.author Restrict.
-- [ ] `seed.ts`가 `GAME_SEED`를 import(값 복제 금지), code 기준 upsert. 실행은 **미실행**.
-- [ ] `docker-compose.yml` postgres:16-alpine gcd/gcd/gcd:5432, redis:7-alpine.
-
-### B8. 범위 밖 금지
-- [ ] `/auth/signup`, `/auth/login` 없음(D22). S1+ 엔드포인트 미구현이 정상.
-- [ ] CORS 미개방(5-1).
+- [ ] 7개 함수 export·시그니처 = 계약 10절(`kstDayWindow`, `buildSyncQuota`, `computeMainPosition`, `pickVerificationIcon`, `toRankValue`, `isSameRank`, `isMatchesCacheStale`). I/O·`Date.now()`·`Math.random` 직접 호출 없음(`grep -n "Date.now\|new Date()\|Math.random" packages/core/src`).
+- [ ] **KST 경계**(`kstDayWindow`): UTC 14:59:59.999Z(=KST 23:59:59.999) → start 전날 15:00Z, UTC 15:00:00.000Z(=KST 00:00) → start 그 시각, end = start+24h. 테스트에 두 경계값 모두 존재. 서버 TZ에 의존하지 않음(`getTimezoneOffset`·로컬 `setHours` 사용 금지 — grep). `TZ=America/New_York`·`TZ=UTC`로 core 테스트 각각 실행해 결과 동일.
+- [ ] `buildSyncQuota`: remaining=max(0,limit−used)(used>limit 케이스 포함), `resets_at` 정확히 `YYYY-MM-DDT00:00:00.000+09:00`, shared `SyncQuota.parse` 통과. KST 23:59:59.999 입력 시 다음 날 날짜.
+- [ ] `computeMainPosition`: 최신순 앞 20개만(21번째 무시 테스트), null 제외 sample_size, 0이면 null, 동률은 `LolPosition` 순서(top<jungle<mid<bot<support), 최대 2개, ratio 소수 둘째 자리 반올림(예: 1/3→0.33, 2/3→0.67), `source:'riot_ranked_solo'`, 결과가 shared `MainPosition.parse` 통과.
+- [ ] `pickVerificationIcon`: 결과 ≠ 현재 아이콘, 범위 0–28, random 0 / 0.999… 경계, 현재 아이콘이 후보 밖(예: 4000)이면 29개 중 선택.
+- [ ] `toRankValue`: undefined→UNRANKED 0/0/0 division null, MASTER/GRANDMASTER/CHALLENGER의 rank 'I' → division null, 모르는 tier·rank → 예외. 결과가 shared `RankValue.parse` 통과.
+- [ ] `isSameRank`: 5개 필드 각각 하나만 달라도 false.
+- [ ] `isMatchesCacheStale`: null→true, 정확히 6h → true(≥), 6h−1ms → false.
+- [ ] shared 상수 재사용(`RIOT_VERIFICATION_ICON_IDS`, `RECENT_MATCHES_MAX`, `RECENT_MATCHES_TTL_HOURS`, `RIOT_APEX_TIERS`) — 값 복제 없음.
 
 ---
 
-## C. 프런트엔드 (`shell` 대상)
+## C. integration (`integration` 대상, 계약 6·9절, 13절 integration)
 
-### C1. API 클라이언트·훅
-- [ ] 모든 호출이 `API_PREFIX + ApiPath.*`(웹 오리진 상대 경로, `localhost:4000` 직접 호출 없음). `credentials:'include'`.
-- [ ] 응답을 shared 스키마로 `.parse`(`as Me`/제네릭 단언만 있는 곳 grep). 오류는 `ErrorBody.safeParse`.
-- [ ] 401 ACCESS_TOKEN_EXPIRED → refresh 1회 → 원 요청 재시도(무한 루프 없음). REFRESH_TOKEN_* → `/login`.
-- [ ] refresh single-flight(동시 호출 시 요청 1개 — 공유 Promise 확인).
-- [ ] 액세스 토큰 localStorage·sessionStorage·document.cookie 저장 없음(grep).
-- [ ] 훅 `useMe`/`useUpdateMe`/`useRefreshToken`/`useLogout`/`useDevLogin` 존재, 경로·메서드가 B2와 일치. logout 후 메모리 토큰 폐기 + 쿼리 캐시 정리 + `/login`.
-- [ ] snake_case 필드를 그대로 사용(중간 camelCase 변환 없음).
+### C1. 계약 인터페이스
+- [ ] `apps/api/src/integrations/contracts.ts` 타입이 계약 9절과 일치(메서드 이름·인자·반환, `CallMode`, `ExternalErrorKind` 6종, `SyncJobKind` 4종, `SyncJobReason` 5종, DI 심벌 4개).
+- [ ] 외부 응답은 zod로 필요한 필드만 파싱, 형식 불일치 → `bad_response`.
 
-### C2. 라우트·링크 (9-5)
-- [ ] `app/` 구조: `/login`, `/welcome`, `(main)/` 아래 `/`, `/settings`, `/scrims`, `/rankings`, `/members/[id]`.
-- [ ] 모든 `href`/`router.push`/`redirect(` 값이 위 라우트에 존재. 링크는 `lib/routes.ts` 함수 경유. 「내 프로필」 = `/members/{me.id}`.
-- [ ] 「Discord로 로그인」 = `location.href = /api/v1/auth/discord?redirect=…`(fetch 아님), redirect는 SafeRedirectPath 검증 후 인코딩.
-- [ ] `next.config.ts` rewrites `/api/v1/:path*` → `API_ORIGIN`.
+### C2. 클라이언트·라우팅
+- [ ] 호스트: Account-V1·Match-V5 = `{RIOT_REGIONAL_ROUTING}.api.riotgames.com`, Summoner-V4·League-V4·TFT-League = `{RIOT_PLATFORM_ROUTING}.api.riotgames.com`(하드코딩 `asia`/`kr` 없음 — env에서).
+- [ ] 키는 헤더 `X-Riot-Token`(쿼리 문자열 금지 — 로그 유출 방지). 스팀 키는 쿼리지만 로그에 URL 원문 미기록.
+- [ ] Match ids 쿼리 `queue=420&type=ranked&count=20`, League는 `RANKED_SOLO_5x5`·`RANKED_TFT`만 사용.
+- [ ] GetOwnedGames `include_appinfo=1&include_played_free_games=1`. `{"response":{}}`(game_count 없음) → `visibility:'private'`, `game_count:0` → public + 빈 배열. `playtime_2weeks` 없으면 0.
+- [ ] 타임아웃 `EXTERNAL_API_TIMEOUT_MS`(AbortSignal 등) 모든 외부 호출(Data Dragon, OpenID 포함).
+- [ ] 보고서에 I1–I5 확인 결과·URL·날짜, 실제 호출은 「키 필요」 표기.
 
-### C3. middleware (5-9)
-- [ ] matcher가 `(main)` 경로 전부 + `/welcome` 포함, `/login`·`/_next`·`/api` 제외.
-- [ ] `gcd_rt` 없으면 `/login?redirect={경로+쿼리}`, 있으면 통과. `/login`은 쿠키 있어도 리다이렉트 안 함.
+### C3. 429·재시도·분류 (계약 6-4) — 가짜 타이머 테스트로 확인
+- [ ] **429**: `Retry-After`(없으면 60초)만큼 **그 호스트만** 일시정지, 즉시 재시도 없음(호출 횟수 단언). 같은 작업 3번째 429 → `PROVIDER_RATE_LIMITED` 기록. interactive 모드는 `ExternalApiError{kind:'rate_limited', retryAfterSec}` → backend가 GAME_PROVIDER_RATE_LIMITED + Retry-After.
+- [ ] 토큰 버킷: 호스트별 2개(초당·2분당), interactive는 3초 넘게 기다려야 하면 즉시 rate_limited(예상 대기 초).
+- [ ] **401/403 재시도 없음**(호출 1회 단언) → background `PROVIDER_AUTH_FAILED`, interactive `auth`.
+- [ ] 5xx·타임아웃: background 지수 백오프 1·2·4초 3회 후 `PROVIDER_UNAVAILABLE`, interactive 1회 재시도 후 `unavailable`.
+- [ ] 404: 계정 조회 → `not_found`(ACCOUNT_NOT_FOUND), 리그 빈 배열은 오류 아님 → UNRANKED.
+- [ ] 스팀은 버킷 없이 429·5xx 규칙만.
 
-### C4. 로그인·환영 화면 (목업 Login)
-- [ ] `/login`: `LoginPageQuery`로 파싱(잘못된 error 값 무시), `lib/errors.ts`에 **ErrorCode 15개 전부** 문구 매핑(`Record<ErrorCode,string>`이면 컴파일러가 보장). 「롤생네컷이 받는 정보」 4항목 문구 목업과 일치. 개발 로그인 폼은 `NEXT_PUBLIC_AUTH_DEV_LOGIN==='true'`일 때만.
-- [ ] `/welcome`: refresh로 user 획득, 아바타·`discord_username`, 「서버 멤버 확인됨」은 `discord_guild_verified_at` 있을 때만, 닉네임 기본값 `user.nickname`, 「2–12자」 안내, 「시작하기」→ PATCH /me, 409 NICKNAME_TAKEN·400 표시, 성공 시 redirect(SafeRedirectPath 실패 → `/`). 「뒤로」→ logout → `/login`.
-- [ ] 클라이언트 측 검증이 shared `Nickname` 사용(정규식 복제 없음).
-- [ ] `needs_nickname_confirmation=true` 사용자가 다른 화면 진입 시 `/welcome?redirect=` 이동, `/welcome`에서 무한 리다이렉트 없음.
-- [ ] 오픈 리다이렉트: `/welcome?redirect=//evil.com`, `/\evil.com`, `https://evil.com` → `/`로.
+### C4. Steam OpenID 검증 (`verifyOpenIdAssertion`, 계약 5-2 4·5단계)
+- [ ] ns·op_endpoint(`STEAM_OPENID_ENDPOINT`)·return_to(정확히 일치)·claimed_id(`STEAM_CLAIMED_ID_PATTERN`)·identity=claimed_id 검사, 하나라도 다르면 `{ok:false}`(외부 호출 전).
+- [ ] check_authentication: 받은 openid.* 그대로 + mode만 교체, form POST, 본문에 `is_valid:true` **줄**이 있을 때만 ok(`is_valid:false`, 부분 일치 `xis_valid:true` 거절). 네트워크·5xx → ExternalApiError.
 
-### C5. 테마 (9-1 ~ 9-4)
-- [ ] `src/styles/tokens.css` 변수 이름·값이 목업 `tokens.css`와 동일(스크립트로 변수→값 맵 diff). 선택자 `:root, [data-theme="dark"]` / `[data-theme="light"]`, color-scheme 포함.
-- [ ] `globals.css` `@theme inline`에 tokens.css 색 토큰 **전부** `--color-{이름}` 노출 + `--shadow-lift`, `--shadow-seg`.
-- [ ] 컴포넌트에 hex/rgb 직접 사용 없음: `grep -rnE "#[0-9A-Fa-f]{3,8}\b|rgb\(" apps/web/src --include=*.tsx`. shadcn 변수(`--background`, `--primary`) 미정의, `bg-background`/`text-muted-foreground` 등 미치환 클래스 없음.
-- [ ] `localStorage['gcd-theme']` ∈ light|dark|system, 기본 dark, system → matchMedia. `<head>` 인라인 스크립트로 첫 페인트 전 적용 + `<html suppressHydrationWarning>`. `storage`·matchMedia change 구독.
-- [ ] 사이드바 2버튼 세그먼트 `aria-pressed`, 모바일 아이콘 토글 레이블 「라이트 모드로 전환」/「다크 모드로 전환」, 설정 3개 라디오 카드 문구(계약 9-4).
+### C5. 큐·작업자 (계약 6-1~6-3)
+- [ ] `InProcessSyncQueue`: 우선순위 순서, 제공자별 동시 1, 같은 키 중복 제거(테스트). BullMQ: 큐 `external-sync`, jobId `{kind}:{행 id}`, manual/link `manual:{행 id}` — 작성만, 실행 미확인 표기.
+- [ ] `REDIS_URL` 빈 값 → in-process 선택, 연결 시도 없음.
+- [ ] 작업자 잠금 SQL: `WHERE id IN (…) AND (sync_state<>'running' OR sync_state_at < now()-10분)`, 영향 0행이면 건너뜀. lol·tft 두 행 함께 변경, `sync_state_at=now`.
+- [ ] **상태 전이 전수 검색**: `grep -rn "syncState\|sync_state" apps/api/src` → 모든 갱신이 `GAME_ACCOUNT_SYNC_STATE_TRANSITIONS`에 있는 전이인지 표로 정리(아래 계약 불일치 P1 참고 — 멈춘 작업 정리의 running→queued).
+- [ ] 결과 저장: 티어 `toRankValue`+`isSameRank`일 때만 새 snapshot(D55), 언랭도 저장, `last_synced_at` 성공마다 갱신. 실패 시 `last_sync_error/_at` 두 행 기록, **기존 데이터 삭제 없음**(스팀 비공개 시 steam_playtime 유지). 전부 성공 시 error null.
+- [ ] `riot-full`: display_name 갱신 → lol 티어 → tft 티어 → **대표일 때만** 전적. `riot-tier`: 부계정 포함, 계약 6-2 SQL 순서(활동 → is_primary DESC → last_synced_at NULLS FIRST), 55분 조건.
+- [ ] `riot-matches`: 없는 매치만 상세 조회, played_at=gameEndTimestamp(없으면 Start), placement null, 계정당 최신 20개만 유지, `summary`가 shared `LolMatchSummary.parse` 통과하는 형태로 저장, `matches_synced_at=now`.
+- [ ] 계정이 사라진 경우 작업은 아무 것도 하지 않고 종료(해제 경합).
+- [ ] cron: `0 * * * *`·`0 5 * * *`·5분 정리, `timeZone: 'Asia/Seoul'`, `pg_try_advisory_lock` 획득 시에만 실행·해제, `SYNC_JOBS_ENABLED=false`면 등록 안 함(테스트).
+- [ ] 로그에 PUUID·스팀 ID 원문 대신 game_account id(`grep -rn "puuid" apps/api/src | grep -i "log"`).
 
-### C6. 레이아웃 (9-5, 목업 Main/MobileHome)
-- [ ] 데스크톱 `md` 이상 사이드바: 로고 「롤생네컷 GAME CLUB」, MENU 홈·내전·랭킹·내 프로필·설정, 테마 토글, 사용자 카드(아바타·닉네임, 로그아웃 메뉴). STAFF 메뉴는 `role==='admin'`일 때만.
-- [ ] 모바일 `md` 미만: 헤더(로고+테마 토글) + 하단 탭 **홈·내전·랭킹·프로필·설정**(D19, 목업 MobileHome 확인함).
-- [ ] 데이터 없는 부분(ELO·순위·배지 숫자)은 숨김/자리 — 목업의 가짜 숫자 하드코딩 금지.
-- [ ] 필수 상태(skill `nextjs-dashboard-ui` 4절): 로딩·오류·빈 상태. 자리 페이지는 「준비 중」.
-- [ ] 가능하면 `next build` 후 정적 렌더 확인; 실제 브라우저 렌더 확인은 도구 한계로 **미실행** 표시.
-
-### C7. 외부 호출
-- [ ] `apps/web`에 `discord.com/api` 직접 호출 없음(authorize 이동은 API가 담당).
+### C6. fixture (계약 13절 integration 5)
+- [ ] 정상, 언랭, MASTER(rank 'I' 무시), 429(+Retry-After), 401, 5xx, 스팀 비공개 `{"response":{}}`, 스팀 0개 공개, OpenID `is_valid:false` 전부 존재.
+- [ ] **실제 키·PUUID·스팀 ID 없음**: PUUID는 78자 base64url 형태 실값 대신 명백한 가짜(`fake-puuid-…` 등)인지, 스팀 ID는 `7656119…` 형식이라도 공개 실계정이 아닌 가짜로 표기됐는지(주석/파일명), `RGAPI-` 접두 실키 없음. 보고서에 fixture 파일별 확인 표.
 
 ---
 
-## D. 교차 대조 (`s0` 대상)
+## D. backend (`backend` 대상, 계약 2·4·5·7·8절, 13절 backend)
 
-| 계약 엔드포인트 | 컨트롤러(파일:줄) | 웹 훅/호출부 | 비고 |
+### D1. 공통
+- [ ] `config/env.ts`: 계약 11절 변수 전부 zod(양의 정수, 라우팅 소문자, `RIOT_ACCOUNTS_MAX` ≥1), 키 없이 기동. `.env.example` 키 집합 ↔ env 스키마 키 집합 1:1.
+- [ ] `AppError.retryAfterSec` → error filter가 `Retry-After` **헤더**(본문은 `{code,message}`만). 적용 코드: SYNC_LIMIT_EXCEEDED, GAME_PROVIDER_RATE_LIMITED, RATE_LIMITED(소유 확인 시작 10회·확인 5초).
+- [ ] 오류 코드 28개 = `ErrorCode` = `ERROR_HTTP_STATUS` = `DEFAULT_ERROR_MESSAGE` 키(Record 타입이라 컴파일러 보장 확인).
+- [ ] 컨트롤러 경로 = `ApiPath.*` 상수, `:id`는 `IdParam` zod 파이프(UUID 아님 → 400 VALIDATION_FAILED).
+- [ ] **직렬화**: 모든 200/202 반환이 `serialize(Shared스키마, …)` 경유(grep으로 미경유 return 목록화). `GameAccountView` 매퍼에서 `last_sync_error`가 `GameAccountSyncError` 밖이면 INTERNAL_ERROR.
+
+### D2. 엔드포인트 9개 (계약 4절)
+
+| 메서드 | 경로 | 상태 | 확인 |
 | --- | --- | --- | --- |
-| GET /auth/discord | | 로그인 버튼 `location.href` | 브라우저 이동 |
-| GET /auth/discord/callback | | (없음 — 디스코드가 호출) | 정상 |
-| POST /auth/refresh | | useRefreshToken / 부트스트랩 | |
-| POST /auth/logout | | useLogout | |
-| POST /auth/dev-login | | useDevLogin | 플래그 |
-| GET /me | | useMe | |
-| PATCH /me | | useUpdateMe | |
+| GET | /me/game-accounts | 200 | 정렬(대표 lol,tft → 부계정 verified_at·id 순 각 lol,tft → 스팀), riot_verification(만료 pending은 status=expired로), sync_quota |
+| POST | /me/game-accounts | 200 | riot/steam 분기, 오류 판정 순서 = 4절 표 왼쪽부터(5-1 단계 순서) |
+| POST | /me/game-accounts/riot-verifications/:id/confirm | 200 | 5-1 확인 1–6단계 |
+| DELETE | /me/game-accounts/riot-verifications/:id | 204 | 남의 것 NOT_FOUND, 끝난 상태 204 |
+| GET | /me/game-accounts/steam/callback | 302 | **JwtGuard 없음**(클래스 수준 가드가 걸리지 않는지 별도 확인) |
+| DELETE | /me/game-accounts/:id | 204 | 5-3 |
+| POST | /me/game-accounts/:id/primary | 200 | D56 |
+| POST | /me/game-accounts/:id/sync | **202** | 7절 |
+| GET | /users/:id/profile | 200 | 8절 |
 
-- [ ] 오류 코드 3중 대조: 계약 3절 표(15개) ↔ `ErrorCode` ↔ `ERROR_HTTP_STATUS` ↔ `lib/errors.ts` ↔ API에서 실제 throw하는 코드(grep).
-- [ ] 쿠키 이름: API set ↔ web middleware 모두 `AUTH_COOKIE.refresh` 상수 사용.
-- [ ] SafeRedirectPath: API(start)·web(login, welcome) 모두 shared 스키마 사용.
-- [ ] 콜백 리다이렉트 목적지(`/welcome?redirect=`, `/login?error=&redirect=`) ↔ 웹이 실제 읽는 쿼리 이름.
-- [ ] 상태 전이: S0에 `status:` 갱신 코드 없음(grep `status:` in apps/api/src). shared 맵 ↔ 계약 7절 일치(현재 일치 확인함).
-- [ ] 명세 대조: 문서 2장 「가입·로그인, 닉네임 설정」(P0) 구현 여부, 8장 S0 해당 화면 존재. 누락은 「누락」으로 기록.
+- [ ] 라우트 충돌 없음: `riot-verifications`, `steam` 고정 세그먼트가 `:id` 라우트보다 먼저 매칭(예: `DELETE /me/game-accounts/riot-verifications/{uuid}`가 해제 핸들러로 가지 않음 — e2e로 확인).
+- [ ] 계약 외 엔드포인트 없음, S6 `/admin/riot-verifications/:id/approve` 미구현.
+
+### D3. 라이엇 소유 확인 (5-1)
+- [ ] 시작 단계 순서: 파싱 → 키 → 라이엇 ID 수(lol 행 수) ≥ `RIOT_ACCOUNTS_MAX` → 오늘 KST 시작 10회(RATE_LIMITED + Retry-After=다음 KST 자정) → Account-V1(404 RIOT_ID_NOT_FOUND) → PUUID lol 행 존재(본인·타인 모두 ALREADY_LINKED) → Summoner(404 RIOT_SUMMONER_NOT_FOUND) → `pickVerificationIcon` → 트랜잭션(기존 pending→cancelled + insert, expires_at=now+TTL).
+- [ ] 확인: verified 재호출 멱등 200, cancelled/expired → 410, pending+만료 → expired로 바꾸고 410, 5초 이내 → RATE_LIMITED(남은 초), 불일치 → 409 OWNERSHIP_CHECK_FAILED + **pending 유지**, 성공 → advisory lock 트랜잭션에서 한도·중복 재검사 후 lol·tft insert(`is_primary` = 기존 라이엇 행 없음), verification → verified, 커밋 **후** `riot-full`(reason link) enqueue, 차감 없음.
+- [ ] 상태 갱신은 `canTransition(RIOT_LINK_VERIFICATION_TRANSITIONS, …)` + 조건부 update `WHERE id AND status='pending'`(grep 전수).
+
+### D4. 대표 계정 (D56) — 계약 13절 qa
+- [ ] **갱신 순서**: `POST …/:id/primary`가 한 트랜잭션(사용자 advisory lock `hashtext('game-accounts:'||user_id)`)에서 **기존 대표 lol·tft → false를 먼저**, 그 다음 대상 lol·tft → true. 코드 줄 순서 확인 + 단일 `updateMany`로 true/false 동시 처리하지 않는지. 순서 뒤바뀜 = **blocker**(부분 고유 인덱스 위반으로 기능 불가).
+- [ ] 이미 대표·스팀 행 → 변경 없이 200. 남의 계정 id → NOT_FOUND.
+- [ ] 첫 라이엇 연동 대표, 두 번째 부계정. 대표 해제 시 같은 트랜잭션에서 가장 오래된(verified_at, 같으면 lol 행 id) 라이엇 ID 승격 — 삭제가 승격보다 먼저(순서 반대면 인덱스 위반).
+- [ ] 스팀 insert `is_primary=true`. 스팀 동시 insert의 P2002는 인덱스 이름(`game_accounts_one_primary_per_user_game`)이면 LIMIT_REACHED, `(game_id, external_id)`면 ALREADY_LINKED로 구분(P2 참고).
+- [ ] DB 테스트 「부분 고유 인덱스가 대표 2개 거부」 작성 여부(미실행).
+
+### D5. 스팀 연동 (5-2) — 보안 경계
+- [ ] 시작: 키 → 스팀 행 존재(LIMIT_REACHED) → state 32바이트 → `gcd_steam` 서명 쿠키 `{state,user_id,iat}`, HttpOnly, SameSite=Lax, **Path=/api/v1/me/game-accounts/steam**, Max-Age=600, prod Secure. S0 `gcd_oauth` 서명 유틸 재사용.
+- [ ] authorize_url 파라미터 6개·URL 인코딩, return_to=`{WEB_ORIGIN}/api/v1/me/game-accounts/steam/callback?state=…`, realm=`{WEB_ORIGIN}`.
+- [ ] 콜백 분기 테스트 존재·결과: 쿠키 즉시 삭제(같은 Path, 성공·실패 모두) / cancel → STEAM_LINK_CANCELLED / mode≠id_res → STEAM_OPENID_INVALID / 쿠키 없음·서명 변조·600초 초과·state 불일치(상수 시간, 길이 달라도 예외 없음) → STEAM_LINK_STATE_INVALID / **return_to 변조, claimed_id 변조(다른 도메인·identity 불일치), op_endpoint 변조**, is_valid false → STEAM_OPENID_INVALID / 사용자 없음 → UNAUTHENTICATED / 성공 → `302 /settings?steam=linked` + steam-playtime(link) enqueue.
+- [ ] 모든 실패 302 `{WEB_ORIGIN}/settings?steam_error=X`이고 X ∈ `SteamLinkErrorCode`(10개 밖 값 금지), 예상 못한 예외 → INTERNAL_ERROR(500 JSON 아님).
+- [ ] personaname 실패 시 「스팀 사용자」.
+
+### D6. 해제 (5-3)
+- [ ] 라이엇 행(lol·tft 어느 id든) → 같은 external_id 두 행 삭제, 스팀 → 1행. `game_account_sync_requests`는 SetNull로 남아 **해제·재연동 후에도 오늘 횟수 그대로**(테스트).
+
+### D7. 수동 새로고침 (7절)
+- [ ] 순서: NOT_FOUND → NOT_CONFIGURED → `pg_advisory_xact_lock(hashtext('sync-quota:'||user_id))` 트랜잭션 → 진행 중(10분 이내)이면 미차감 202 `quota_consumed=false` → used ≥ `SYNC_DAILY_LIMIT` → 429 SYNC_LIMIT_EXCEEDED + `Retry-After`=`ceil((kstDayWindow(now).end-now)/1000)` → insert + queued → 커밋 후 enqueue → 202.
+- [ ] used 집계 기준 `created_at ≥ kstDayWindow(now).start`(core 사용, `new Date().setHours(0)` 같은 로컬 TZ 계산 금지), 라이엇·스팀 합산, 라이엇 1회 = lol·tft.
+- [ ] **KST 경계 테스트**: KST 23:59(UTC 14:59) 5회 사용 → 429, KST 00:00(UTC 15:00) → 다시 가능. `resets_at` `+09:00` 표기.
+- [ ] 동시 요청 5회 경계(`Promise.all` 6건 → 5 성공 1 429) DB 테스트 작성 여부(미실행).
+- [ ] 연동 직후·프로필 조회·cron은 sync_requests insert 없음(grep).
+
+### D8. 프로필 (8절)
+- [ ] 로그인 멤버 누구나, 없는 사용자 NOT_FOUND. `is_self`, `sync_quota`는 본인만(타인 null).
+- [ ] tiers = **대표** lol·tft 순서 2개(부계정 티어 미사용), rank null/UNRANKED 구분, synced_at = last_synced_at.
+- [ ] main_position = core `computeMainPosition`(대표 lol 최신 20), recent_matches = 대표 lol 최신 10, summary 파싱 실패 행은 건너뜀, 라이엇 없음 → null.
+- [ ] riot-matches enqueue 조건(6-2 표: 대표 lol, matches_synced_at null/6h 초과(core `isMatchesCacheStale`), idle, 30분 내 실패 없음), 차감 없음, refresh_queued 규칙.
+- [ ] `scrim: null`, `badges: null` 고정. `ProfileUser`에 email·discord_id·discord_username 없음, `discord_linked` = discord_id 있고 `dev-` 아님.
+
+### D9. 외부 식별자 비노출 (D38) — 계약 8절·13절 qa
+- [ ] 응답 경로 전수: 9개 핸들러의 반환값이 shared 스키마 parse(=모르는 키 제거)를 거치는지. `res.json(`, `@Res()` 직접 응답, `serialize` 없는 `return` grep.
+- [ ] e2e 테스트가 응답 JSON 문자열에 fixture PUUID·스팀 ID·매치 ID·email·discord_id가 **포함되지 않음**을 단언(본인·타인 프로필, GET /me/game-accounts, confirm, sync, primary).
+- [ ] 302 Location(steam 콜백)·오류 message·로그에도 미포함.
+
+### D10. 보안·권한 매트릭스
+
+| 시나리오 | 기대 |
+| --- | --- |
+| 비로그인으로 S1 JWT 엔드포인트 8개 | 401 UNAUTHENTICATED |
+| 남의 game_account id로 DELETE·sync·primary | 404 NOT_FOUND(존재 숨김) |
+| 남의 verification id로 confirm·DELETE | 404 NOT_FOUND |
+| 다른 멤버가 연동한 PUUID·스팀 ID | 409 GAME_ACCOUNT_ALREADY_LINKED(D45, 이전 없음) |
+| 라이엇 4번째 / 스팀 2번째 | 409 GAME_ACCOUNT_LIMIT_REACHED |
+| 해제 → 재연동 → sync | 횟수 회복 없음 |
+| 스팀 콜백 변조(return_to·claimed_id·op_endpoint·state) | 302 steam_error, 행 생성 없음 |
 
 ---
 
-## E. 보안 경계 (계약 11절 qa)
+## E. web (`web` 대상, 계약 12절)
 
-| # | 시나리오 | 기대 |
-| --- | --- | --- |
-| E1 | `GET /auth/discord?redirect=//evil.com` (및 `/\evil.com`, `%2F%2Fevil.com`, `/%09/evil.com`) | redirect 무시 → `/` |
-| E2 | refresh/logout/dev-login에 `Origin: https://evil.com` | 403 FORBIDDEN |
-| E3 | NODE_ENV=production + AUTH_DEV_LOGIN=true | 404 NOT_FOUND |
-| E4 | DB·로그에 리프레시 원문 | 없음(해시만) |
-| E5 | 쿠키 속성 | 계약 5-2·5-5와 일치 |
-| E6 | 오류 응답에 스택·내부 메시지 | 없음 |
-| E7 | 비밀값 커밋 | `.env` 미추적(`.gitignore`), 키 없음 |
+### E1. 훅·호출
+- [ ] 훅 8개 존재(`useMyGameAccounts`, `useSetPrimaryGameAccount`, `useLinkGameAccount`, `useConfirmRiotVerification`, `useCancelRiotVerification`, `useUnlinkGameAccount`, `useSyncGameAccount`, `useUserProfile`), 경로는 `API_PREFIX + fillPath(ApiPath.x, {id})`, 메서드 = D2 표.
+- [ ] 응답 shared 스키마 `.parse`(제네릭 단언만 있는 곳 grep), 202·204 처리(204는 본문 파싱 안 함).
+- [ ] `Retry-After` 헤더 읽어 SYNC_LIMIT_EXCEEDED·RATE_LIMITED 안내에 사용(쓰면 확인, 안 쓰면 minor).
+- [ ] 외부 API 직접 호출 없음: `grep -rnE "riotgames\.com|api\.steampowered|steamcommunity\.com/openid|ddragon" apps/web/src`(Data Dragon 이미지 URL은 서버가 준 값만 사용, `<img src>`로 직접 조합 금지). 스팀 이동은 서버가 준 `authorize_url`로 `location.href`.
+- [ ] snake_case 그대로 사용(camelCase 변환 없음).
+- [ ] mutation 성공 시 `myGameAccounts`·`userProfile` 쿼리 무효화.
+
+### E2. 설정 화면 (목업 Settings)
+- [ ] 섹션 순서: 화면 테마 → 게임 계정 연동 → 디스코드 계정. **알림 섹션 없음**, 디스코드 「연동 코드 발급」 UI 없음(D23).
+- [ ] 라이엇 카드: provider+display_name으로 묶어 ID당 1장, 대표 먼저 + 「대표」 배지, 「라이엇 ID · 롤, 롤체 공통 · HH:mm 동기화」, 롤·롤체 티어 요약(rank), 「지금 갱신 · 오늘 N회 남음」(lol 행 id, remaining 0 비활성), 부계정 「대표로 지정」, 「연동 해제」 확인 대화상자(대표면 「다음 계정이 대표가 돼요」).
+- [ ] 「+ 부계정 추가」: 라이엇 ID 수 < 한도이고 진행 중 확인 없을 때만, 라이엇 0개면 「라이엇 ID 연동」.
+- [ ] 소유 확인 단계: 입력(`RiotIdInput` 재사용, 정규식 복제 금지) → 아이콘 이미지(null이면 `#번호`), 「게임 클라이언트에서 프로필 아이콘을 #N으로 바꿔 주세요」, `expires_at` 카운트다운 mm:ss(서버 시각 기준, 0이면 「다시 시작」), 「바꿨어요, 확인」, 「취소」, OWNERSHIP_CHECK_FAILED 인라인.
+- [ ] 스팀 미연동: 「Steam으로 로그인」 버튼 1개(스팀 ID 입력란 없음). 연동됨: display_name(**스팀 ID 숫자 미표시** — 목업의 `76561198000000000` 자리), 「보유 게임 N개」, STEAM_PROFILE_PRIVATE면 「게임 정보 비공개」 배지 + 목업 문구 + 「다시 시도 · 오늘 N회 남음」 + 「마지막 성공 값(MM.DD)」.
+- [ ] `SettingsPageQuery` 파싱(모르는 steam_error 무시) → 토스트 → `router.replace('/settings')`.
+- [ ] 디스코드 섹션: avatar_url, discord_username, guild verified 표시만.
+- [ ] 오류 코드별 문구: `ERROR_MESSAGES`(Record<AppErrorCode>) S1 13개, `GameAccountSyncError` 7개 문구 매핑(계약 2절 화면 열) — Record 타입 여부.
+
+### E3. 프로필 화면 (목업 Profile)
+- [ ] 헤더: main_position 1순위(「TOP LANER」 등), 「YYYY.MM 가입」, role. ELO 순위 미표시.
+- [ ] 연동 칩: 라이엇 display_name(부계정 포함), 「스팀 연동됨」, 디스코드 연동/미연동. 외부 ID 표시 없음.
+- [ ] 갱신 버튼: is_self일 때만, 대표 lol 행 → 없으면 스팀 행 id.
+- [ ] 카드 4개: 롤 솔로·롤체(tiers; rank null 「동기화 대기 중」, UNRANKED 구분, tiers [] 빈 상태), 주 포지션(「솔로 랭크 최근 N경기 기준 탑 71%」), 내전 레이팅 빈 상태.
+- [ ] RATING HISTORY·최근 내전·BADGES 빈 상태(목업 가짜 숫자 1421·+21 하드코딩 없음 — grep).
+- [ ] 최근 솔로 랭크: 「라이엇 API · HH:mm」= synced_at, refresh_queued면 10초 뒤 1회 재조회, items [] 빈 상태, recent_matches null 처리.
+- [ ] 없는 사용자 404 화면, 로딩·오류 상태.
+
+### E4. 폴링·시각
+- [ ] `sync.state ≠ idle` 계정이 있으면 2초 간격 최대 60초(React Query `refetchInterval` 조건·종료 조건 확인, 무한 폴링 없음).
+- [ ] 시각 표시 HH:mm·MM.DD·YYYY.MM이 KST 기준(`timeZone:'Asia/Seoul'` 또는 동등) — 브라우저 TZ 의존 여부 기록.
+- [ ] 티어 색: 새 hex 없음(`grep -rnE "#[0-9A-Fa-f]{3,8}\b|rgb\(" apps/web/src --include=*.tsx`), 매핑표 `apps/web/src/lib/` 한 곳(D53).
+- [ ] `lib/routes.ts`에 `/members/{id}`, `/settings` 쿼리 헬퍼, 모든 href/router.push가 app/ 라우트와 일치.
+- [ ] 목 백엔드 S1 엔드포인트 9개(스팀 authorize_url → `/settings?steam=linked`), 목 응답이 shared 스키마 parse 통과(테스트).
+- [ ] `corepack pnpm --filter web build` 성공, 브라우저 렌더(데스크톱·모바일 × 라이트·다크)는 「미실행」.
 
 ---
 
-## 계획 단계에서 이미 발견한 계약 내부 불일치 (구현 결함 아님, 리더 참고)
+## F. 교차 대조 (`s1` 대상)
+
+### F1. 엔드포인트 일대일
+
+| 계약 4절 | ApiPath | 컨트롤러(파일:줄) | 웹 훅 | 목 백엔드 | 비고 |
+| --- | --- | --- | --- | --- | --- |
+| GET /me/game-accounts | myGameAccounts | | useMyGameAccounts | | |
+| POST /me/game-accounts | myGameAccounts | | useLinkGameAccount | | |
+| POST …/riot-verifications/:id/confirm | riotVerificationConfirm | | useConfirmRiotVerification | | |
+| DELETE …/riot-verifications/:id | riotVerification | | useCancelRiotVerification | | |
+| GET …/steam/callback | steamLinkCallback | | (없음 — 스팀이 브라우저로 호출) | | 정상 |
+| DELETE /me/game-accounts/:id | myGameAccount | | useUnlinkGameAccount | | |
+| POST …/:id/primary | myGameAccountPrimary | | useSetPrimaryGameAccount | | |
+| POST …/:id/sync | myGameAccountSync | | useSyncGameAccount | | 202 |
+| GET /users/:id/profile | userProfile | | useUserProfile | | |
+
+### F2. 코드·enum·전이 대조
+- [ ] 오류 코드 28개: 계약 2절 표 + S0 15 ↔ `ErrorCode` ↔ `ERROR_HTTP_STATUS` ↔ `DEFAULT_ERROR_MESSAGE` ↔ 웹 `ERROR_MESSAGES` ↔ API에서 실제 throw하는 코드(grep). 계약에 없는 throw 코드 없음.
+- [ ] `SteamLinkErrorCode` 10개 ↔ 콜백이 실제 리다이렉트하는 코드 ↔ 웹 문구.
+- [ ] `GameAccountSyncError` 7개 ↔ 작업자가 기록하는 값(grep) ↔ 웹 문구.
+- [ ] Prisma enum 2개(`game_account_sync_state`, `riot_link_verification_status`) 값 = shared enum 값.
+- [ ] 전이 맵 2개 ↔ 상태 갱신 코드 전수(`status:`·`syncState:`·raw SQL `SET sync_state`) — 맵 밖 전이 없음, 맵 전이 중 미구현 없음(queued→idle 「작업 버림」 경로 포함).
+- [ ] `recent_matches.summary` 생산자(integration) ↔ 소비자(backend) 모두 `LolMatchSummary` 사용.
+- [ ] 쿠키 상수 `STEAM_LINK_COOKIE`·`STEAM_LINK_STATE_TTL_SEC`, `SYNC_DAILY_LIMIT_DEFAULT`, `RIOT_ACCOUNTS_MAX_DEFAULT`가 env 기본값과 일치.
+- [ ] core 함수 사용처: backend·integration이 KST 계산·주 포지션·랭크 변환·아이콘 선택을 재구현하지 않고 `packages/core` 호출(grep).
+
+### F3. 명세 대조
+- [ ] 문서 2장 「게임 계정 연동」(P0): 라이엇 ID·스팀 등록 + 소유 확인 — 구현 여부. 「내 프로필」(P0): 게임별 티어·주 포지션·최근 전적 구현, 내전 승률·뱃지는 S3/P2 빈 자리(누락 아님, 계약 1절 제외).
+- [ ] 문서 5장 game_accounts 컬럼(user_id, game_id, external_id, display_name, verified, last_synced_at), rank_snapshots, steam_playtime 컬럼 존재. S0 필수(`users.discord_id`, `activity_logs.idempotency_key` UNIQUE, `api_keys.key_hash`)·인덱스 3개 회귀 없음.
+- [ ] 문서 6장 `POST, DELETE /me/game-accounts`, `POST /me/game-accounts/{id}/sync`, `GET /users/{id}/profile` 구현. 차이(DELETE `:id`, 추가 경로 4개)는 계약 D32·D35·D56으로 기록 → 「명세 갱신 필요」 목록.
+- [ ] 문서 8장 `/members/[id]`(연동 계정, 게임별 티어, 최근 전적; 레이팅 그래프·뱃지 빈 상태), `/settings`(게임 계정 연동; 디스코드 연동 코드·알림은 D23·D48로 제외 → 「명세 갱신 필요」).
+- [ ] 문서 9장: 서버만 외부 호출, 티어 1시간·활동 우선, 전적 6시간 조회 시 큐, 스팀 하루 1회 새벽, 수동 하루 5회 API 검사, 실패 시 마지막 성공값 + 갱신 시각, 429 대기 후 재시도, 라이엇 소유 확인(아이콘), 스팀 비공개 안내.
+
+---
+
+## 계획 단계에서 발견한 계약 내부 불일치 (구현 결함 아님, 리더 참고)
 
 | # | 심각도 | 위치 | 내용 |
 | --- | --- | --- | --- |
-| P1 | minor | `packages/shared/src/auth.ts:10` vs 계약 5-5(`_workspace/01_architect_contract.md:191`) | `AUTH_COOKIE` 주석은 "둘 다 … Path=/"라고 하나 계약은 `gcd_oauth` Path=`/api/v1/auth`. 백엔드가 주석을 따르면 계약과 어긋남. 검증은 계약 본문(Path=/api/v1/auth) 기준으로 하되 둘 중 하나를 고쳐야 함 |
-| P2 | minor | `packages/shared/src/common/errors.ts:20` 주석 | DISCORD_NOT_GUILD_MEMBER 주석에 `pending=true` 경우가 빠짐(계약 3절엔 포함). 동작 영향 없음 |
+| P1 | major | 계약 6-1·6-2 「멈춘 작업 정리」(`_workspace/01_architect_contract.md:226`), 6-1 작업자 잠금(214) vs `packages/shared/src/constants/transitions.ts:84-88` | 멈춘 작업 정리는 `sync_state IN (queued, running)` 행을 `queued`로 되돌리는데 맵에 `running → queued`가 없다(`queued → queued` 재설정도 자기 전이). 작업자 잠금 SQL은 10분 지난 `running`을 다시 `running`으로 가져가는데 `running → running`도 없다. 구현자는 맵을 어기거나 계약 흐름을 바꿔야 한다. 맵에 `running → queued`(및 정리용 자기 전이 허용 규칙)를 추가할지, 정리를 `running → idle → queued` 두 단계로 할지 결정 필요 |
+| P2 | minor | 계약 5-2 8단계(190) 「스팀 1개 제한은 DB 제약이 아니라 잠금+검사」 vs 3절 부분 고유 인덱스(87)·D56 「스팀 행은 항상 is_primary=true」 | 스팀 행이 항상 대표라 부분 고유 인덱스 `(user_id, game_id) WHERE is_primary`가 실제로 스팀 1개를 DB에서도 강제한다. 동작상 해는 없으나 P2002가 이 인덱스에서 나면 LIMIT_REACHED, `(game_id, external_id)`에서 나면 ALREADY_LINKED로 구분해야 한다는 점이 계약에 없다 |
+| P3 | minor | `packages/shared/src/common/errors.ts:32-33`, `apps/api/src/common/app-error.ts`(GAME_ACCOUNT_LIMIT_REACHED·ALREADY_LINKED 문구), `apps/web/src/lib/errors.ts`(같은 2개) vs 계약 2절(42-43)·D37 | Q1 반영 전 문구가 남아 있다: LIMIT_REACHED 「이미 같은 제공자 계정을 연동함 — 해제 후 다시 연동」(실제는 라이엇 3개 한도·스팀 1개), ALREADY_LINKED 「다른 멤버에게 연동됨」(실제는 본인이 같은 라이엇 ID를 다시 추가한 경우 포함 — 본인에게 「다른 멤버」 문구가 나감). web은 frontend가 다듬기로 돼 있으나 shared 주석·API 기본 문구는 담당이 정해져 있지 않다 |
+| P4 | minor | 계약 12절 표(410) 「라이엇 ID 수 < 3」 vs 11절 `RIOT_ACCOUNTS_MAX`(env, 서버 전용) | 웹이 한도를 알 방법이 없다(`GetMyGameAccountsResponse`에 한도 필드 없음). env를 바꾸면 웹의 「부계정 추가」 노출 조건이 서버와 어긋난다. 응답에 `riot_accounts_max`를 넣거나 웹은 `RIOT_ACCOUNTS_MAX_DEFAULT` 상수 사용으로 명시 필요 |
+| P5 | minor | 계약 12절(412) 「2단계(소유 확인 2/2 단계)」 vs 목업 Settings 「소유 확인 1 / 2 단계」(아이콘 변경 화면에 표시)·D58 「소유 확인 1/2 단계를 그대로 살린다」 | 아이콘 변경 단계의 표기가 1/2인지 2/2인지 계약 안에서 엇갈린다. QA는 어느 쪽을 기준으로 볼지 리더 결정 필요(결정 전엔 표기 차이를 minor로만 기록) |
+| P6 | minor | 계약 4절(127) 「lol·tft 2행이 같은 … sync로 나온다」 vs `game-accounts.ts:66` `matches_synced_at` 「라이엇 lol 행만, 그 외 null」 | tft 행의 `sync.matches_synced_at`은 null이라 두 행의 sync가 완전히 같지 않다. 웹이 카드 묶을 때 tft 행 값을 쓰면 전적 시각이 비게 됨 → lol 행 기준이라고 명시 필요 |
+| P7 | minor | 계약 변경 이력(11) 「환경 변수 11개」, 11절 제목(381) 「12개」, 11절 표 실제 13행(신규 10 + 기존 RIOT_API_KEY·STEAM_API_KEY·REDIS_URL), 13절 backend 「11절 변수」 | 개수 표기만 엇갈림. QA는 표 13행 = `.env.example`(현재 13개 모두 존재 확인) = env 스키마로 대조 |
+
+참고(불일치 아님, 검증 시 주의):
+- 마이그레이션은 현재 스키마 diff와 일치하고 부분 고유 인덱스가 수동 블록에 있다(기준선 확인). 이후 대상 검증 때마다 A7·A8 재실행.
+- `contract.s1.test.ts:127`과 목업이 `76561198000000000`을 쓴다(음성 테스트 입력). 실존 계정일 수 있는 형식이므로 integration fixture는 명백한 가짜 표기 여부를 C6에서 따로 본다.
+- 5-2 콜백은 `openid.mode` 검사(2단계)가 쿠키 검사(3단계)보다 앞서 쿠키 없는 cancel도 STEAM_LINK_CANCELLED가 된다 — 계약대로면 정상, 테스트 기대값도 이 순서로 본다.
 
 ## 미실행·제약 고정 항목
 
-- DB 필요: 마이그레이션 적용, 시드, 리프레시 회전·동시성·NICKNAME_TAKEN 통합 테스트 → 「미실행」(Docker 없음)
-- 실제 디스코드 OAuth 왕복 → 「키 필요」
-- 브라우저 시각 확인(라이트/다크 × 데스크톱/모바일) → 도구 한계로 「미실행」, 코드·빌드 산출물 정적 검사로 대체
+- DB 필요: 마이그레이션 적용, 부분 고유 인덱스 실제 거부, 동시 sync 5회 경계, P2002 경합, 작업자 DB 기록, advisory lock 동작 → 「미실행」(테스트 코드 존재·내용 정적 확인)
+- Redis 필요: BullMQ 큐·일시정지 → 「미실행」
+- 키 필요: 라이엇·스팀 실제 호출, Steam OpenID 왕복, Data Dragon 실제 버전 조회(네트워크)
+- 브라우저: 화면 시각 확인 → 「미실행」

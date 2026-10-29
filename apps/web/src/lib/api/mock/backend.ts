@@ -12,6 +12,7 @@ import {
   type RefreshTokenResponse,
 } from '@gcd/shared';
 import type { FetchLike } from '../client';
+import { emptyS1State, handleS1, MockS1State, type MockS1Options } from './game-accounts';
 
 /**
  * [목] 계약(_workspace/01_architect_contract.md 4·5절)을 흉내 내는 가짜 API.
@@ -32,6 +33,8 @@ export interface MockCookieJar {
 
 export interface MockDb {
   user: Me | null;
+  /** S1 게임 계정·소유 확인·새로고침 기록(lib/api/mock/game-accounts.ts) */
+  s1?: MockS1State;
 }
 
 export interface MockBackendOptions {
@@ -42,6 +45,8 @@ export interface MockBackendOptions {
   accessTtlSec?: number;
   /** 응답 지연(ms). 로딩 상태 확인용 */
   latencyMs?: number;
+  /** S1 목 설정(제공자 키 없음 흉내, 스팀 authorize_url 오리진) */
+  s1?: MockS1Options;
 }
 
 /** 다른 멤버가 이미 쓰는 것으로 치는 닉네임(NICKNAME_TAKEN 확인용) */
@@ -59,9 +64,11 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
   function json(status: number, body: unknown): Response {
     return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
   }
-  function error(code: ErrorCode, message: string, details?: ErrorBody['details']): Response {
+  function error(code: ErrorCode, message: string, details?: ErrorBody['details'], retryAfterSec?: number): Response {
     const body: ErrorBody = details ? { code, message, details } : { code, message };
-    return json(ERROR_HTTP_STATUS[code], body);
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (retryAfterSec !== undefined) headers['Retry-After'] = String(retryAfterSec);
+    return new Response(JSON.stringify(body), { status: ERROR_HTTP_STATUS[code], headers });
   }
   function issue(user: Me): RefreshTokenResponse {
     return {
@@ -135,7 +142,8 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
         user = newUser({ username: parsed.data.username, nickname: parsed.data.username.slice(0, 12), discordId });
       }
       if (parsed.data.role) user = { ...user, role: parsed.data.role };
-      save({ user });
+      // 같은 사용자면 S1 상태(연동 계정)를 유지, 다른 사용자면 비운다
+      save(db.user?.id === user.id ? { ...db, user } : { user });
       opts.cookies.setRefresh(`mock-rt-${user.id}`);
       return json(200, issue(user));
     }
@@ -160,8 +168,29 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
         return error('NICKNAME_TAKEN', '이미 사용 중인 닉네임입니다.');
       }
       const user: Me = { ...r, nickname: parsed.data.nickname, needs_nickname_confirmation: false };
-      save({ user });
+      save({ ...load(), user });
       return json(200, user);
+    }
+
+    // S1 엔드포인트(스팀 콜백은 브라우저 이동이라 목에 없다 — authorize_url이 바로 /settings?steam=linked)
+    if (path.startsWith('/me/game-accounts') || path.startsWith('/users/')) {
+      const r = authorize(init);
+      if (r instanceof Response) return r;
+      const db = load();
+      const state = db.s1 ?? emptyS1State();
+      const res = handleS1({
+        method,
+        path,
+        body,
+        me: r,
+        now: now(),
+        state,
+        save: (s1) => save({ ...load(), s1 }),
+        json,
+        error: (code, message, o) => error(code, message, o?.details, o?.retryAfterSec),
+        opts: opts.s1 ?? {},
+      });
+      if (res) return res;
     }
 
     return error('NOT_FOUND', `목에 없는 경로: ${method} ${path}`);
@@ -186,7 +215,7 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
               nickname: normalizeNickname('  새벽감자  '),
               discordId: '123456789012345678',
             });
-      save({ user });
+      save(db.user?.id === user.id ? { ...db, user } : { user });
       opts.cookies.setRefresh(`mock-rt-${user.id}`);
       return user;
     },
@@ -202,9 +231,12 @@ export function browserMockBackend() {
         try {
           const raw = window.localStorage.getItem(KEY);
           if (!raw) return null;
-          const db = JSON.parse(raw) as { user: unknown };
+          const db = JSON.parse(raw) as { user: unknown; s1?: unknown };
           const user = Me.nullable().safeParse(db.user);
-          return user.success ? { user: user.data } : null;
+          if (!user.success) return null;
+          // 저장 형식이 바뀌어 맞지 않으면 S1 상태만 버린다
+          const s1 = MockS1State.safeParse(db.s1);
+          return s1.success ? { user: user.data, s1: s1.data } : { user: user.data };
         } catch {
           return null;
         }
@@ -223,6 +255,7 @@ export function browserMockBackend() {
       },
     },
     accessTtlSec: Number(process.env.NEXT_PUBLIC_API_MOCK_ACCESS_TTL_SEC) || 900,
+    s1: { origin: () => window.location.origin },
     latencyMs: 250,
   });
 }

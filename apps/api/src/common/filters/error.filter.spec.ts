@@ -11,6 +11,15 @@ describe('오류 필터 형식', () => {
     expect(ErrorBody.strict().parse(r.body)).toEqual({ code: 'NICKNAME_TAKEN', message: '이미 사용 중인 닉네임입니다.' });
   });
 
+  it('retryAfterSec는 본문이 아니라 별도 값(헤더용), 올림·최소 1초', () => {
+    const r = toErrorResponse(new AppError('SYNC_LIMIT_EXCEEDED', undefined, { retryAfterSec: 12.2 }));
+    expect(r.status).toBe(429);
+    expect(r.retryAfterSec).toBe(13);
+    expect(ErrorBody.strict().parse(r.body).code).toBe('SYNC_LIMIT_EXCEEDED');
+    expect(toErrorResponse(new AppError('RATE_LIMITED', undefined, { retryAfterSec: 0 })).retryAfterSec).toBe(1);
+    expect(toErrorResponse(new AppError('NOT_FOUND')).retryAfterSec).toBeUndefined();
+  });
+
   it('상태를 덮어쓸 수 있다', () => {
     expect(toErrorResponse(new AppError('FORBIDDEN', 418)).status).toBe(418);
   });

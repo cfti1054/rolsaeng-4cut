@@ -1,45 +1,51 @@
-# 슬라이스 S0 — 골격
+# 슬라이스 S1 — 게임 계정 연동·티어 동기화, 프로필·설정 화면
 
 명세: `게임 커뮤니티 대시보드 개발 문서.md` (이하 "문서")
-목업: `_workspace/00_input/mockup/*.dc.html` (원본 캔버스 https://claude.ai/artifact/BVZTXAcYMuPpwPEpwxxh7q)
-테마 토큰: `_workspace/00_input/mockup/tokens.css` (라이트/다크 색 토큰의 기준값)
+선행: S0 완료(커밋 450b091). S0 계약 `_workspace/S0/01_architect_contract.md`(결정 D1–D31)를 기준으로 확장한다.
+목업: `_workspace/00_input/mockup/Profile.dc.html`, `Settings.dc.html` (원본 캔버스 https://claude.ai/artifact/BVZTXAcYMuPpwPEpwxxh7q)
 
 ## 포함
 
 | 영역 | 내용 | 근거 |
 | --- | --- | --- |
-| 모노레포 | pnpm workspace: `apps/web`(Next.js), `apps/api`(NestJS), `packages/shared`(zod 계약·타입), `packages/core`(순수 도메인 로직) | 문서 4장 |
-| 인프라 | `docker-compose.yml`(PostgreSQL, Redis), `.env.example` | 문서 4장 |
-| DB | **전체** Prisma 스키마(5장 모든 테이블, 봇용 `activity_logs`·`api_keys`·`discord_id` 포함) + 아래 「결정 사항」의 추가 컬럼·테이블, 마이그레이션, `games` 시드(lol, tft, steam) | 문서 5장, 10장 지침 |
-| 인증 | **디스코드 OAuth2 로그인**, JWT 액세스·리프레시 토큰, `GET/PATCH /me`, 첫 로그인 닉네임 확인 | 문서 2장 계정(사용자 결정으로 변경), 6장 |
-| 공통 레이아웃 | 데스크톱 사이드바 / 모바일 하단 탭, **라이트·다크·시스템 테마 전환**(사이드바 토글, 모바일 헤더 토글), 로그인 화면, 빈 홈 자리 | 문서 8장, 목업 Main·MobileHome·Login·Settings(화면 테마 섹션) |
+| 계정 | 라이엇 ID(게임명#태그) 연동 → Account-V1로 PUUID 조회 → 소유 확인 → lol·tft 두 행 저장(D25). 연동 해제 | 문서 2장 게임 계정 연동, 9장 라이엇, 결정 D25 |
+| 계정 | 스팀 계정 연동·해제, 보유 게임·플레이타임 동기화(GetOwnedGames), 비공개 프로필 안내(`STEAM_PROFILE_PRIVATE`) | 문서 2장, 9장 스팀 |
+| 동기화 | 라이엇 티어(League-V4 롤 솔로 랭크, TFT League) → `rank_snapshots` 적재, 최근 전적(Match-V5), 스팀 플레이타임 → `steam_playtime` | 문서 5장, 9장 캐싱·갱신 전략 |
+| 동기화 | 수동 새로고침 `POST /me/game-accounts/{id}/sync` 사용자당 하루 5회(KST 자정 초기화), 실패 시 마지막 성공값 + 갱신 시각, 429 `Retry-After` 대기 | 문서 6장, 9장 |
+| 작업 | 주기 작업: 라이엇 티어 1시간(최근 활동 멤버 우선), 스팀 플레이타임 하루 1회 새벽, 최근 전적은 프로필 조회 시 6시간 지난 경우 큐 등록 | 문서 9장 표 |
+| API | `POST/DELETE /me/game-accounts`, 소유 확인 시작·확인, `POST /me/game-accounts/{id}/sync`, `GET /users/{id}/profile` | 문서 6장 |
+| 화면 | `/members/[id]` 프로필: 연동 계정 칩, 게임별 티어 카드, 주 포지션(라이엇 최근 전적 기준), 최근 전적 목록, 레이팅 그래프·내전 전적·뱃지는 **빈 상태**로 자리만 | 문서 8장, 목업 Profile |
+| 화면 | `/settings`: 게임 계정 연동 섹션(라이엇 소유 확인 단계 UI 포함, 스팀 비공개 안내·재시도 남은 횟수), 디스코드 계정 섹션(로그인 계정 표시, 읽기 전용), 화면 테마(S0 완료분 유지) | 문서 8장, 목업 Settings |
 
-## 제외 (다음 슬라이스)
+## 제외
 
-게임 계정 연동(S1), 내전(S2·S3), 랭킹·홈 요약 데이터(S4), 봇 API(S5), 관리자 기능(S6). 단, 스키마는 S0에서 전부 만든다.
+- 내전 레이팅 그래프, 내전 승률, 내전 기준 주 포지션 → S3 (자리와 빈 상태만)
+- 뱃지 → P2 (빈 상태)
+- 알림 설정 → 알림 발송 기능이 생기는 슬라이스에서(스키마·발송처가 아직 없음). 목업의 알림 섹션은 S1에서 그리지 않는다
+- 활동·플레이타임 **랭킹** → S5 (S1은 플레이타임 데이터 수집까지만)
+- 운영진 수동 소유 승인 화면 → S6 (API 경로만 계약에 자리 확보 가능)
 
-## 사용자 결정 사항
+## 사용자 결정 (이전 대화)
 
-1. **로그인은 디스코드 로그인(OAuth2)으로 한다.** 문서 2장 "이메일 또는 소셜 로그인"과 설계 원칙 1 "디스코드와 분리"를 이 결정으로 대체한다.
-   - 결과: `users.discord_id`가 로그인 식별자가 된다. 문서 6장의 연동 코드 → `/bot/link` 흐름은 계정 연결용으로는 불필요해진다(S5에서 재검토).
-2. 목업의 라이트/다크/시스템 테마 전환을 구현한다.
+- D25: 라이엇 ID 하나 → lol·tft 두 행, 소유 확인 1회로 둘 다 verified, 해제도 함께
+- 로그인은 디스코드 OAuth → 설정의 디스코드 섹션은 "연동 코드 발급"이 아니라 로그인한 디스코드 계정 표시(D23)
 
 ## 메인이 정한 기본값 (사용자 확인 전, 보고서에 명시)
 
-- OAuth 범위: `identify email guilds.members.read`. 이메일은 선택(nullable).
-- 커뮤니티 디스코드 서버(`DISCORD_GUILD_ID`) 멤버만 가입·로그인 허용. 설정값이 비어 있으면 검사하지 않는다.
-- 첫 로그인 시 닉네임 기본값 = 서버 닉네임 → 없으면 global_name → username. 확인 화면에서 `PATCH /me`로 확정.
-- 로컬 개발용 로그인 우회: `AUTH_DEV_LOGIN=true`일 때만 열리는 개발 전용 엔드포인트(디스코드 앱 키 없이 테스트하기 위함). production에서는 비활성.
-- `users.role`: member, admin(문서 5장 그대로).
-- 테마 선택은 브라우저 localStorage에 저장(서버 저장 안 함), 기본값 다크.
-- 명세 공백을 스키마에 미리 반영(S3·S6에서 사용):
-  - `scrim_results.status` = pending | approved | rejected, `reject_reason`, `rejected_by`, `rejected_at`
-  - 이의 제기 테이블 `scrim_result_disputes`(scrim_result_id, user_id, reason, status open|resolved, resolved_by, resolved_at)
-  - 규칙: 결과를 제출한 사람은 같은 결과를 승인할 수 없다(자기 승인 금지) — S3에서 구현
-  - 공지 테이블 `notices`(title, body, author_id, notify_discord) — 목업 관리자 화면
+1. **라이엇 소유 확인 = 프로필 아이콘 변경** (external-api-integration 스킬 2절, 목업 Settings).
+   - 서버가 기본 제공 아이콘 중 무작위 하나를 지정(현재 아이콘과 다른 것) → 10분 안에 사용자가 바꾸고 "확인" → Summoner-V4 `profileIconId` 비교.
+   - 제한 시간 초과·불일치 시 다시 시작 가능. 운영진 수동 승인은 S6.
+2. **스팀 소유 확인 = Steam OpenID 2.0 로그인("Steam으로 로그인")**.
+   - 스킬에 스팀 소유 확인 방법이 없어 정함. 스팀 ID 직접 입력보다 확실하고 사용자가 할 일이 적음. 목업의 스팀 ID 숫자 입력 대신 버튼 1개.
+   - OpenID 응답의 서명 검증(`check_authentication`)은 서버에서 한다.
+3. **큐**: `REDIS_URL`이 있으면 BullMQ, 없으면 `@nestjs/schedule` cron + DB 잠금 대체 경로(스킬 5절). 이 PC는 Redis가 없으므로 테스트는 대체 경로와 큐 인터페이스 목으로 검증.
+4. **라우팅**: 계정·매치는 `asia`, 티어·소환사는 `kr` (문서 9장). 설정값으로 분리.
+5. **주 포지션**: 최근 롤 매치(최대 20경기)의 `teamPosition` 최빈값과 비율. 매치가 없으면 표시 안 함.
+6. **수동 새로고침 횟수**: 사용자 기준 하루 5회, 라이엇·스팀 합산. 카운트 저장 위치는 architect가 정함(Redis 없을 때도 동작해야 함).
+7. **다른 사람 프로필**: `GET /users/{id}/profile`은 로그인 멤버 누구나 조회 가능. 연동 계정의 외부 식별자(PUUID, Steam ID 원문)는 응답에 넣지 않는다.
 
-## 환경 제약
+## 환경 제약 (S0와 동일)
 
-- pnpm은 전역 설치가 없어 `corepack pnpm ...`으로 실행한다. 루트 `package.json`에 `"packageManager": "pnpm@9.15.0"`을 둔다.
-- Docker·PostgreSQL이 이 PC에 없다. DB가 필요한 테스트는 "미실행"으로 표시하고, 단위 테스트·타입 검사·빌드는 반드시 통과시킨다.
-- 디스코드 OAuth 앱 키가 없다. 실제 OAuth 왕복은 "키 필요"로 보고하고, 콜백 처리는 디스코드 API를 목으로 대체한 테스트로 검증한다.
+- `corepack pnpm`. Docker·PostgreSQL·Redis 없음 → DB 통합 테스트는 작성만 하고 미실행.
+- `RIOT_API_KEY`, `STEAM_API_KEY` 없음 → fixture 기반 테스트, 실제 연동은 "키 필요"로 보고. fixture에 실제 키·PUUID 금지.
+- 이 저장소는 커밋을 사용자가 직접 한다. 에이전트는 커밋하지 않는다.

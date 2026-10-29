@@ -1,6 +1,6 @@
 import 'reflect-metadata';
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+// .env는 AppModule(JobsModule.forRoot)보다 먼저 읽어야 한다
+import './load-env';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
@@ -12,9 +12,6 @@ import { APP_CONFIG, type AppConfig, EnvValidationError, loadConfig } from './co
  * 실행 전 `corepack pnpm -r build`(shared → core → api). 환경 변수는 apps/api/.env 또는 프로세스 환경.
  */
 async function bootstrap(): Promise<void> {
-  const envFile = resolve(process.cwd(), '.env');
-  if (existsSync(envFile)) process.loadEnvFile(envFile);
-
   // 필수 환경 변수가 없으면 Nest를 띄우기 전에 멈춘다(계약 10절).
   try {
     loadConfig(process.env);

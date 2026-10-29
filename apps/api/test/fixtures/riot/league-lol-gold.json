@@ -1,0 +1,2 @@
+[{"leagueId":"fake-league-1","puuid":"FAKE-PUUID-0001-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","queueType":"RANKED_FLEX_SR","tier":"SILVER","rank":"I","leaguePoints":10,"wins":5,"losses":5,"hotStreak":false,"veteran":false,"freshBlood":false,"inactive":false},
+ {"leagueId":"fake-league-2","puuid":"FAKE-PUUID-0001-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","queueType":"RANKED_SOLO_5x5","tier":"GOLD","rank":"II","leaguePoints":47,"wins":60,"losses":55,"hotStreak":false,"veteran":false,"freshBlood":false,"inactive":false}]

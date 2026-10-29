@@ -17,6 +17,21 @@ export const DEFAULT_ERROR_MESSAGE: Record<ErrorCode, string> = {
   OAUTH_PROVIDER_ERROR: '디스코드와 통신하지 못했습니다.',
   DISCORD_NOT_GUILD_MEMBER: '커뮤니티 디스코드 서버 멤버만 이용할 수 있습니다.',
   NICKNAME_TAKEN: '이미 사용 중인 닉네임입니다.',
+  // S1 (계약 _workspace/01_architect_contract.md 2절)
+  GAME_PROVIDER_NOT_CONFIGURED: '게임 계정 연동이 설정되지 않았습니다.',
+  GAME_PROVIDER_ERROR: '라이엇·스팀 서버와 통신하지 못했습니다.',
+  GAME_PROVIDER_RATE_LIMITED: '라이엇·스팀 호출 한도에 걸렸습니다. 잠시 후 다시 시도해 주세요.',
+  GAME_ACCOUNT_LIMIT_REACHED: '연동할 수 있는 계정 수를 모두 사용했습니다(라이엇 ID 최대 개수 또는 스팀 1개). 다른 계정을 해제한 뒤 다시 시도해 주세요.',
+  GAME_ACCOUNT_ALREADY_LINKED: '다른 멤버가 이미 연동한 계정입니다. 본인 계정이라면 운영진에게 문의해 주세요.',
+  GAME_ACCOUNT_ALREADY_LINKED_TO_ME: '이미 내 계정에 연동한 라이엇 ID입니다.',
+  RIOT_ID_NOT_FOUND: '라이엇 ID를 찾을 수 없습니다.',
+  RIOT_SUMMONER_NOT_FOUND: '한국 서버 리그 오브 레전드 기록이 없는 계정입니다.',
+  OWNERSHIP_CHECK_FAILED: '프로필 아이콘이 지정한 아이콘과 다릅니다.',
+  OWNERSHIP_CHECK_EXPIRED: '소유 확인 시간이 지났습니다. 처음부터 다시 시작해 주세요.',
+  STEAM_LINK_STATE_INVALID: '스팀 연동 요청이 만료되었거나 올바르지 않습니다.',
+  STEAM_LINK_CANCELLED: '스팀 로그인을 취소했습니다.',
+  STEAM_OPENID_INVALID: '스팀 로그인 응답을 확인하지 못했습니다.',
+  SYNC_LIMIT_EXCEEDED: '오늘 새로고침 횟수를 모두 사용했습니다.',
 };
 
 /**
@@ -27,16 +42,20 @@ export class AppError extends Error {
   readonly code: ErrorCode;
   readonly status: number;
   readonly details: ErrorDetail[] | undefined;
+  /** 있으면 error.filter가 Retry-After 헤더(초)로 보낸다(S1 계약 2절). 본문에는 넣지 않는다 */
+  readonly retryAfterSec: number | undefined;
 
   constructor(
     code: ErrorCode,
     status?: number,
-    options: { message?: string; details?: ErrorDetail[]; cause?: unknown } = {},
+    options: { message?: string; details?: ErrorDetail[]; cause?: unknown; retryAfterSec?: number } = {},
   ) {
     super(options.message ?? DEFAULT_ERROR_MESSAGE[code], { cause: options.cause });
     this.name = 'AppError';
     this.code = code;
     this.status = status ?? ERROR_HTTP_STATUS[code];
     this.details = options.details;
+    this.retryAfterSec =
+      options.retryAfterSec === undefined ? undefined : Math.max(1, Math.ceil(options.retryAfterSec));
   }
 }

@@ -24,13 +24,16 @@ export class ApiError extends Error {
   readonly code: AppErrorCode;
   readonly status: number;
   readonly details: ErrorDetail[] | undefined;
+  /** `Retry-After` 헤더(초). RATE_LIMITED·GAME_PROVIDER_RATE_LIMITED·SYNC_LIMIT_EXCEEDED에 붙는다(S1 계약 2절) */
+  readonly retryAfterSec: number | undefined;
 
-  constructor(code: AppErrorCode, status: number, message: string, details?: ErrorDetail[]) {
+  constructor(code: AppErrorCode, status: number, message: string, details?: ErrorDetail[], retryAfterSec?: number) {
     super(message);
     this.name = 'ApiError';
     this.code = code;
     this.status = status;
     this.details = details;
+    this.retryAfterSec = retryAfterSec;
   }
 }
 
@@ -38,7 +41,14 @@ export function isApiError(e: unknown): e is ApiError {
   return e instanceof ApiError;
 }
 
-export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+/** Retry-After 헤더(초 단위 정수만. HTTP 날짜 형식은 서버가 쓰지 않는다) */
+export function parseRetryAfter(raw: string | null): number | undefined {
+  if (raw === null) return undefined;
+  const s = raw.trim();
+  return /^\d+$/.test(s) ? Number(s) : undefined;
+}
+
+export type FetchLike =(input: string, init?: RequestInit) => Promise<Response>;
 
 export interface ApiClientHandlers {
   /** 세션을 잃었을 때(리프레시 실패 등). 기본 구현은 /login으로 이동 */
@@ -104,7 +114,13 @@ export function createApiClient(options: ApiClientOptions) {
     }
     const parsed = ErrorBody.safeParse(json);
     if (parsed.success) {
-      return new ApiError(parsed.data.code, res.status, parsed.data.message, parsed.data.details);
+      return new ApiError(
+        parsed.data.code,
+        res.status,
+        parsed.data.message,
+        parsed.data.details,
+        parseRetryAfter(res.headers.get('Retry-After')),
+      );
     }
     // API가 꺼져 있으면 Next 프록시가 500/502를 HTML로 낸다 → 연결 실패로 본다
     const code: AppErrorCode = res.status >= 500 ? 'NETWORK_ERROR' : 'INVALID_RESPONSE';

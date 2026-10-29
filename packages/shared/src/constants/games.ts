@@ -48,3 +48,19 @@ export const GAME_SEED: readonly GameSeed[] = [
     sort_order: 3,
   },
 ];
+
+/**
+ * 게임 → 연동 계정 제공자(S1, 결정 D36). 라이엇 ID 하나가 lol·tft 두 행이 된다(D25).
+ * 연동·해제·동기화·대표 지정은 「같은 사용자 + 같은 external_id(라이엇 ID)」의 lol·tft 두 행을 함께 처리한다.
+ */
+export const GAME_PROVIDER_BY_CODE = {
+  lol: 'riot',
+  tft: 'riot',
+  steam: 'steam',
+} as const satisfies Record<GameCode, 'riot' | 'steam'>;
+
+/** 제공자별로 함께 생성·삭제되는 게임 코드(표시 순서). */
+export const GAME_CODES_BY_PROVIDER = {
+  riot: ['lol', 'tft'],
+  steam: ['steam'],
+} as const satisfies Record<'riot' | 'steam', readonly GameCode[]>;
