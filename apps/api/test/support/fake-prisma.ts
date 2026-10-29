@@ -87,6 +87,8 @@ export class FakePrisma {
     capacityMin: 2,
     capacityMax: 16,
     capacityDefault: 8,
+    capacityStep: 1,
+    startRequiresFull: false,
   }));
 
   // ---- S2 테이블 ----
@@ -235,6 +237,8 @@ export class FakePrisma {
         capacityMin: g.capacity_min,
         capacityMax: g.capacity_max,
         capacityDefault: g.capacity_default,
+        capacityStep: g.capacity_step,
+        startRequiresFull: g.start_requires_full,
       });
     }
   }

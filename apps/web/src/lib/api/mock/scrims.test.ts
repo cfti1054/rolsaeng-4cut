@@ -80,7 +80,7 @@ describe('S2 목: 게임·목록', () => {
     await t.ready;
     const res = await t.api.request(ApiPath.games, ListGamesResponse);
     expect(res.items.map((g) => g.code)).toEqual(['lol', 'tft', 'steam']);
-    expect(res.items[0]!.capacity).toEqual({ min: 10, max: 10, default: 10 });
+    expect(res.items[0]!.capacity).toEqual({ min: 2, max: 10, default: 10, step: 2, start_requires_full: true });
     expect(res.next_cursor).toBeNull();
   });
 
@@ -223,7 +223,7 @@ describe('S2 목: 작성·수정·시작·취소', () => {
     const t = setup();
     await t.ready;
     await expect(
-      t.create({ game: 'lol', title: '테스트 내전', scheduled_at: t.kst(-2), capacity: 8, host_preferred_positions: [] }),
+      t.create({ game: 'lol', title: '테스트 내전', scheduled_at: t.kst(-2), capacity: 7, host_preferred_positions: [] }),
     ).rejects.toMatchObject({
       code: 'VALIDATION_FAILED',
       details: [{ path: 'scheduled_at' }, { path: 'capacity' }, { path: 'host_preferred_positions' }],

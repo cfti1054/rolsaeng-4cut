@@ -108,17 +108,18 @@ export function validateScrimSchedule(
   return 'ok';
 }
 
-/** 정원 범위: 정수 && min ≤ capacity ≤ max */
-export function isCapacityInRange(capacity: number, range: { min: number; max: number }): boolean {
-  return Number.isInteger(capacity) && capacity >= range.min && capacity <= range.max;
+/** 정원 범위: 정수 && min ≤ capacity ≤ max && (capacity − min)이 step의 배수(step 생략 = 1) */
+export function isCapacityInRange(capacity: number, range: { min: number; max: number; step?: number }): boolean {
+  const step = range.step ?? 1;
+  return Number.isInteger(capacity) && capacity >= range.min && capacity <= range.max && (capacity - range.min) % step === 0;
 }
 
 /**
- * 시작 가능 여부(D78): 고정 정원 게임(capacity_min = capacity_max)은 꽉 차야,
+ * 시작 가능 여부(D78, D96): 꽉 차야 시작하는 게임(games.start_requires_full, 롤)은 joined = capacity,
  * 그 외는 SCRIM_MIN_PLAYERS_TO_START(2)명 이상.
  */
-export function canStartScrim(input: { fixedCapacity: boolean; capacity: number; joinedCount: number }): boolean {
-  if (input.fixedCapacity) return input.joinedCount === input.capacity;
+export function canStartScrim(input: { requiresFull: boolean; capacity: number; joinedCount: number }): boolean {
+  if (input.requiresFull) return input.joinedCount === input.capacity;
   return input.joinedCount >= SCRIM_MIN_PLAYERS_TO_START;
 }
 

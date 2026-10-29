@@ -4,7 +4,6 @@ import { canStartScrim, decideOverdueScrim } from '@gcd/core';
 import { APP_CLOCK, type Clock } from '../../common/clock';
 import { APP_CONFIG, type AppConfig } from '../../config/env';
 import { PrismaService } from '../../prisma/prisma.service';
-import { isFixedCapacity } from './scrim-views.service';
 import { assertScrimTransition, countJoined, loadGame, lockOrNotFound } from './scrims.service';
 
 /** pg_try_advisory_xact_lock(hashtext(키)) — 여러 인스턴스 중 하나만 실행(D96, S1 D62 방식) */
@@ -73,7 +72,7 @@ export class ScrimAutoCloser {
         scheduledAt: s.scheduledAt,
         now,
         autoCloseAfterMin: this.config.scrim.autoCloseAfterMin,
-        canStart: canStartScrim({ fixedCapacity: isFixedCapacity(game), capacity: s.capacity, joinedCount }),
+        canStart: canStartScrim({ requiresFull: game.startRequiresFull, capacity: s.capacity, joinedCount }),
       });
       if (decision === 'start') {
         assertScrimTransition(s.status, 'playing');

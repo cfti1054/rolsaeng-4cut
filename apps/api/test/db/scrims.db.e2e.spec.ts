@@ -51,7 +51,13 @@ describe.skipIf(!DB_URL)('[DB] 내전 동시성·불변식 e2e (PostgreSQL)', ()
     for (const g of GAME_SEED) {
       await prisma.game.upsert({
         where: { code: g.code },
-        update: { capacityMin: g.capacity_min, capacityMax: g.capacity_max, capacityDefault: g.capacity_default },
+        update: {
+          capacityMin: g.capacity_min,
+          capacityMax: g.capacity_max,
+          capacityDefault: g.capacity_default,
+          capacityStep: g.capacity_step,
+          startRequiresFull: g.start_requires_full,
+        },
         create: {
           code: g.code,
           name: g.name,
@@ -62,6 +68,8 @@ describe.skipIf(!DB_URL)('[DB] 내전 동시성·불변식 e2e (PostgreSQL)', ()
           capacityMin: g.capacity_min,
           capacityMax: g.capacity_max,
           capacityDefault: g.capacity_default,
+          capacityStep: g.capacity_step,
+          startRequiresFull: g.start_requires_full,
         },
       });
     }

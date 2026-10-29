@@ -35,11 +35,6 @@ export function isOpenStatus(s: Scrim['status']): boolean {
   return s === 'recruiting' || s === 'full';
 }
 
-/** 고정 정원 게임(capacity_min = capacity_max, 롤 10) */
-export function isFixedCapacity(game: Pick<Game, 'capacityMin' | 'capacityMax'>): boolean {
-  return game.capacityMin === game.capacityMax;
-}
-
 /**
  * ScrimSummary·ScrimDetail 조립(계약 S2 4-2). 모두 shared 스키마 parse를 거친다(S1 D38 — 사용자는
  * ScrimUserRef(id·nickname·avatar_url)만, email·discord_id 미포함).
@@ -224,7 +219,7 @@ export class ScrimViews {
         can_start:
           (isHost || isAdmin) &&
           open &&
-          canStartScrim({ fixedCapacity: isFixedCapacity(game), capacity: scrim.capacity, joinedCount }),
+          canStartScrim({ requiresFull: game.startRequiresFull, capacity: scrim.capacity, joinedCount }),
         can_mark_no_show:
           isAdmin &&
           (scrim.status === 'playing' || scrim.status === 'finished') &&

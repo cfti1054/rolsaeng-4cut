@@ -35,7 +35,7 @@ import { APP_CONFIG, type AppConfig } from '../../config/env';
 import { PrismaService } from '../../prisma/prisma.service';
 import { decodeScrimCursor, encodeScrimCursor } from './scrim-cursor';
 import { ScrimRestrictionService } from './scrim-restriction.service';
-import { ScrimViews, isFixedCapacity, isOpenStatus } from './scrim-views.service';
+import { ScrimViews, isOpenStatus } from './scrim-views.service';
 
 type Tx = Prisma.TransactionClient;
 
@@ -148,9 +148,10 @@ export class ScrimsService {
   }
 
   private capacityDetail(capacity: number, game: Game): ErrorDetail | null {
-    if (isCapacityInRange(capacity, { min: game.capacityMin, max: game.capacityMax })) return null;
+    if (isCapacityInRange(capacity, { min: game.capacityMin, max: game.capacityMax, step: game.capacityStep })) return null;
     const range = game.capacityMin === game.capacityMax ? `${game.capacityMin}명` : `${game.capacityMin}–${game.capacityMax}명`;
-    return { path: 'capacity', message: `이 게임의 정원은 ${range}입니다.` };
+    const unit = game.capacityStep > 1 ? ` ${game.capacityStep}명 단위` : '';
+    return { path: 'capacity', message: `이 게임의 정원은 ${range}${unit}입니다.` };
   }
 
   /** POST /scrims → 201 ScrimDetail */
@@ -354,7 +355,7 @@ export class ScrimsService {
       if (!isOpenStatus(s.status)) throw new AppError('SCRIM_NOT_RECRUITING');
       const game = await loadGame(tx, s.gameId);
       const joinedCount = await countJoined(tx, s.id);
-      if (!canStartScrim({ fixedCapacity: isFixedCapacity(game), capacity: s.capacity, joinedCount })) {
+      if (!canStartScrim({ requiresFull: game.startRequiresFull, capacity: s.capacity, joinedCount })) {
         throw new AppError('SCRIM_CANNOT_START');
       }
       assertScrimTransition(s.status, 'playing');

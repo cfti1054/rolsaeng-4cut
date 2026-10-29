@@ -129,14 +129,16 @@ describe('S2 transitions', () => {
 });
 
 describe('games', () => {
-  it('정원 범위: min ≤ default ≤ max, 롤 10 고정', () => {
+  it('정원 범위: min ≤ default ≤ max, default·max는 step 간격 위, 롤 2–10 짝수·꽉 차야 시작', () => {
     for (const g of GAME_SEED) {
       expect(g.capacity_min).toBeLessThanOrEqual(g.capacity_default);
       expect(g.capacity_default).toBeLessThanOrEqual(g.capacity_max);
       expect(g.capacity_min).toBeGreaterThanOrEqual(2);
+      expect((g.capacity_default - g.capacity_min) % g.capacity_step).toBe(0);
+      expect((g.capacity_max - g.capacity_min) % g.capacity_step).toBe(0);
     }
     const lol = GAME_SEED.find((g) => g.code === 'lol');
-    expect([lol?.capacity_min, lol?.capacity_max]).toEqual([10, 10]);
+    expect([lol?.capacity_min, lol?.capacity_max, lol?.capacity_step, lol?.start_requires_full]).toEqual([2, 10, 2, true]);
     // 포지션 게임은 정원이 포지션 수 × 2(팀)로 나뉘어야 open_positions 계산이 맞다
     for (const g of GAME_SEED.filter((x) => x.has_positions)) {
       expect(g.capacity_max % (g.positions.length * 2)).toBe(0);
@@ -144,7 +146,7 @@ describe('games', () => {
   });
   it('ListGamesResponse', () => {
     const r = ListGamesResponse.parse({
-      items: [{ ...lolGame, sort_order: 1, capacity: { min: 10, max: 10, default: 10 } }],
+      items: [{ ...lolGame, sort_order: 1, capacity: { min: 2, max: 10, default: 10, step: 2, start_requires_full: true } }],
       next_cursor: null,
     });
     expect(r.items[0]?.capacity.default).toBe(10);

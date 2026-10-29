@@ -142,7 +142,13 @@ export function mockGames(): GameView[] {
       has_teams: g.has_teams,
       positions: [...g.positions],
       sort_order: g.sort_order,
-      capacity: { min: g.capacity_min, max: g.capacity_max, default: g.capacity_default },
+      capacity: {
+        min: g.capacity_min,
+        max: g.capacity_max,
+        default: g.capacity_default,
+        step: g.capacity_step,
+        start_requires_full: g.start_requires_full,
+      },
     }));
 }
 
@@ -446,7 +452,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
   const canStart = (s: MockScrim) => {
     const g = gameOf(s.game);
     const joined = joinedRows(s.id).length;
-    return g.capacity_min === g.capacity_max ? joined === s.capacity : joined >= SCRIM_MIN_PLAYERS_TO_START;
+    return g.start_requires_full ? joined === s.capacity : joined >= SCRIM_MIN_PLAYERS_TO_START;
   };
   const restrictionOf = (userId: string) =>
     computeRestriction(
@@ -578,7 +584,9 @@ export function handleS2(ctx: MockS2Context): Response | null {
     return null;
   };
   const capacityIssue = (game: GameSeed, cap: number): string | null =>
-    cap < game.capacity_min || cap > game.capacity_max ? `정원은 ${game.capacity_min}–${game.capacity_max}명이에요` : null;
+    cap < game.capacity_min || cap > game.capacity_max || (cap - game.capacity_min) % game.capacity_step !== 0
+      ? `정원은 ${game.capacity_min}–${game.capacity_max}명${game.capacity_step > 1 ? ` ${game.capacity_step}명 단위` : ''}이에요`
+      : null;
 
   // GET /games
   if (path === ApiPath.games && method === 'GET') {

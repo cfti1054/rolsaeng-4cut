@@ -88,7 +88,7 @@ function lockedIds(app: TestApp): unknown[] {
 // -----------------------------------------------------------------------------
 
 describe('GET /games', () => {
-  it('sort_order 순 3개, 정원 범위(롤 10 고정·롤체 2–8·스팀 2–16), id 비노출', async () => {
+  it('sort_order 순 3개, 정원 범위(롤 2–10 짝수·꽉 차야 시작, 롤체 2–8, 스팀 2–16), id 비노출', async () => {
     t = await createTestApp({ fixedClock: true });
     const a = await login(t, 'alice');
     const res = await call(t, 'GET', '/games', a.token);
@@ -96,9 +96,9 @@ describe('GET /games', () => {
     const body = ListGamesResponse.parse(await res.json());
     expect(body.next_cursor).toBeNull();
     expect(body.items.map((g) => [g.code, g.capacity])).toEqual([
-      ['lol', { min: 10, max: 10, default: 10 }],
-      ['tft', { min: 2, max: 8, default: 8 }],
-      ['steam', { min: 2, max: 16, default: 8 }],
+      ['lol', { min: 2, max: 10, default: 10, step: 2, start_requires_full: true }],
+      ['tft', { min: 2, max: 8, default: 8, step: 1, start_requires_full: false }],
+      ['steam', { min: 2, max: 16, default: 8, step: 1, start_requires_full: false }],
     ]);
     expect(body.items[0]?.positions).toEqual(['top', 'jungle', 'mid', 'bot', 'support']);
     expect(Object.keys(body.items[0] ?? {})).not.toContain('id');
@@ -143,10 +143,21 @@ describe('POST /scrims 작성', () => {
   it('서버 검사 details를 한 번에: 지난 시각·정원 범위 밖·1지망 없음', async () => {
     t = await createTestApp({ fixedClock: true });
     const a = await login(t, 'alice');
-    const res = await call(t, 'POST', '/scrims', a.token, { ...LOL_BASE, scheduled_at: at(t, 0), capacity: 8, host_preferred_positions: [] });
+    const res = await call(t, 'POST', '/scrims', a.token, { ...LOL_BASE, scheduled_at: at(t, 0), capacity: 12, host_preferred_positions: [] });
     const err = await expectError(res, 400, 'VALIDATION_FAILED');
     expect(err.details?.map((x) => x.path).sort()).toEqual(['capacity', 'host_preferred_positions', 'scheduled_at']);
     expect(t.prisma.scrim.rows).toHaveLength(0);
+  });
+
+  it('롤 정원: 2·6·8 허용, 홀수 7 → 400(「2명 단위」 안내)', async () => {
+    t = await createTestApp({ fixedClock: true });
+    const a = await login(t, 'alice');
+    for (const capacity of [2, 6, 8]) expect((await create(t, a, { capacity })).capacity).toBe(capacity);
+    const err = await expectError(await call(t, 'POST', '/scrims', a.token, { ...LOL_BASE, scheduled_at: at(t, DAY), capacity: 7 }), 400, 'VALIDATION_FAILED');
+    expect(err.details).toEqual([{ path: 'capacity', message: '이 게임의 정원은 2–10명 2명 단위입니다.' }]);
+    const s = await create(t, a);
+    await expectError(await call(t, 'PATCH', `/scrims/${s.id}`, a.token, { capacity: 5 }), 400, 'VALIDATION_FAILED');
+    expect((await detailOf(await call(t, 'PATCH', `/scrims/${s.id}`, a.token, { capacity: 4 }))).capacity).toBe(4);
   });
 
   it('시작 시각 경계: 정확히 30일 뒤 허용, 30일 + 1ms 거부. 포지션 없는 게임에 포지션 → 400', async () => {
@@ -530,13 +541,20 @@ describe('PATCH /scrims/:id 수정', () => {
 });
 
 describe('POST /scrims/:id/start 시작', () => {
-  it('고정 정원(롤 10) 미달 9명 → 409 SCRIM_CANNOT_START, 롤체 1명 → 409, 2명 → playing(started_at), 대기열 그대로', async () => {
+  it('롤(꽉 차야 시작) 10명 중 9명 → 409 SCRIM_CANNOT_START, 롤 4명 정원 4/4 → 시작, 롤체 1명 → 409, 2명 → playing(started_at), 대기열 그대로', async () => {
     t = await createTestApp({ fixedClock: true });
     const host = await login(t, 'host');
     const lol = await create(t, host);
     for (let i = 1; i <= 8; i++) await join(t, await login(t, `p${i}`), lol.id, ['top']);
     expect((await getScrim(t, host, lol.id)).viewer.can_start).toBe(false);
     await expectError(await call(t, 'POST', `/scrims/${lol.id}/start`, host.token), 409, 'SCRIM_CANNOT_START');
+
+    const lol4 = await create(t, host, { capacity: 4 });
+    for (let i = 1; i <= 2; i++) await join(t, await login(t, `q${i}`), lol4.id, ['top']);
+    expect((await getScrim(t, host, lol4.id)).viewer.can_start).toBe(false);
+    await join(t, await login(t, 'q3'), lol4.id, ['top']);
+    expect((await getScrim(t, host, lol4.id)).viewer.can_start).toBe(true);
+    expect(await detailOf(await call(t, 'POST', `/scrims/${lol4.id}/start`, host.token))).toMatchObject({ status: 'playing', joined_count: 4 });
 
     const tft = await create(t, host, { capacity: 2 }, TFT_BASE);
     await expectError(await call(t, 'POST', `/scrims/${tft.id}/start`, host.token), 409, 'SCRIM_CANNOT_START');

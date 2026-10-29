@@ -202,10 +202,13 @@ model Game {
   /// 선택 가능한 포지션 코드, 표시 순서대로
   positions       String[] @default([])
   sortOrder       Int      @default(0) @map("sort_order")
-  /// S2. 내전 정원 범위(방장 포함). min = max면 고정(롤 10). 시드: shared GAME_SEED
+  /// S2. 내전 정원 범위(방장 포함). 허용 값 = min부터 step 간격으로 max까지(롤 2–10, 2 단위). 시드: shared GAME_SEED
   capacityMin     Int      @default(2) @map("capacity_min")
   capacityMax     Int      @default(16) @map("capacity_max")
   capacityDefault Int      @default(8) @map("capacity_default")
+  capacityStep    Int      @default(1) @map("capacity_step")
+  /// true면 정원이 꽉 차야 시작(롤), false면 2명 이상
+  startRequiresFull Boolean @default(false) @map("start_requires_full")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   gameAccounts    GameAccount[]

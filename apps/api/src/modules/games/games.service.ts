@@ -14,7 +14,13 @@ export function toGameView(g: Game): GameView | null {
     has_teams: g.hasTeams,
     positions: g.hasPositions ? g.positions : [],
     sort_order: g.sortOrder,
-    capacity: { min: g.capacityMin, max: g.capacityMax, default: g.capacityDefault },
+    capacity: {
+      min: g.capacityMin,
+      max: g.capacityMax,
+      default: g.capacityDefault,
+      step: g.capacityStep,
+      start_requires_full: g.startRequiresFull,
+    },
   });
 }
 

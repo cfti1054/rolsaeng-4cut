@@ -278,7 +278,7 @@ export function ScrimNewForm() {
                 </div>
                 <div className="flex flex-[1_1_170px] flex-col gap-2">
                   <span id={ids.cap} className="text-[13px] text-muted">
-                    정원 <span className="text-faint">(방장 포함)</span>
+                    정원 <span className="text-faint">(방장 포함{game && game.capacity.step > 1 ? ` · ${game.capacity.step}명 단위` : ''})</span>
                   </span>
                   {game && cap !== null ? (
                     <CapacityStepper
@@ -286,6 +286,7 @@ export function ScrimNewForm() {
                       value={cap}
                       min={game.capacity.min}
                       max={game.capacity.max}
+                      step={game.capacity.step}
                       onChange={(v) => setCapacity(v)}
                     />
                   ) : (
@@ -426,12 +427,14 @@ export function CapacityStepper({
   value,
   min,
   max,
+  step = 1,
   onChange,
 }: {
   labelledBy: string;
   value: number;
   min: number;
   max: number;
+  step?: number;
   onChange: (v: number) => void;
 }) {
   if (min === max) {
@@ -450,13 +453,13 @@ export function CapacityStepper({
     'size-10 rounded-[10px] border-0 bg-surface-2 text-lg text-text disabled:cursor-not-allowed disabled:opacity-40';
   return (
     <div role="group" aria-labelledby={labelledBy} className="flex h-12 items-center rounded-[14px] border border-line-3 bg-bg px-1">
-      <button type="button" aria-label="정원 줄이기" className={btn} disabled={value <= min} onClick={() => onChange(Math.max(min, value - 1))}>
+      <button type="button" aria-label="정원 줄이기" className={btn} disabled={value <= min} onClick={() => onChange(Math.max(min, value - step))}>
         −
       </button>
       <output aria-live="polite" className="flex-1 text-center font-display text-lg font-bold">
         {value}
       </output>
-      <button type="button" aria-label="정원 늘리기" className={btn} disabled={value >= max} onClick={() => onChange(Math.min(max, value + 1))}>
+      <button type="button" aria-label="정원 늘리기" className={btn} disabled={value >= max} onClick={() => onChange(Math.min(max, value + step))}>
         +
       </button>
     </div>

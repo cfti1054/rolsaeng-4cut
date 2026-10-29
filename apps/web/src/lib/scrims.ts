@@ -245,9 +245,15 @@ export const CANCEL_REASON_TEXT: Record<ScrimCancelReason, string> = {
   not_started: '시작 시각이 지나도 시작되지 않아 자동으로 취소됐어요.',
 };
 
-/** 시작 버튼이 비활성일 때 이유(D78). range가 없으면(게임 목록 못 받음) 일반 문구 */
+/** 수정 대화상자 정원 하한: max(min, 참가 확정 인원)을 step 간격 위 값으로 올림(D79, D96) */
+export function capacityFloor(range: GameCapacityRange, joinedCount: number): number {
+  const floor = Math.max(range.min, joinedCount);
+  return range.min + Math.ceil((floor - range.min) / range.step) * range.step;
+}
+
+/** 시작 버튼이 비활성일 때 이유(D78, D96). range가 없으면(게임 목록 못 받음) 일반 문구 */
 export function startBlockedReason(capacity: number, range: GameCapacityRange | undefined): string {
-  if (range && range.min === range.max) return `정원 ${capacity}명이 모두 모여야 시작할 수 있어요.`;
+  if (range?.start_requires_full) return `정원 ${capacity}명이 모두 모여야 시작할 수 있어요.`;
   if (range) return `${SCRIM_MIN_PLAYERS_TO_START}명 이상 모여야 시작할 수 있어요.`;
   return '시작 조건(인원)을 아직 채우지 못했어요.';
 }

@@ -12,7 +12,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Button, InlineError } from '@/components/ui/controls';
 import { isApiError } from '@/lib/api/client';
 import { useUpdateScrim } from '@/lib/hooks/scrims';
-import { buildScrimPatch, isoToKstInputs, kstInputsToIso } from '@/lib/scrims';
+import { buildScrimPatch, capacityFloor, isoToKstInputs, kstInputsToIso } from '@/lib/scrims';
 import { scrimErrorText } from './scrim-bits';
 import { CapacityStepper, Toggle } from './scrim-new-form';
 
@@ -106,9 +106,16 @@ export function ScrimEditDialog({
           </div>
           <div className="flex flex-[1_1_150px] flex-col gap-1.5">
             <span id={ids.cap} className="text-[13px] text-muted">
-              정원
+              정원{game.capacity.step > 1 && <span className="text-faint"> ({game.capacity.step}명 단위)</span>}
             </span>
-            <CapacityStepper labelledBy={ids.cap} value={capacity} min={Math.max(game.capacity.min, s.joined_count)} max={game.capacity.max} onChange={setCapacity} />
+            <CapacityStepper
+              labelledBy={ids.cap}
+              value={capacity}
+              min={capacityFloor(game.capacity, s.joined_count)}
+              max={game.capacity.max}
+              step={game.capacity.step}
+              onChange={setCapacity}
+            />
           </div>
         </div>
         {s.join_closed && <p className="m-0 text-xs text-faint">시작 시각을 지금보다 뒤로 미루면 다시 참가·취소를 받아요.</p>}

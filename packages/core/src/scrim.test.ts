@@ -193,23 +193,35 @@ describe('isCapacityInRange', () => {
     expect(isCapacityInRange(4.5, r)).toBe(false);
     expect(isCapacityInRange(Number.NaN, r)).toBe(false);
   });
-  it('롤 고정 정원 10(GAME_SEED)', () => {
+  it('롤 정원 2–10 짝수만(GAME_SEED)', () => {
     const lol = GAME_SEED.find((g) => g.code === 'lol')!;
-    const r = { min: lol.capacity_min, max: lol.capacity_max };
-    expect(isCapacityInRange(10, r)).toBe(true);
-    expect(isCapacityInRange(8, r)).toBe(false);
+    const r = { min: lol.capacity_min, max: lol.capacity_max, step: lol.capacity_step };
+    for (const ok of [2, 4, 6, 8, 10]) expect(isCapacityInRange(ok, r)).toBe(true);
+    for (const bad of [0, 1, 3, 5, 7, 9, 11, 12]) expect(isCapacityInRange(bad, r)).toBe(false);
+  });
+  it('step은 min 기준: min 3, step 2 → 3·5·7', () => {
+    const r = { min: 3, max: 7, step: 2 };
+    expect([3, 4, 5, 6, 7].map((c) => isCapacityInRange(c, r))).toEqual([true, false, true, false, true]);
+  });
+  it('GAME_SEED 기본 정원은 모두 허용 값', () => {
+    for (const g of GAME_SEED) {
+      expect(isCapacityInRange(g.capacity_default, { min: g.capacity_min, max: g.capacity_max, step: g.capacity_step })).toBe(true);
+      expect(isCapacityInRange(g.capacity_max, { min: g.capacity_min, max: g.capacity_max, step: g.capacity_step })).toBe(true);
+    }
   });
 });
 
 describe('canStartScrim', () => {
-  it('고정 정원: 9/10 불가, 10/10 가능', () => {
-    expect(canStartScrim({ fixedCapacity: true, capacity: 10, joinedCount: 9 })).toBe(false);
-    expect(canStartScrim({ fixedCapacity: true, capacity: 10, joinedCount: 10 })).toBe(true);
+  it('꽉 차야 시작: 9/10·5/6 불가, 10/10·6/6 가능', () => {
+    expect(canStartScrim({ requiresFull: true, capacity: 10, joinedCount: 9 })).toBe(false);
+    expect(canStartScrim({ requiresFull: true, capacity: 10, joinedCount: 10 })).toBe(true);
+    expect(canStartScrim({ requiresFull: true, capacity: 6, joinedCount: 5 })).toBe(false);
+    expect(canStartScrim({ requiresFull: true, capacity: 6, joinedCount: 6 })).toBe(true);
   });
-  it('가변 정원: 1명 불가, 2명 가능(정원 미달이어도)', () => {
-    expect(canStartScrim({ fixedCapacity: false, capacity: 8, joinedCount: 1 })).toBe(false);
-    expect(canStartScrim({ fixedCapacity: false, capacity: 8, joinedCount: 2 })).toBe(true);
-    expect(canStartScrim({ fixedCapacity: false, capacity: 8, joinedCount: 8 })).toBe(true);
+  it('그 외: 1명 불가, 2명 가능(정원 미달이어도)', () => {
+    expect(canStartScrim({ requiresFull: false, capacity: 8, joinedCount: 1 })).toBe(false);
+    expect(canStartScrim({ requiresFull: false, capacity: 8, joinedCount: 2 })).toBe(true);
+    expect(canStartScrim({ requiresFull: false, capacity: 8, joinedCount: 8 })).toBe(true);
   });
 });
 

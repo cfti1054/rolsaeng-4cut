@@ -19,6 +19,8 @@ async function main(): Promise<void> {
       capacityMin: g.capacity_min,
       capacityMax: g.capacity_max,
       capacityDefault: g.capacity_default,
+      capacityStep: g.capacity_step,
+      startRequiresFull: g.start_requires_full,
     };
     await prisma.game.upsert({
       where: { code: g.code },

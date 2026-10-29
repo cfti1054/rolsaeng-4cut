@@ -8,11 +8,18 @@ import { GameCode } from './constants/games';
 // 계약: _workspace/01_architect_contract.md(S2) 4절
 // =============================================================================
 
-/** 내전 정원 범위(방장 포함). min = max면 고정 정원(롤 10) → 작성 폼은 조절 버튼을 숨긴다 */
+/**
+ * 내전 정원 범위(방장 포함). 허용 값 = min, min+step, …, max(롤 2–10, 2명 단위).
+ * min = max면 고정 정원 → 작성 폼은 조절 버튼을 숨긴다.
+ */
 export const GameCapacityRange = z.object({
   min: z.number().int().min(1),
   max: z.number().int().min(1),
   default: z.number().int().min(1),
+  /** 정원 단위. 롤은 2(두 팀 같은 인원) */
+  step: z.number().int().min(1),
+  /** true면 정원이 꽉 차야 시작, false면 SCRIM_MIN_PLAYERS_TO_START(2)명 이상 */
+  start_requires_full: z.boolean(),
 });
 export type GameCapacityRange = z.infer<typeof GameCapacityRange>;
 

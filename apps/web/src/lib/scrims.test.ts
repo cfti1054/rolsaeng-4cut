@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildScrimPatch,
+  capacityFloor,
   capacityPips,
   defaultScheduleInputs,
   formatHms,
@@ -111,8 +112,16 @@ describe('상세 표시', () => {
   });
 
   it('시작 불가 이유: 고정 정원 / 2명 이상', () => {
-    expect(startBlockedReason(10, { min: 10, max: 10, default: 10 })).toContain('정원 10명');
-    expect(startBlockedReason(8, { min: 2, max: 8, default: 8 })).toContain('2명 이상');
+    expect(startBlockedReason(6, { min: 2, max: 10, default: 10, step: 2, start_requires_full: true })).toContain('정원 6명');
+    expect(startBlockedReason(8, { min: 2, max: 8, default: 8, step: 1, start_requires_full: false })).toContain('2명 이상');
+  });
+
+  it('capacityFloor: 참가 인원 이상의 step 간격 값으로 올림', () => {
+    const lol = { min: 2, max: 10, default: 10, step: 2, start_requires_full: true };
+    expect(capacityFloor(lol, 1)).toBe(2);
+    expect(capacityFloor(lol, 4)).toBe(4);
+    expect(capacityFloor(lol, 5)).toBe(6);
+    expect(capacityFloor({ min: 2, max: 8, default: 8, step: 1, start_requires_full: false }, 5)).toBe(5);
   });
 
   it('희망 포지션 조립: 1지망 없으면 [], 2지망이 같으면 버림', () => {
