@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { ThemeToggleButton } from '@/components/theme/theme-controls';
-import { LogoMark } from '@/components/ui/icons';
 import { Eyebrow } from '@/components/ui/primitives';
+import { brand } from '@/lib/brand';
 
 const FEATURES = [
   {
@@ -30,27 +30,16 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
     <div className="flex min-h-dvh">
       <section
         aria-label="롤생네컷 소개"
-        className="relative hidden min-h-[640px] flex-[1_1_520px] flex-col gap-10 overflow-hidden border-r border-hero-line bg-hero px-12 py-10 lg:flex"
+        data-theme="dark"
+        className="relative hidden min-h-[640px] flex-[1_1_520px] flex-col gap-10 overflow-hidden border-r border-hero-line bg-hero px-12 py-10 text-text lg:flex"
       >
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 600 900"
-          preserveAspectRatio="xMidYMid slice"
-          className="absolute inset-0 size-full"
-        >
-          <defs>
-            <pattern id="lst" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(-24)">
-              <line x1="0" y1="0" x2="0" y2="12" className="stroke-overlay" strokeOpacity={0.04} strokeWidth={5} />
-            </pattern>
-          </defs>
-          <polygon points="380,0 600,0 600,900 220,900" className="fill-orange" fillOpacity={0.16} />
-          <polygon points="300,0 380,0 220,900 140,900" className="fill-blue" fillOpacity={0.18} />
-          <rect width="600" height="900" fill="url(#lst)" />
-          <line x1="380" y1="0" x2="220" y2="900" className="stroke-accent" strokeWidth={3} />
-        </svg>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={brand.loginHero} alt="" className="absolute inset-0 size-full object-cover object-[center_30%]" />
+        <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-r from-hero via-hero/88 to-hero/25" />
 
         <div className="relative flex items-center gap-3">
-          <LogoMark size={40} />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={brand.appIcon} alt="" width={40} height={40} className="size-10 rounded-xl object-cover" />
           <span className="flex flex-col leading-tight">
             <span className="text-lg font-bold tracking-[-0.02em]">롤생네컷</span>
             <Eyebrow>GAME CLUB</Eyebrow>
@@ -76,7 +65,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 
         <ul className="relative mt-auto flex max-w-[420px] list-none flex-col gap-2.5 p-0">
           {FEATURES.map((f) => (
-            <li key={f.mark} className="flex items-center gap-3.5 rounded-2xl border border-line bg-surface px-4 py-3.5">
+            <li key={f.mark} className="flex items-center gap-3.5 rounded-2xl border border-line bg-surface/90 px-4 py-3.5 backdrop-blur-sm">
               <span
                 aria-hidden="true"
                 className={`flex size-10 shrink-0 items-center justify-center rounded-xl font-display text-xs font-bold ${f.tile}`}
@@ -95,13 +84,18 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
       <main className="flex min-w-0 flex-[1_1_480px] flex-col px-6 pb-12 pt-6 md:pt-8">
         <div className="flex items-center justify-between lg:justify-end">
           <span className="flex items-center gap-2.5 lg:hidden">
-            <LogoMark size={32} />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={brand.appIcon} alt="" width={32} height={32} className="size-8 rounded-[10px] object-cover" />
             <span className="flex flex-col leading-tight">
               <span className="text-base font-bold">롤생네컷</span>
               <Eyebrow className="text-[10px]">GAME CLUB</Eyebrow>
             </span>
           </span>
           <ThemeToggleButton />
+        </div>
+        <div className="relative mt-4 h-36 overflow-hidden rounded-[20px] border border-hero-line lg:hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={brand.splash} alt="" className="size-full object-cover object-[center_28%]" />
         </div>
         <div className="flex flex-1 items-center justify-center pt-4">
           <div className="flex w-full max-w-[420px] flex-col gap-[22px]">{children}</div>

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { Providers } from '@/components/providers';
+import { brand } from '@/lib/brand';
 import { THEME_INIT_SCRIPT } from '@/lib/theme/theme';
 // 폰트는 @fontsource로 자체 호스팅한다(빌드·실행 모두 외부 네트워크 불필요).
 // 굵기별 CSS는 unicode-range로 나뉜 조각(한글·라틴)을 담고 있어 브라우저가 쓰는 글자의 조각만 받는다.
@@ -16,6 +17,12 @@ import './globals.css';
 export const metadata: Metadata = {
   title: { default: '롤생네컷', template: '%s · 롤생네컷' },
   description: '롤 · 롤체 · 스팀 게임방 내전과 서버 랭킹',
+  icons: { icon: brand.appIcon, apple: brand.appIcon },
+  openGraph: {
+    title: '롤생네컷',
+    description: '롤 · 롤체 · 스팀 게임방 내전과 서버 랭킹',
+    images: [{ url: brand.ogCard, width: 1200, height: 675, alt: '롤생네컷 마스코트' }],
+  },
 };
 
 export const viewport: Viewport = {

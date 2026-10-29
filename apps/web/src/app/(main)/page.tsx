@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Card, EmptyState, Eyebrow, Skeleton } from '@/components/ui/primitives';
+import { brand } from '@/lib/brand';
 import { useMe } from '@/lib/hooks/auth';
 import { routes } from '@/lib/routes';
 
@@ -31,18 +32,12 @@ export default function HomePage() {
 
       <section
         aria-label="다음 내전"
-        className="relative overflow-hidden rounded-3xl border border-hero-line bg-hero px-6 py-8 md:px-8"
+        data-theme="dark"
+        className="relative overflow-hidden rounded-3xl border border-hero-line bg-hero px-6 py-8 text-text md:px-8"
       >
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 600 240"
-          preserveAspectRatio="xMidYMid slice"
-          className="absolute inset-0 size-full"
-        >
-          <polygon points="380,0 600,0 600,240 300,240" className="fill-orange" fillOpacity={0.14} />
-          <polygon points="320,0 380,0 300,240 240,240" className="fill-blue" fillOpacity={0.16} />
-          <line x1="380" y1="0" x2="300" y2="240" className="stroke-accent" strokeWidth={3} />
-        </svg>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={brand.homeBanner} alt="" className="absolute inset-0 size-full object-cover object-[70%_center]" />
+        <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-r from-hero via-hero/85 to-hero/20" />
         <div className="relative flex max-w-md flex-col gap-3">
           <span className="self-start rounded-lg bg-accent px-2.5 py-1 font-display text-xs font-bold tracking-[0.14em] text-on-accent">
             NEXT MATCH
@@ -57,6 +52,7 @@ export default function HomePage() {
       <Card aria-label="요약">
         <EmptyState
           mark="S0"
+          image={brand.emptyWaiting}
           title="대시보드를 준비하고 있어요"
           description={
             <>

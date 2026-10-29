@@ -1,4 +1,5 @@
 import type { HTMLAttributes, ReactNode } from 'react';
+import { brand } from '@/lib/brand';
 import { cn } from '@/lib/cn';
 import { AlertIcon } from './icons';
 
@@ -37,23 +38,30 @@ export function Card({ children, className, ...rest }: HTMLAttributes<HTMLElemen
 
 export function EmptyState({
   mark,
+  image,
   title,
   description,
   action,
 }: {
   mark: string;
+  image?: string;
   title: string;
   description: ReactNode;
   action?: ReactNode;
 }) {
   return (
     <div className="flex flex-col items-center gap-3 rounded-[18px] border border-dashed border-line-3 bg-surface-2 px-6 py-12 text-center">
-      <span
-        aria-hidden="true"
-        className="flex size-12 items-center justify-center rounded-[14px] bg-accent/10 font-display text-sm font-bold text-accent-ink"
-      >
-        {mark}
-      </span>
+      {image ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={image} alt="" width={112} height={112} className="h-28 w-auto object-contain" />
+      ) : (
+        <span
+          aria-hidden="true"
+          className="flex size-12 items-center justify-center rounded-[14px] bg-accent/10 font-display text-sm font-bold text-accent-ink"
+        >
+          {mark}
+        </span>
+      )}
       <p className="m-0 text-base font-bold">{title}</p>
       <p className="m-0 max-w-sm text-[13px] leading-relaxed text-muted">{description}</p>
       {action}
@@ -114,9 +122,13 @@ export function Avatar({ src, name, size = 38, className }: { src: string | null
 /** 전체 화면 로딩(세션 확인 중) */
 export function FullScreenLoading({ label = '불러오는 중' }: { label?: string }) {
   return (
-    <div role="status" aria-live="polite" className="flex min-h-dvh items-center justify-center gap-3 text-sm text-muted">
-      <span aria-hidden="true" className="size-4 animate-spin rounded-full border-2 border-line-3 border-t-accent" />
-      {label}
+    <div role="status" aria-live="polite" className="flex min-h-dvh flex-col items-center justify-center gap-3 text-sm text-muted">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={brand.loadingSleep} alt="" width={88} height={88} className="size-[88px] rounded-[24px] object-cover" />
+      <span className="flex items-center gap-2">
+        <span aria-hidden="true" className="size-4 animate-spin rounded-full border-2 border-line-3 border-t-accent" />
+        {label}
+      </span>
     </div>
   );
 }

@@ -32,18 +32,6 @@ export function StatusPill({ label, tone, className }: { label: string; tone: Ba
   );
 }
 
-/** 카드·미리보기 배너의 사선 장식(목업 SVG 그대로, 색은 게임 토큰) */
-export function BannerArt({ game }: { game: GameCode }) {
-  const meta = GAME_SCRIM_META[game];
-  return (
-    <svg aria-hidden="true" viewBox="0 0 360 92" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 size-full">
-      <polygon points="210,0 360,0 360,92 170,92" fillOpacity={0.16} className={meta.fill} />
-      <polygon points="250,0 290,0 250,92 210,92" fillOpacity={0.12} className={meta.fill} />
-      <line x1="210" y1="0" x2="170" y2="92" strokeOpacity={0.5} strokeWidth={1.5} className={meta.stroke} />
-    </svg>
-  );
-}
-
 /** 게임 태그(「LEAGUE · 5V5」) */
 export function GameTag({ game, capacity, boxed = false }: { game: GameCode; capacity: number; boxed?: boolean }) {
   const meta = GAME_SCRIM_META[game];

@@ -2,6 +2,7 @@
 
 import { steamAppHeaderImageUrl, type ScrimSummary } from '@gcd/shared';
 import Link from 'next/link';
+import { brand } from '@/lib/brand';
 import { cn } from '@/lib/cn';
 import { GAME_SCRIM_META, scrimGameTag } from '@/lib/games';
 import { routes } from '@/lib/routes';
@@ -14,7 +15,14 @@ import {
   scrimNeedLine,
   scrimOptionTags,
 } from '@/lib/scrims';
-import { BannerArt, CapacityPips, StatusPill } from './scrim-bits';
+import { CapacityPips, StatusPill } from './scrim-bits';
+
+/** 옅은 배너색(라이트 토큰 banner-*)으로 왼쪽 글자 자리를 덮는다. */
+const BANNER_WASH = {
+  lol: 'from-banner-lol/80',
+  tft: 'from-banner-tft/80',
+  steam: 'from-banner-steam/80',
+} as const;
 
 const ACTION_CLASS = {
   primary: 'bg-accent text-on-accent hover:text-on-accent',
@@ -44,7 +52,7 @@ export function ScrimCard({ s, now, preview = false }: { s: ScrimSummary; now: n
         mine ? 'border-accent/35' : 'border-line',
       )}
     >
-      <div className={cn('relative h-[92px] overflow-hidden', meta.banner)}>
+      <div data-theme={s.steam_app ? 'dark' : 'light'} className={cn('relative h-[92px] overflow-hidden text-text', meta.banner)}>
         {s.steam_app ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -54,7 +62,11 @@ export function ScrimCard({ s, now, preview = false }: { s: ScrimSummary; now: n
             className="absolute inset-0 size-full object-cover opacity-35"
           />
         ) : (
-          <BannerArt game={s.game.code} />
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={brand.gameBanner[s.game.code]} alt="" loading="lazy" className="absolute inset-0 size-full object-cover opacity-80" />
+            <div aria-hidden="true" className={cn('absolute inset-0 bg-gradient-to-r via-transparent to-transparent', BANNER_WASH[s.game.code])} />
+          </>
         )}
         <div className="absolute inset-0 flex items-start justify-between px-[18px] py-4">
           <span className={cn('font-display text-[13px] font-bold tracking-[0.12em]', meta.ink)}>{scrimGameTag(s.game.code, s.capacity)}</span>
