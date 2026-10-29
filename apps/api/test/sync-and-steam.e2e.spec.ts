@@ -4,6 +4,7 @@
 import { GetMyGameAccountsResponse, LinkGameAccountResponse, STEAM_OPENID_ENDPOINT, SyncGameAccountResponse } from '@gcd/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ExternalApiError } from '../src/integrations/contracts';
+import { signSteamCookie } from '../src/modules/game-accounts/steam-link-cookie';
 import { STEAM_ID_A } from './support/s1-mocks';
 import { call, devLogin, expectError, expectNoExternalIds, linkRiot } from './support/s1-helpers';
 import { type TestApp, TEST_WEB_ORIGIN, createTestApp, findSetCookie } from './support/test-app';
@@ -310,5 +311,130 @@ describe('스팀 OpenID 연동', () => {
       headers: { Authorization: `Bearer ${token}` },
     });
     expectRedirect(res, 'steam_error=STEAM_LINK_STATE_INVALID');
+  });
+});
+
+// -----------------------------------------------------------------------------
+// S2 9-2 스팀 연동 팝업(D74)
+// -----------------------------------------------------------------------------
+
+async function startSteamPopup(app: TestApp, token: string, display?: 'popup' | 'redirect') {
+  const res = await call(app, 'POST', '/me/game-accounts', token, { provider: 'steam', ...(display ? { display } : {}) });
+  expect(res.status).toBe(200);
+  const setCookie = findSetCookie(res, 'gcd_steam') as string;
+  const body = LinkGameAccountResponse.parse(await res.json());
+  if (body.provider !== 'steam') throw new Error('steam 아님');
+  const returnTo = new URL(body.authorize_url).searchParams.get('openid.return_to') as string;
+  const state = new URL(returnTo).searchParams.get('state') as string;
+  return { cookie: setCookie.split(';')[0] as string, returnTo, state };
+}
+
+/** 팝업 콜백: return_to의 쿼리(state, display) 그대로 + openid 응답 */
+async function popupCallback(app: TestApp, returnTo: string, query: Record<string, string>, cookie?: string) {
+  const qs = new URLSearchParams({ ...Object.fromEntries(new URL(returnTo).searchParams), ...query });
+  return fetch(`${app.base}/me/game-accounts/steam/callback?${qs.toString()}`, {
+    redirect: 'manual',
+    headers: cookie ? { Cookie: cookie } : {},
+  });
+}
+
+function expectComplete(res: Response, query: string): void {
+  expect(res.status).toBe(302);
+  expect(res.headers.get('location')).toBe(`${TEST_WEB_ORIGIN}/steam-link/complete?${query}`);
+  expect(findSetCookie(res, 'gcd_steam')).toMatch(/Expires=Thu, 01 Jan 1970/);
+}
+
+function cookiePayload(cookie: string): Record<string, unknown> {
+  const value = decodeURIComponent(cookie.slice(cookie.indexOf('=') + 1));
+  return JSON.parse(Buffer.from(value.split('.')[0] as string, 'base64url').toString('utf8')) as Record<string, unknown>;
+}
+
+describe('스팀 연동 팝업 (S2 9-2)', () => {
+  it('시작 display=popup: return_to = 콜백?state=…&display=popup(순서 고정), 쿠키 payload display=popup', async () => {
+    t = await createTestApp({ fixedClock: true });
+    const { token } = await devLogin(t, 'alice');
+    const s = await startSteamPopup(t, token, 'popup');
+    expect(s.returnTo).toBe(`${TEST_WEB_ORIGIN}/api/v1/me/game-accounts/steam/callback?state=${s.state}&display=popup`);
+    expect(cookiePayload(s.cookie)).toMatchObject({ state: s.state, display: 'popup' });
+  });
+
+  it('display 생략·redirect: S1 return_to 그대로, 쿠키 display=redirect. 모르는 display 값 → 400', async () => {
+    t = await createTestApp({ fixedClock: true });
+    const { token } = await devLogin(t, 'alice');
+    for (const d of [undefined, 'redirect'] as const) {
+      const s = await startSteamPopup(t, token, d);
+      expect(s.returnTo).toBe(`${TEST_WEB_ORIGIN}/api/v1/me/game-accounts/steam/callback?state=${s.state}`);
+      expect(cookiePayload(s.cookie).display).toBe('redirect');
+    }
+    await expectError(await call(t, 'POST', '/me/game-accounts', token, { provider: 'steam', display: 'tab' }), 400, 'VALIDATION_FAILED');
+  });
+
+  it('팝업 성공 → 302 /steam-link/complete?steam=linked, 검증 기준 return_to에 display 포함', async () => {
+    t = await createTestApp({ fixedClock: true });
+    const { token, userId } = await devLogin(t, 'alice');
+    const s = await startSteamPopup(t, token, 'popup');
+    expectComplete(await popupCallback(t, s.returnTo, openIdQuery(s.returnTo), s.cookie), 'steam=linked');
+    expect(t.steam.verifyOpenIdAssertion).toHaveBeenCalledWith(expect.anything(), s.returnTo);
+    expect(t.prisma.gameAccount.rows.find((r) => r.userId === userId)).toBeTruthy();
+  });
+
+  it.each([
+    ['openid.mode=cancel', { 'openid.mode': 'cancel' }, 'STEAM_LINK_CANCELLED'],
+    ['openid.mode 다른 값', { 'openid.mode': 'setup_needed' }, 'STEAM_OPENID_INVALID'],
+  ])('팝업 오류 %s → /steam-link/complete?steam_error=%s', async (_n, over, code) => {
+    t = await createTestApp({ fixedClock: true });
+    const { token } = await devLogin(t, 'alice');
+    const s = await startSteamPopup(t, token, 'popup');
+    expectComplete(await popupCallback(t, s.returnTo, openIdQuery(s.returnTo, over), s.cookie), `steam_error=${code}`);
+  });
+
+  it('팝업: 다른 멤버가 연동한 스팀 ID → 완료 페이지로 GAME_ACCOUNT_ALREADY_LINKED', async () => {
+    t = await createTestApp({ fixedClock: true });
+    const alice = await devLogin(t, 'alice');
+    const bob = await devLogin(t, 'bob');
+    t.prisma.gameAccount.insert({ userId: bob.userId, gameId: t.prisma.gameId('steam'), externalId: STEAM_ID_A, displayName: 'b', verified: true, verifiedAt: new Date(), isPrimary: true });
+    const s = await startSteamPopup(t, alice.token, 'popup');
+    expectComplete(await popupCallback(t, s.returnTo, openIdQuery(s.returnTo), s.cookie), 'steam_error=GAME_ACCOUNT_ALREADY_LINKED');
+  });
+
+  it('쿠키 없음 + 쿼리 display=popup → 완료 페이지로 STEAM_LINK_STATE_INVALID, 쿼리 display 다른 값 → /settings', async () => {
+    t = await createTestApp({ fixedClock: true });
+    const { token } = await devLogin(t, 'alice');
+    const s = await startSteamPopup(t, token, 'popup');
+    expectComplete(await popupCallback(t, s.returnTo, openIdQuery(s.returnTo)), 'steam_error=STEAM_LINK_STATE_INVALID');
+    expectRedirect(
+      await popupCallback(t, s.returnTo, { ...openIdQuery(s.returnTo), display: 'Popup' }),
+      'steam_error=STEAM_LINK_STATE_INVALID',
+    );
+  });
+
+  it('유효한 쿠키가 있으면 도착지는 쿠키 기준: redirect 쿠키 + 쿼리 display=popup → /settings', async () => {
+    t = await createTestApp({ fixedClock: true });
+    const { token } = await devLogin(t, 'alice');
+    const s = await startSteamPopup(t, token, 'redirect');
+    // 쿼리 display는 검증에 쓰지 않는다(openid.return_to는 쿠키 기준과 같아 성공). 도착지도 쿠키(redirect) 기준
+    const res = await popupCallback(t, s.returnTo, { ...openIdQuery(s.returnTo), display: 'popup' }, s.cookie);
+    expectRedirect(res, 'steam=linked');
+  });
+
+  it('변조: 쿠키 display(popup) ≠ return_to display(없음) → STEAM_OPENID_INVALID(완료 페이지)', async () => {
+    t = await createTestApp({ fixedClock: true });
+    const { token } = await devLogin(t, 'alice');
+    const s = await startSteamPopup(t, token, 'popup');
+    const plain = `${TEST_WEB_ORIGIN}/api/v1/me/game-accounts/steam/callback?state=${s.state}`;
+    expectComplete(await popupCallback(t, plain, openIdQuery(plain), s.cookie), 'steam_error=STEAM_OPENID_INVALID');
+    expect(t.prisma.gameAccount.rows).toHaveLength(0);
+  });
+
+  it('display 없는 옛 쿠키(S1 형식)는 redirect로 취급(배포 호환)', async () => {
+    t = await createTestApp({ fixedClock: true });
+    const { token, userId } = await devLogin(t, 'alice');
+    const s = await startSteamPopup(t, token);
+    const legacy = signSteamCookie(
+      { state: s.state, user_id: userId, iat: Math.floor(t.clock.now().getTime() / 1000) } as never,
+      t.config.cookieSecret,
+    );
+    expect(cookiePayload(`gcd_steam=${legacy}`).display).toBeUndefined();
+    expectRedirect(await popupCallback(t, s.returnTo, openIdQuery(s.returnTo), `gcd_steam=${encodeURIComponent(legacy)}`), 'steam=linked');
   });
 });

@@ -9,7 +9,7 @@ import {
 } from '@gcd/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Badge, Button, ConfirmDialog, InlineError, Notice, Toast } from '@/components/ui/controls';
 import { RefreshIcon, ShieldCheckIcon } from '@/components/ui/icons';
 import { Card, ErrorState, Eyebrow, Skeleton } from '@/components/ui/primitives';
@@ -42,6 +42,13 @@ import {
 } from '@/lib/hooks/game-accounts';
 import { useNow } from '@/lib/hooks/use-now';
 import { routes } from '@/lib/routes';
+import {
+  STEAM_POPUP_CLOSED_POLL_MS,
+  STEAM_POPUP_FEATURES,
+  STEAM_POPUP_WINDOW_NAME,
+  browserChannelFactory,
+  listenSteamLinkResult,
+} from '@/lib/steam-link-popup';
 import { TIER_META, tierLabel } from '@/lib/tiers';
 
 function apiErrorText(err: unknown): string {
@@ -118,6 +125,7 @@ export function GameAccountsSection() {
             quota={data.sync_quota}
             now={now}
             onUnlink={(a) => setUnlinkTarget({ id: a.id, name: a.display_name, promotes: null })}
+            onToast={setToast}
           />
           <p className="m-0 text-xs text-faint">
             지금 갱신은 라이엇·스팀 합쳐 하루 {data.sync_quota.limit}회까지예요 · 오늘 {data.sync_quota.remaining}회 남음 ·
@@ -568,30 +576,122 @@ function RiotVerificationCard({ v, isSub }: { v: RiotLinkVerificationView; isSub
 // 스팀
 // -----------------------------------------------------------------------------
 
+type ToastFn = (t: { message: string; tone: 'success' | 'error' }) => void;
+
+/**
+ * 스팀 연동 팝업(S2 계약 9-2).
+ * 1. 클릭 핸들러 안에서 동기적으로 빈 팝업을 연다(비동기 뒤에 열면 차단된다)
+ * 2. 차단(null) → display=redirect로 요청하고 현재 창 이동(S1 흐름, /settings?steam=… 토스트)
+ * 3. 열림 → display=popup으로 요청하고 팝업을 authorize_url로 보낸다. 실패하면 팝업을 닫고 오류 토스트
+ * 4. 결과: BroadcastChannel + window message(같은 origin) 중 첫 메시지만 → 계정 목록 무효화 + 토스트
+ * 5. 메시지 없이 팝업이 닫히면 목록을 한 번 다시 받고 버튼을 되살린다. 채널 리스너는 600초까지 유지
+ */
+function useSteamLinkPopup(onToast: ToastFn) {
+  const link = useLinkGameAccount();
+  const qc = useQueryClient();
+  const [waiting, setWaiting] = useState(false);
+  const stopListening = useRef<(() => void) | null>(null);
+  const closedWatch = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopWatch = useCallback(() => {
+    if (closedWatch.current) clearInterval(closedWatch.current);
+    closedWatch.current = null;
+  }, []);
+
+  useEffect(
+    () => () => {
+      stopListening.current?.();
+      stopWatch();
+    },
+    [stopWatch],
+  );
+
+  const start = () => {
+    stopListening.current?.();
+    stopWatch();
+    const popup = window.open('', STEAM_POPUP_WINDOW_NAME, STEAM_POPUP_FEATURES);
+
+    if (!popup) {
+      // 팝업 차단 → 같은 창 이동(S1 흐름 그대로)
+      link.mutate(
+        { provider: 'steam', display: 'redirect' },
+        { onSuccess: (res) => res.provider === 'steam' && window.location.assign(res.authorize_url) },
+      );
+      return;
+    }
+
+    try {
+      popup.document.title = '스팀 연동';
+      popup.document.body.textContent = 'Steam 로그인 화면으로 이동하는 중이에요…';
+    } catch {
+      /* 이미 다른 오리진이면 무시 */
+    }
+    setWaiting(true);
+    let received = false;
+    stopListening.current = listenSteamLinkResult({
+      target: window,
+      origin: window.location.origin,
+      createChannel: browserChannelFactory(),
+      onResult: (msg) => {
+        received = true;
+        stopWatch();
+        setWaiting(false);
+        void qc.invalidateQueries({ queryKey: gameAccountKeys.mine });
+        onToast(
+          msg.status === 'linked'
+            ? { message: '스팀 계정을 연동했어요. 플레이타임을 가져오는 중이에요.', tone: 'success' }
+            : { message: errorMessage(msg.code), tone: 'error' },
+        );
+      },
+    });
+
+    link.mutate(
+      { provider: 'steam', display: 'popup' },
+      {
+        onSuccess: (res) => {
+          if (res.provider !== 'steam') return;
+          // [API 연결] 실제: Steam OpenID → API 콜백 → /steam-link/complete?steam=… 목: 곧바로 완료 페이지
+          popup.location.href = res.authorize_url;
+          closedWatch.current = setInterval(() => {
+            if (!popup.closed) return;
+            stopWatch();
+            setWaiting(false);
+            // 메시지 없이 닫힘(사용자가 닫음 또는 COOP로 일찍 closed) → 한 번 재조회. 채널 리스너는 TTL까지 유지
+            if (!received) void qc.invalidateQueries({ queryKey: gameAccountKeys.mine });
+          }, STEAM_POPUP_CLOSED_POLL_MS);
+        },
+        onError: (err) => {
+          popup.close();
+          stopListening.current?.();
+          setWaiting(false);
+          onToast({ message: apiErrorText(err), tone: 'error' });
+        },
+      },
+    );
+  };
+
+  return { start, link, waiting };
+}
+
 function SteamCard({
   account,
   quota,
   now,
   onUnlink,
+  onToast,
 }: {
   account: GameAccountView | null;
   quota: SyncQuota;
   now: number | null;
   onUnlink: (a: GameAccountView) => void;
+  onToast: ToastFn;
 }) {
-  const link = useLinkGameAccount();
+  const { start, link, waiting } = useSteamLinkPopup(onToast);
 
   if (!account) {
-    const start = () =>
-      link.mutate(
-        { provider: 'steam' },
-        {
-          onSuccess: (res) => {
-            // [API 연결] 실제: Steam OpenID 로그인 화면 → 콜백 → /settings?steam=linked. 목: 곧바로 /settings?steam=linked
-            if (res.provider === 'steam') window.location.assign(res.authorize_url);
-          },
-        },
-      );
+    const redirectAttempt = link.variables?.provider === 'steam' && link.variables.display === 'redirect';
+    const redirecting = link.isSuccess && redirectAttempt;
+    const busy = link.isPending || waiting || redirecting;
     return (
       <AccountRow>
         <div className="flex flex-wrap items-center gap-3.5">
@@ -600,11 +700,17 @@ function SteamCard({
             <span className="text-[15px] font-bold">스팀</span>
             <span className="text-[13px] text-muted">보유 게임과 플레이타임을 가져와요 · 스팀 로그인으로 소유 확인</span>
           </div>
-          <Button variant="primary" size="lg" onClick={start} disabled={link.isPending || link.isSuccess}>
-            {link.isPending || link.isSuccess ? '스팀으로 이동 중…' : 'Steam으로 로그인'}
+          <Button variant="primary" size="lg" onClick={start} disabled={busy}>
+            {waiting ? '새 창에서 진행 중…' : busy ? '스팀으로 이동 중…' : 'Steam으로 로그인'}
           </Button>
         </div>
-        {link.isError && <InlineError>{apiErrorText(link.error)}</InlineError>}
+        {waiting && (
+          <p className="m-0 text-xs text-faint" aria-live="polite">
+            새 창에서 스팀 로그인을 마치면 이 화면이 자동으로 바뀌어요. 창이 보이지 않으면 다른 창 뒤에 있는지 확인해 주세요.
+          </p>
+        )}
+        {/* 팝업 경로 실패는 토스트로 알린다. 같은 창 이동(팝업 차단) 실패만 카드 안에 */}
+        {link.isError && redirectAttempt && <InlineError>{apiErrorText(link.error)}</InlineError>}
       </AccountRow>
     );
   }

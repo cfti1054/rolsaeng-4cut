@@ -199,4 +199,25 @@ describe('createApiClient', () => {
     expect(f.calls[0]?.auth).toBeNull();
     expect(f.count(REFRESH)).toBe(0);
   });
+
+  it('S2 9-1: 회전하지 않은 refresh(200, Set-Cookie 없음)도 정상 세션으로 처리하고 쿠키를 다루지 않는다', async () => {
+    const onAuthFailure = vi.fn();
+    let n = 0;
+    const f = fakeFetch({
+      // 같은 리프레시 쿠키로 하루에 여러 번: 서버는 새 액세스 토큰만 주고 Set-Cookie를 붙이지 않는다
+      [REFRESH]: () => {
+        n += 1;
+        const res = json(200, tokenRes(`t${n}`));
+        expect(res.headers.has('Set-Cookie')).toBe(false);
+        return res;
+      },
+      [ME_GET]: (c) => (c.auth === `Bearer t${n}` ? json(200, ME) : err(401, 'ACCESS_TOKEN_EXPIRED')),
+    });
+    const api = createApiClient({ fetch: f.fetch, onAuthFailure });
+    await expect(api.request('/me', GetMeResponse)).resolves.toEqual(ME);
+    await expect(api.refresh()).resolves.toMatchObject({ access_token: 't2' });
+    await expect(api.request('/me', GetMeResponse)).resolves.toEqual(ME);
+    expect(onAuthFailure).not.toHaveBeenCalled();
+    expect(api.hasAccessToken()).toBe(true);
+  });
 });

@@ -12,6 +12,7 @@ import { Button, InlineError } from '@/components/ui/controls';
 import { RefreshIcon } from '@/components/ui/icons';
 import { EmptyState, ErrorState, Eyebrow, Skeleton } from '@/components/ui/primitives';
 import { isApiError } from '@/lib/api/client';
+import { brand } from '@/lib/brand';
 import { cn } from '@/lib/cn';
 import { errorMessage, errorMessageWithRetry } from '@/lib/errors';
 import { formatAgo, formatDuration, formatFull, formatSyncedAt, formatYearMonth } from '@/lib/format';
@@ -124,46 +125,32 @@ function Panel({
 
 function ProfileBanner({ p, now }: { p: GetUserProfileResponse; now: number | null }) {
   const firstPos = p.main_position?.positions[0]?.position;
-  const initial = Array.from(p.user.nickname.trim())[0] ?? '?';
   return (
     <section className="relative overflow-hidden rounded-[24px] border border-hero-line bg-hero">
-      <svg aria-hidden="true" viewBox="0 0 1200 140" preserveAspectRatio="xMidYMid slice" className="block h-[140px] w-full">
-        <defs>
-          <pattern id="profile-stripes" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(-24)">
-            <line x1="0" y1="0" x2="0" y2="12" strokeOpacity="0.05" strokeWidth="5" className="stroke-overlay" />
-          </pattern>
-        </defs>
-        <rect width="1200" height="140" className="fill-hero-3" />
-        <polygon points="760,0 1200,0 1200,140 700,140" fillOpacity="0.22" className="fill-blue" />
-        <polygon points="900,0 960,0 900,140 840,140" fillOpacity="0.85" className="fill-accent" />
-        <rect width="1200" height="140" fill="url(#profile-stripes)" />
+      <div data-theme="dark" className="relative h-[140px] w-full">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={brand.profileBanner}
+          alt=""
+          className="absolute inset-0 size-full scale-105 object-cover object-right opacity-90 blur-sm"
+        />
+        <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-r from-hero/50 via-hero/15 to-transparent" />
         {firstPos && (
-          <text
-            x="1170"
-            y="118"
-            textAnchor="end"
-            fontSize="64"
-            fontWeight="700"
-            fillOpacity="0.06"
-            className="fill-overlay font-display"
-          >
+          <span className="absolute left-6 top-4 font-display text-3xl font-bold tracking-wide text-overlay/35">
             {POSITION_META[firstPos].banner}
-          </text>
-        )}
-      </svg>
-      <div className="relative -mt-11 flex flex-wrap items-end gap-5 px-5 pb-6 md:px-7">
-        {p.user.avatar_url ? (
-          // 디스코드 CDN 이미지
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={p.user.avatar_url} alt="" width={96} height={96} className="size-24 rounded-[28px] border-4 border-hero object-cover" />
-        ) : (
-          <span
-            aria-hidden="true"
-            className="flex size-24 items-center justify-center rounded-[28px] border-4 border-hero bg-avatar-deep text-4xl font-bold text-blue-ink"
-          >
-            {initial}
           </span>
         )}
+      </div>
+      <div className="relative -mt-11 flex flex-wrap items-end gap-5 px-5 pb-6 md:px-7">
+        {/* 디스코드 사진이 없으면 마스코트 기본 프로필 */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={p.user.avatar_url ?? brand.avatar}
+          alt=""
+          width={96}
+          height={96}
+          className="size-24 rounded-[28px] border-4 border-hero object-cover"
+        />
         <div className="flex min-w-0 flex-[1_1_280px] flex-col gap-2.5">
           <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="m-0 text-[28px] font-bold tracking-[-0.03em]">{p.user.nickname}</h1>

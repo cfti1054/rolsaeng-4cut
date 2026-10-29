@@ -17,6 +17,12 @@ export const AUTH_COOKIE = {
 
 export const ACCESS_TOKEN_TTL_SEC_DEFAULT = 900; // 15분
 export const REFRESH_TOKEN_TTL_DAYS_DEFAULT = 30;
+/**
+ * (S2 인증 보완 1, D73) 리프레시 토큰 회전 주기(시간). 환경 변수 REFRESH_ROTATE_AFTER_HOURS.
+ * 현재 토큰의 발급 시각(refresh_tokens.created_at)부터 이 시간이 지나야 /auth/refresh가 새 토큰으로 바꾼다.
+ * 그 전에는 같은 토큰을 유지하고 Set-Cookie를 보내지 않는다. 0이면 매번 회전(S0 동작).
+ */
+export const REFRESH_ROTATE_AFTER_HOURS_DEFAULT = 24;
 export const OAUTH_STATE_TTL_SEC = 600; // 10분
 
 /** 디스코드 OAuth2 범위. email은 사용자가 이메일 미인증이면 null로 저장한다(선택 정보). */
@@ -103,7 +109,9 @@ export const LoginPageQuery = z.object({
 export type LoginPageQuery = z.infer<typeof LoginPageQuery>;
 
 // ---------------------------------------------------------------------------
-// POST /auth/refresh — 본문 없음. 쿠키 gcd_rt 필요. 성공 시 쿠키 회전.
+// POST /auth/refresh — 본문 없음. 쿠키 gcd_rt 필요.
+// 성공 시 현재 토큰이 REFRESH_ROTATE_AFTER_HOURS(기본 24시간) 이상 지났으면 회전(Set-Cookie 새 토큰),
+// 아니면 같은 토큰 유지(Set-Cookie 없음). 응답 본문은 두 경우 같다(S2 계약 9-1).
 // ---------------------------------------------------------------------------
 
 export const RefreshTokenResponse = AuthTokenResponse;

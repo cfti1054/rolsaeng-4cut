@@ -87,6 +87,37 @@ describe('SteamHttpApi.getPlayerSummary', () => {
   });
 });
 
+describe('SteamHttpApi 상점(D98)', () => {
+  it('searchStoreApps: 키 없이 store.steampowered.com, 한국어·KR, 게임(app)만', async () => {
+    const body = JSON.stringify({
+      total: 3,
+      items: [
+        { type: 'app', id: 730, name: 'Counter-Strike 2', tiny_image: 'x' },
+        { type: 'sub', id: 1, name: '번들' },
+        { type: 'app', id: 570, name: 'Dota 2' },
+      ],
+    });
+    const { api, fetchFn } = make({ '/api/storesearch/': { body } }, { steamApiKey: undefined });
+    expect(await api.searchStoreApps('counter strike')).toEqual([
+      { appId: 730, name: 'Counter-Strike 2' },
+      { appId: 570, name: 'Dota 2' },
+    ]);
+    const url = new URL(fetchFn.calls[0]!.url);
+    expect(url.host).toBe('store.steampowered.com');
+    expect(Object.fromEntries(url.searchParams)).toEqual({ term: 'counter strike', l: 'korean', cc: 'KR' });
+  });
+
+  it('getStoreApp: success → 이름, success false → null, 5xx → unavailable', async () => {
+    const ok = make({ '/api/appdetails': { body: JSON.stringify({ '730': { success: true, data: { name: '카운터 스트라이크 2', type: 'game' } } }) } }, { steamApiKey: undefined });
+    expect(await ok.api.getStoreApp(730)).toEqual({ appId: 730, name: '카운터 스트라이크 2' });
+    expect(new URL(ok.fetchFn.calls[0]!.url).searchParams.get('appids')).toBe('730');
+    const none = make({ '/api/appdetails': { body: JSON.stringify({ '1': { success: false } }) } });
+    expect(await none.api.getStoreApp(1)).toBeNull();
+    const down = make({ '/api/appdetails': { status: 503 } });
+    await expect(down.api.getStoreApp(1)).rejects.toMatchObject({ kind: 'unavailable' });
+  });
+});
+
 describe('SteamHttpApi.verifyOpenIdAssertion', () => {
   it('유효: check_authentication 으로 POST, mode 만 바꾸고 나머지는 그대로', async () => {
     const { api, fetchFn } = make({ '/openid/login': { body: fixture('steam/openid-valid.txt') } });

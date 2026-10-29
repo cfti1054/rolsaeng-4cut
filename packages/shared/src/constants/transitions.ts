@@ -14,13 +14,14 @@ import type {
 export type TransitionMap<S extends string> = Readonly<Record<S, readonly S[]>>;
 
 /**
- * scrims.status
- * recruiting → full(마지막 자리 참) | cancelled
- * full → recruiting(취소로 자리 생김, 대기열 없음) | playing(방장 시작) | cancelled
- * playing → finished(결과 승인 시)
+ * scrims.status (S2 계약 6절에서 확정)
+ * recruiting → full(마지막 자리 참, 정원 축소) | playing(방장·운영진 시작, 또는 자동 마감 시 시작 조건 충족) | cancelled
+ * full → recruiting(취소·정원 확대로 자리 생김 + 대기열 없음) | playing | cancelled
+ * playing → finished(결과 승인 시, S3)
+ * recruiting → playing은 S2에서 추가했다(롤체·스팀은 정원 미달이어도 시작할 수 있음, D78).
  */
 export const SCRIM_STATUS_TRANSITIONS: TransitionMap<ScrimStatus> = {
-  recruiting: ['full', 'cancelled'],
+  recruiting: ['full', 'playing', 'cancelled'],
   full: ['recruiting', 'playing', 'cancelled'],
   playing: ['finished'],
   finished: [],
@@ -28,15 +29,16 @@ export const SCRIM_STATUS_TRANSITIONS: TransitionMap<ScrimStatus> = {
 };
 
 /**
- * scrim_players.status
- * joined ↔ waitlist : 정원 초과 시 대기, 자리 나면 가장 먼저 대기한 사람 승격
- * joined|waitlist → cancelled : 본인 취소
- * cancelled → joined|waitlist : 모집 중 재참가(같은 행 재사용, joined_at 갱신)
- * joined → no_show : 내전 종료 후 운영진 표시
+ * scrim_players.status (S2 계약 6절에서 확정)
+ * waitlist → joined : 자리가 나면 대기 1번(joined_at, id 순) 자동 승격(취소·정원 확대)
+ * joined|waitlist → cancelled : 본인 취소(방장은 불가 — 모집글 취소로만)
+ * cancelled → joined|waitlist : 모집 중 재참가(같은 행 재사용, joined_at 갱신 → 대기열 맨 뒤)
+ * joined → no_show : 내전 시작 후 운영진 표시
  * no_show → joined : 운영진 표시 정정
+ * S0의 joined → waitlist는 삭제했다: 정원을 참가자 수 아래로 줄일 수 없어(SCRIM_CAPACITY_BELOW_JOINED) 쓰는 곳이 없다(D79).
  */
 export const SCRIM_PLAYER_STATUS_TRANSITIONS: TransitionMap<ScrimPlayerStatus> = {
-  joined: ['waitlist', 'cancelled', 'no_show'],
+  joined: ['cancelled', 'no_show'],
   waitlist: ['joined', 'cancelled'],
   cancelled: ['joined', 'waitlist'],
   no_show: ['joined'],

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EnvValidationError, isDiscordConfigured, loadConfig } from './env';
+import { EnvValidationError, isDiscordConfigured, loadConfig, scrimJobsEnabledFromEnv } from './env';
 
 const REQUIRED = {
   DATABASE_URL: 'postgresql://x',
@@ -78,5 +78,58 @@ describe('환경 변수', () => {
     expect(() => loadConfig({ ...REQUIRED, SYNC_DAILY_LIMIT: '1.5' })).toThrow(/SYNC_DAILY_LIMIT/);
     expect(() => loadConfig({ ...REQUIRED, RIOT_PLATFORM_ROUTING: 'k r' })).toThrow(/RIOT_PLATFORM_ROUTING/);
     expect(() => loadConfig({ ...REQUIRED, SYNC_JOBS_ENABLED: 'yes' })).toThrow(/SYNC_JOBS_ENABLED/);
+  });
+
+  it('S2 기본값(계약 S2 11절): 값을 안 넣어도 기본값으로 동작', () => {
+    const c = loadConfig({ ...REQUIRED, REFRESH_ROTATE_AFTER_HOURS: '', SCRIM_JOBS_ENABLED: ' ' });
+    expect(c.refreshRotateAfterHours).toBe(24);
+    expect(c.scrim).toEqual({
+      scheduleMaxDaysAhead: 30,
+      autoCloseAfterMin: 60,
+      jobsEnabled: true,
+      noShow: { threshold: 3, windowDays: 30, restrictionDays: 7 },
+      noShowMarkWindowDays: 7,
+    });
+  });
+
+  it('S2 값 검증: 회전 주기 0 허용·음수 거부, 양의 정수, SCRIM_JOBS_ENABLED 엄격 파싱', () => {
+    const c = loadConfig({
+      ...REQUIRED,
+      REFRESH_ROTATE_AFTER_HOURS: '0',
+      SCRIM_SCHEDULE_MAX_DAYS_AHEAD: '14',
+      SCRIM_AUTO_CLOSE_AFTER_MIN: '30',
+      SCRIM_JOBS_ENABLED: 'FALSE',
+      SCRIM_NO_SHOW_THRESHOLD: '2',
+      SCRIM_NO_SHOW_WINDOW_DAYS: '10',
+      SCRIM_NO_SHOW_RESTRICTION_DAYS: '3',
+      SCRIM_NO_SHOW_MARK_WINDOW_DAYS: '1',
+    });
+    expect(c.refreshRotateAfterHours).toBe(0);
+    expect(c.scrim).toEqual({
+      scheduleMaxDaysAhead: 14,
+      autoCloseAfterMin: 30,
+      jobsEnabled: false,
+      noShow: { threshold: 2, windowDays: 10, restrictionDays: 3 },
+      noShowMarkWindowDays: 1,
+    });
+    expect(() => loadConfig({ ...REQUIRED, REFRESH_ROTATE_AFTER_HOURS: '-1' })).toThrow(/REFRESH_ROTATE_AFTER_HOURS/);
+    expect(() => loadConfig({ ...REQUIRED, REFRESH_ROTATE_AFTER_HOURS: '1.5' })).toThrow(/REFRESH_ROTATE_AFTER_HOURS/);
+    for (const k of [
+      'SCRIM_SCHEDULE_MAX_DAYS_AHEAD',
+      'SCRIM_AUTO_CLOSE_AFTER_MIN',
+      'SCRIM_NO_SHOW_THRESHOLD',
+      'SCRIM_NO_SHOW_WINDOW_DAYS',
+      'SCRIM_NO_SHOW_RESTRICTION_DAYS',
+      'SCRIM_NO_SHOW_MARK_WINDOW_DAYS',
+    ]) {
+      expect(() => loadConfig({ ...REQUIRED, [k]: '0' })).toThrow(new RegExp(k));
+    }
+    expect(() => loadConfig({ ...REQUIRED, SCRIM_JOBS_ENABLED: '1' })).toThrow(/SCRIM_JOBS_ENABLED/);
+  });
+
+  it('scrimJobsEnabledFromEnv: 모듈 구성용(잘못된 값은 true, 기동은 loadConfig가 막는다)', () => {
+    expect(scrimJobsEnabledFromEnv({})).toBe(true);
+    expect(scrimJobsEnabledFromEnv({ SCRIM_JOBS_ENABLED: ' False ' })).toBe(false);
+    expect(scrimJobsEnabledFromEnv({ SCRIM_JOBS_ENABLED: 'yes' })).toBe(true);
   });
 });

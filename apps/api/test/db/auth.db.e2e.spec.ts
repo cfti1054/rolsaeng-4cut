@@ -81,8 +81,25 @@ describe.skipIf(!DB_URL)('[DB] auth·me e2e (PostgreSQL)', () => {
       headers: { Cookie: `${AUTH_COOKIE.refresh}=${encodeURIComponent(rt)}` },
     });
 
-  it('리프레시 회전: 같은 family·같은 expires_at, 원문 미저장', async () => {
+  /** (S2 D73) 회전은 발급 후 24시간부터. 회전 경로 테스트는 현재 토큰의 created_at을 24시간 전으로 옮긴다 */
+  const ageTokens = (hours = 24) =>
+    prisma.refreshToken.updateMany({ where: { revokedAt: null }, data: { createdAt: new Date(Date.now() - hours * 3_600_000) } });
+
+  it('(D73) 발급 후 24시간 미만: 200, Set-Cookie 없음, DB 행 수·폐기 상태 그대로', async () => {
+    const { rt } = await devLogin('keep_user');
+    await ageTokens(23);
+    for (let i = 0; i < 3; i++) {
+      const res = await refresh(rt);
+      expect(res.status).toBe(200);
+      expect(findSetCookie(res, AUTH_COOKIE.refresh)).toBeUndefined();
+    }
+    expect(await prisma.refreshToken.count()).toBe(1);
+    expect(await prisma.refreshToken.count({ where: { revokedAt: null } })).toBe(1);
+  });
+
+  it('리프레시 회전(24시간 경과): 같은 family·같은 expires_at, 원문 미저장', async () => {
     const { rt } = await devLogin('rot_user');
+    await ageTokens();
     const res = await refresh(rt);
     expect(res.status).toBe(200);
     RefreshTokenResponse.parse(await res.json());
@@ -98,6 +115,7 @@ describe.skipIf(!DB_URL)('[DB] auth·me e2e (PostgreSQL)', () => {
 
   it('유예 10초 안 재사용 → 200(쿠키 없음), 10초 후 → REUSED + family 폐기', async () => {
     const { rt } = await devLogin('grace_user');
+    await ageTokens();
     expect((await refresh(rt)).status).toBe(200);
     const inGrace = await refresh(rt);
     expect(inGrace.status).toBe(200);
@@ -113,8 +131,9 @@ describe.skipIf(!DB_URL)('[DB] auth·me e2e (PostgreSQL)', () => {
     expect(await prisma.refreshToken.count({ where: { revokedAt: null } })).toBe(0);
   });
 
-  it('동시 refresh Promise.all(5): 모두 200, 회전 1번, 살아 있는 토큰 1개', async () => {
+  it('동시 refresh 24시간 경계 Promise.all(5): 모두 200, 회전 1번, 살아 있는 토큰 1개', async () => {
     const { rt } = await devLogin('race_user');
+    await ageTokens();
     const results = await Promise.all(Array.from({ length: 5 }, () => refresh(rt)));
     expect(results.map((r) => r.status)).toEqual([200, 200, 200, 200, 200]);
     expect(results.filter((r) => findSetCookie(r, AUTH_COOKIE.refresh))).toHaveLength(1);

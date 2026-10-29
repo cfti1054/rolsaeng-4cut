@@ -32,6 +32,14 @@ export const DEFAULT_ERROR_MESSAGE: Record<ErrorCode, string> = {
   STEAM_LINK_CANCELLED: '스팀 로그인을 취소했습니다.',
   STEAM_OPENID_INVALID: '스팀 로그인 응답을 확인하지 못했습니다.',
   SYNC_LIMIT_EXCEEDED: '오늘 새로고침 횟수를 모두 사용했습니다.',
+  // S2 (계약 _workspace/01_architect_contract.md 2절)
+  SCRIM_NOT_RECRUITING: '모집 중인 내전이 아닙니다.',
+  SCRIM_JOIN_CLOSED: '시작 시각이 지나 참가·취소를 받지 않습니다.',
+  SCRIM_HOST_CANNOT_LEAVE: '방장은 참가를 취소할 수 없습니다. 모집글을 취소해 주세요.',
+  SCRIM_BANNED: '노쇼 누적으로 내전 참가가 제한된 상태입니다.',
+  SCRIM_CAPACITY_BELOW_JOINED: '정원을 현재 참가 인원보다 적게 바꿀 수 없습니다.',
+  SCRIM_CANNOT_START: '시작 조건을 채우지 못했습니다.',
+  SCRIM_NO_SHOW_NOT_ALLOWED: '노쇼를 표시할 수 없는 상태입니다.',
 };
 
 /**

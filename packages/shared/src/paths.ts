@@ -24,6 +24,19 @@ export const ApiPath = {
   steamLinkCallback: '/me/game-accounts/steam/callback',
   // S1 프로필
   userProfile: '/users/:id/profile',
+  // S2 게임 목록(작성 폼·필터용)
+  games: '/games',
+  // 스팀 내전 게임 검색(D98)
+  steamApps: '/steam-apps',
+  // S2 내전
+  scrims: '/scrims',
+  scrim: '/scrims/:id',
+  scrimJoin: '/scrims/:id/join',
+  scrimStart: '/scrims/:id/start',
+  scrimCancel: '/scrims/:id/cancel',
+  scrimPlayerNoShow: '/scrims/:id/players/:userId/no-show',
+  // S2 내 노쇼 제한 상태
+  myScrimRestriction: '/me/scrim-restriction',
 } as const;
 export type ApiPath = (typeof ApiPath)[keyof typeof ApiPath];
 

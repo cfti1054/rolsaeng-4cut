@@ -125,7 +125,8 @@ describe('link request/response', () => {
   it('provider로 분기, 모르는 필드 거절', () => {
     const r = LinkGameAccountRequest.parse({ provider: 'riot', riot_id: '새벽감자#KR1' });
     expect(r).toEqual({ provider: 'riot', riot_id: { game_name: '새벽감자', tag_line: 'KR1' } });
-    expect(LinkGameAccountRequest.parse({ provider: 'steam' })).toEqual({ provider: 'steam' });
+    // S2: display 기본값 redirect가 붙는다(S2 계약 9-2)
+    expect(LinkGameAccountRequest.parse({ provider: 'steam' })).toEqual({ provider: 'steam', display: 'redirect' });
     expect(LinkGameAccountRequest.safeParse({ provider: 'steam', steam_id: '76561198000000000' }).success).toBe(false);
     expect(LinkGameAccountRequest.safeParse({ provider: 'riot' }).success).toBe(false);
   });

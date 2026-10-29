@@ -52,6 +52,16 @@ function matchField(v: unknown, cond: unknown): boolean {
       case 'lte':
         if (v === null || v === undefined || cmp(v, arg) > 0) return false;
         break;
+      case 'contains': {
+        if (typeof v !== 'string') return false;
+        const insensitive = c.mode === 'insensitive';
+        const hay = insensitive ? v.toLowerCase() : v;
+        const needle = insensitive ? String(arg).toLowerCase() : String(arg);
+        if (!hay.includes(needle)) return false;
+        break;
+      }
+      case 'mode':
+        break;
       default:
         throw new Error(`fake-table: 지원하지 않는 조건 ${op}`);
     }
@@ -184,6 +194,53 @@ export class FakeTable<T extends Row = Row> {
     let rows = sortRows(this.rows.filter((x) => matchWhere(x, args.where)), args.orderBy);
     if (args.take !== undefined) rows = rows.slice(0, args.take);
     return rows.map((r) => ({ ...r }) as T);
+  };
+
+  /**
+   * groupBy: by, where, _count { _all }, _max { 필드 }, orderBy([{ _count: { 필드: dir } } | { 필드: dir }]), take.
+   * _count 정렬은 그룹 행 수 기준(이 테이블 사용처는 NULL 아닌 필드만 센다)
+   */
+  groupBy = async (args: {
+    by: string[];
+    where?: Where;
+    _count?: { _all?: boolean };
+    _max?: Record<string, boolean>;
+    orderBy?: Record<string, unknown>[];
+    take?: number;
+  }): Promise<Row[]> => {
+    await this.tick();
+    const groups = new Map<string, Row[]>();
+    for (const r of this.rows.filter((x) => matchWhere(x, args.where))) {
+      const key = JSON.stringify(args.by.map((f) => r[f]));
+      const list = groups.get(key) ?? [];
+      list.push(r);
+      groups.set(key, list);
+    }
+    let out = [...groups.values()].map((list) => {
+      const first = list[0] as Row;
+      const g: Row = Object.fromEntries(args.by.map((f) => [f, first[f]]));
+      if (args._count) g._count = { _all: list.length };
+      if (args._max) {
+        g._max = Object.fromEntries(
+          Object.keys(args._max).map((f) => {
+            const vals = list.map((r) => r[f]).filter((v) => v !== null && v !== undefined);
+            return [f, vals.length === 0 ? null : vals.reduce((a, b) => (cmp(a, b) >= 0 ? a : b))];
+          }),
+        );
+      }
+      return { g, n: list.length };
+    });
+    const keys = (args.orderBy ?? []).flatMap((o) => Object.entries(o));
+    out = out.sort((a, b) => {
+      for (const [k, spec] of keys) {
+        const dir = k === '_count' ? (Object.values(spec as object)[0] as string) : (spec as string);
+        const c = k === '_count' ? a.n - b.n : cmp(a.g[k], b.g[k]);
+        if (c !== 0) return dir === 'desc' ? -c : c;
+      }
+      return 0;
+    });
+    const rows = out.map((o) => o.g);
+    return args.take === undefined ? rows : rows.slice(0, args.take);
   };
 
   count = async (args: { where?: Where } = {}): Promise<number> => {

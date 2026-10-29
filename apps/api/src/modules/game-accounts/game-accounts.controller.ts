@@ -63,7 +63,7 @@ export class GameAccountsController {
   ): Promise<LinkGameAccountResponse> {
     res.setHeader('Cache-Control', 'no-store');
     if (body.provider === 'riot') return this.riot.start(user.id, body.riot_id);
-    const result = await this.steam.start(user.id);
+    const result = await this.steam.start(user.id, body.display);
     setSteamCookie(res, this.config, result.cookie);
     return result.body;
   }
@@ -84,7 +84,7 @@ export class GameAccountsController {
     await this.riot.cancel(user.id, params.id);
   }
 
-  /** GET /me/game-accounts/steam/callback → 302 웹 /settings (JWT 없음) */
+  /** GET /me/game-accounts/steam/callback → 302 웹 /settings 또는 팝업이면 /steam-link/complete (JWT 없음) */
   @Get(ApiPath.steamLinkCallback)
   async steamCallback(@Query() query: unknown, @Req() req: Request, @Res() res: Response): Promise<void> {
     const raw: unknown = (req.cookies as Record<string, unknown> | undefined)?.[STEAM_LINK_COOKIE];

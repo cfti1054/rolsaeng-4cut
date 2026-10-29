@@ -150,16 +150,6 @@ export function AlertIcon(p: IconProps) {
   );
 }
 
-/** 로고 마크(목업 36x36). 채움 색은 토큰 */
-export function LogoMark({ size = 36 }: { size?: number }) {
-  return (
-    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 36 36">
-      <path d="M11 3h22l-7 30H4z" className="fill-accent" />
-      <path d="M15 10h9.5l-1.3 6H19l-2.3 10h-4.6z" className="fill-on-accent" />
-    </svg>
-  );
-}
-
 export function RefreshIcon(p: IconProps) {
   return (
     <svg {...base({ strokeWidth: 2, ...p })}>

@@ -41,6 +41,8 @@ const steamMock = (over: Partial<SteamApi> = {}): SteamApi => ({
   getOwnedGames: vi.fn(async () => ({ visibility: 'public' as const, games: [{ appId: 10, name: 'CS', minutesTotal: 5, minutesRecent: 1 }] })),
   getPlayerSummary: vi.fn(async () => ({ personaName: '새스팀이름' })),
   verifyOpenIdAssertion: vi.fn(),
+  searchStoreApps: vi.fn(async () => []),
+  getStoreApp: vi.fn(async () => null),
   ...over,
 });
 const ddragon: DataDragon = {

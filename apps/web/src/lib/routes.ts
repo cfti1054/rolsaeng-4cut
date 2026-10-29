@@ -1,11 +1,32 @@
-import { API_PREFIX, ApiPath, SafeRedirectPath, type OAuthLoginErrorCode, type SettingsPageQuery } from '@gcd/shared';
+import {
+  API_PREFIX,
+  ApiPath,
+  STEAM_LINK_COMPLETE_PATH,
+  SafeRedirectPath,
+  type GameCode,
+  type OAuthLoginErrorCode,
+  type ScrimListStatus,
+  type SettingsPageQuery,
+  type SteamLinkCompletePageQuery,
+} from '@gcd/shared';
+
+/** /scrims 쿼리. status 기본값 open은 주소에 쓰지 않는다 */
+export interface ScrimsPageQuery {
+  game?: GameCode;
+  status?: ScrimListStatus;
+}
 
 /**
  * 웹 라우트. 링크는 반드시 이 함수들로 만든다(nextjs-dashboard-ui 1절).
  */
 export const routes = {
   home: () => '/',
-  scrims: () => '/scrims',
+  scrims: (q: ScrimsPageQuery = {}) =>
+    withQuery('/scrims', { game: q.game, status: q.status === 'open' ? undefined : q.status }),
+  scrimNew: () => '/scrims/new',
+  scrim: (id: string) => `/scrims/${encodeURIComponent(id)}`,
+  /** 스팀 팝업 완료 페이지(S2 9-2). API 콜백이 302로 보낸다. 웹이 직접 만드는 건 목뿐 */
+  steamLinkComplete: (q: SteamLinkCompletePageQuery = {}) => withQuery(STEAM_LINK_COMPLETE_PATH, q),
   rankings: () => '/rankings',
   member: (id: string) => `/members/${encodeURIComponent(id)}`,
   /** 스팀 콜백 결과는 API가 302로 붙여 준다(steam=linked / steam_error). 웹이 직접 만들 일은 목뿐 */

@@ -59,3 +59,36 @@
 **의존성 추가:** `@nestjs/schedule` 12.0.2, `bullmq` 6.5.0
 
 **다음:** S2 내전 모집·참가·대기열·노쇼 제한, 목록·작성·상세 화면
+
+## S2 내전 모집·참가·대기열·노쇼 제한, 목록·작성·상세 — 2026-10-29 — 판정: pass (DB e2e·실서버 미확인)
+
+**구현:** 내전 모집글 작성·수정·시작·취소(방장·운영진), 참가·대기열(1·2지망 포지션, 대기 승격 시 포지션·참가 시각 유지, 시작 시각 마감, 방장 취소 불가), 60분 자동 마감, 운영진 노쇼 표시·정정(시작 후 7일, 정정은 기한 없음), 노쇼 누적 제한(최근 30일 3회 → 7일, env), GET /games, GET /me/scrim-restriction 포함 엔드포인트 11개, core `scrim.ts`·`no-show.ts`, S2 마이그레이션, /scrims(모집 중·진행 중·종료 탭, 커서 「더 보기」), /scrims/new, /scrims/[id], 스팀 연동 팝업(/steam-link/complete).
+
+**리더 직접 실행:**
+- `corepack pnpm -r typecheck`: shared·core·web·api Done
+- `corepack pnpm -r test`: shared 53, core 148, web 125, api 332 passed / 27 skipped(DB e2e)
+- `corepack pnpm --filter web build`: 성공(/scrims ○, /scrims/new ○, /scrims/[id] ƒ, /steam-link/complete ○)
+- 브라우저(목 모드, 운영진 계정, 라이트·다크, 데스크톱·모바일 폭): 목록·「더 보기」 12→14건, 작성 화면, 상세 참가·취소(9/10 ↔ 8/10), 시작 시각 도달 시 참가 영역 즉시 마감, 노쇼 기한 경과 시 표시 버튼 숨김·정정 유지. 「더 보기」 실패 문구는 목에서 실패를 만들 수 없어 코드로만 확인
+
+**QA:** core·backend·web·s2 교차 모두 pass. 보고서 `_workspace/03_qa-verifier_{core,backend,web,s2}.md`
+
+**결함 처리:** web minor 3(더 보기 오류 문구)·4(시작 시각 즉시 마감)·5(기한 지난 노쇼 버튼 숨김) → 리더 수정, s2 QA가 재검증 해소. s2 minor 4(클라이언트 시계가 빠를 때 먼저 막힘) → 리더 수정(재조회 응답이 열림이면 서버값 우선), QA 재검증 없음. web minor 1·2(목 전용 차이) 남김.
+
+**남은 결함(architect 결정 필요):**
+- s2-1 제한 배너 「노쇼 N회」의 N이 최근 30일 개수라 제한 중에도 기준보다 작게 보일 수 있음(계약 8절 문구)
+- s2-2 카드 「… 구함」 합계가 빈 자리보다 클 수 있음(계약 7절 식, core QA 결함 1)
+- s2-3 env로 바뀌는 값(노쇼 기준·표시 기한·자동 마감·작성 상한)을 웹이 고정 문구·상수로 씀
+
+**미실행·미확인:**
+- DB e2e 27건(S2 scrims 6건: 마지막 자리 동시 참가 등 동시성), S2 마이그레이션 실제 적용 — Docker·PostgreSQL 없음
+- 실제 API 서버 + 웹 연결 상태의 브라우저 확인
+
+**리더 결정·기본값:** D73–D95(계약 문서). 리프레시 토큰 하루 1회 회전, 스팀 연동 팝업, 상태 탭 open·playing·ended, 카드 버튼은 모두 상세로 이동, 마감 판단은 서버 시각 기준(화면은 시작 시각에 먼저 막고 재조회)
+
+**명세 문서와 어긋난 부분(문서 갱신 필요):** 2장 모집글·참가 관리(제목, 진행 방식, 포지션 1·2지망, 자동 마감, 정원 범위, 방장 취소 불가), 5장 games·scrims·scrim_players 열 추가, 6장 scrims 경로·본문(탭 status, cursor, join 본문 필수, 추가 경로 6개), 7-4 노쇼(표시 기한·이동 구간·작성 제한·env), 8장 /scrims 탭·/scrims/new 입력·/scrims/[id] 메뉴. 상세 목록은 `03_qa-verifier_s2.md` 「명세 문서 갱신 필요 목록」
+
+**추가 변경(사용자 요청, D97):** 롤 정원 10 고정 → 2–10명 2명 단위, 꽉 차야 시작. games `capacity_step`·`start_requires_full` 열(마이그레이션 `20261029160000_s2_capacity_step`, prisma migrate diff와 일치 확인). 리더 직접 수정·실행: typecheck 4개 Done, test shared 53·core 150·web 126·api 333 passed / 27 skipped, web build 성공. QA 재검증 없음
+
+**추가 변경(사용자 요청):** 내전 상세 「링크 복사」(제목·시각·인원 + URL을 메신저용 텍스트로, clipboard 실패 시 textarea 대체). 배너 태그 롤 `LEAGUE · {정원/2}V{정원/2}`. **D98** 스팀 내전 게임 선택 필수: `GET /steam-apps`(멤버 보유 게임 + 스팀 상점 검색), games `requires_steam_app`, scrims `steam_app_id`·`steam_app_name`(마이그레이션 `20261029170000_s2_steam_app`, prisma migrate diff와 일치 확인), 작성·수정 화면 「스팀 게임」 선택, 카드 배너·상세에 게임 이미지·이름. 리더 직접 수정·실행: typecheck 4개 Done, test shared 57·core 150·web 131·api 343 passed / 27 skipped(DB e2e, Docker 없음), web build 성공, 목 모드 브라우저 확인(검색·선택·작성·상세·수정 창). QA 재검증 없음
+
+**다음:** 남은 결함 s2-1~3 계약 결정 후 S3 팀 자동 밸런스, 결과 입력·승인, ELO 반영, 레이팅 그래프

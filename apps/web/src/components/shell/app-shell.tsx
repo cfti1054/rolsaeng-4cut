@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ThemeSegment, ThemeToggleButton } from '@/components/theme/theme-controls';
-import { LogoMark, LogoutIcon, ShieldIcon } from '@/components/ui/icons';
+import { LogoutIcon, ShieldIcon } from '@/components/ui/icons';
 import { Avatar, ErrorState, Eyebrow, FullScreenLoading, Skeleton } from '@/components/ui/primitives';
 import { isApiError } from '@/lib/api/client';
 import { cn } from '@/lib/cn';
@@ -62,7 +62,6 @@ export function AppShell({ children }: { children: ReactNode }) {
 function Logo({ compact = false }: { compact?: boolean }) {
   return (
     <Link href={routes.home()} className="flex items-center gap-3 text-text no-underline hover:text-text">
-      <LogoMark size={compact ? 32 : 36} />
       <span className="flex flex-col leading-tight">
         <span className={cn('font-bold tracking-[-0.02em]', compact ? 'text-base' : 'text-[17px]')}>롤생네컷</span>
         <Eyebrow className={compact ? 'text-[10px]' : undefined}>GAME CLUB</Eyebrow>

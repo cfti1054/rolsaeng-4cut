@@ -10,6 +10,62 @@ export const GAME_META: Record<GameCode, { short: string; name: string }> = {
   steam: { short: '스팀', name: '스팀 게임' },
 };
 
+/**
+ * 내전 화면용 게임 표시(목업 Scrims·ScrimNew·ScrimDetail). 색은 토큰 클래스만(hex 금지, D53).
+ * - tag: 카드 배너 왼쪽 위 「LEAGUE · 5V5」, abbr: 작성 폼 게임 타일 글자, label: 필터·카드 이름
+ * - dot: 필터 점·인원 칸 채움, ink: 배너 글자, banner: 카드 배너 배경, tile: 타일 배경 + 글자, fill: 배너 다각형(SVG fill)
+ */
+export const GAME_SCRIM_META: Record<
+  GameCode,
+  { label: string; tag: string; abbr: string; dot: string; ink: string; banner: string; tile: string; fill: string; stroke: string }
+> = {
+  lol: {
+    label: '롤 협곡',
+    tag: 'LEAGUE',
+    abbr: 'LoL',
+    dot: 'bg-cyan',
+    ink: 'text-cyan-ink',
+    banner: 'bg-banner-lol',
+    tile: 'bg-cyan/14 text-cyan-ink',
+    fill: 'fill-cyan',
+    stroke: 'stroke-cyan',
+  },
+  tft: {
+    label: '롤체',
+    tag: 'TFT · LOBBY',
+    abbr: 'TFT',
+    dot: 'bg-violet',
+    ink: 'text-violet-ink',
+    banner: 'bg-banner-tft',
+    tile: 'bg-violet/14 text-violet-ink',
+    fill: 'fill-violet',
+    stroke: 'stroke-violet',
+  },
+  steam: {
+    label: '스팀',
+    tag: 'STEAM · SQUAD',
+    abbr: 'STM',
+    dot: 'bg-orange',
+    ink: 'text-orange-ink',
+    banner: 'bg-banner-steam',
+    tile: 'bg-orange/14 text-orange-ink',
+    fill: 'fill-orange',
+    stroke: 'stroke-orange',
+  },
+};
+
+/** 배너 태그. 롤은 정원을 두 팀으로 나눈 대진(정원 4 → 「LEAGUE · 2V2」), 정원이 홀수면 게임 이름만 */
+export function scrimGameTag(code: GameCode, capacity: number): string {
+  const base = GAME_SCRIM_META[code].tag;
+  if (code !== 'lol' || capacity % 2 !== 0) return base;
+  return `${base} · ${capacity / 2}V${capacity / 2}`;
+}
+
+/** 포지션 코드 → 한글(games.positions는 데이터라 모르는 코드는 그대로 보여 준다) */
+export function positionLabel(code: string): string {
+  return (POSITION_META as Record<string, { ko: string } | undefined>)[code]?.ko ?? code;
+}
+
 export const PROVIDER_META: Record<
   GameProvider,
   { label: string; mark: string; tile: string; chip: string; dot: string }

@@ -102,6 +102,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel,
+  confirmVariant = 'danger',
   pending,
   onConfirm,
   onClose,
@@ -110,6 +111,8 @@ export function ConfirmDialog({
   title: string;
   description: ReactNode;
   confirmLabel: string;
+  /** 되돌릴 수 없는 작업은 danger(기본), 진행 버튼(내전 시작 등)은 primary */
+  confirmVariant?: 'danger' | 'primary';
   pending?: boolean;
   onConfirm: () => void;
   onClose: () => void;
@@ -139,7 +142,7 @@ export function ConfirmDialog({
           <Button variant="ghost" onClick={onClose} disabled={pending}>
             취소
           </Button>
-          <Button variant="danger" onClick={onConfirm} disabled={pending}>
+          <Button variant={confirmVariant} onClick={onConfirm} disabled={pending}>
             {pending ? '처리 중…' : confirmLabel}
           </Button>
         </div>

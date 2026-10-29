@@ -1,93 +1,135 @@
-# QA: web (apps/web S1) — 판정: pass (minor 1)
+# QA: S2 apps/web (내전 화면 3개 + 스팀 팝업 완료 페이지 + 목 백엔드) — 판정: pass
 
-작성: qa-verifier, 2026-10-29
-대상: `/settings`의 게임 계정 연동·디스코드 섹션, `/members/[id]`, 훅 8개(`lib/hooks/game-accounts.ts`), API 함수(`lib/api/game-accounts.ts`), 목 백엔드(`lib/api/mock/game-accounts.ts`, `backend.ts` 위임), `lib/errors.ts`·`lib/tiers.ts`·`lib/format.ts`·`lib/game-accounts.ts`
-구현자 보고서: `_workspace/02_frontend-dev_s1.md`
-기준: 계약 4·6-1·8·12절, D38·D48·D53·D58·D60·D61·D65(다른 아이콘 받기)·D66(롤체 1위 표기), P5·P6 처리. 체크리스트 `_workspace/03_qa-verifier_plan.md` E절.
-제외: 실제 API와의 교차 대조. 백엔드가 구현 중이라 s1 단계에서 한다.
+대상: `apps/web/src/{app/(main)/scrims/**, app/steam-link/complete, components/scrims/**, components/settings/{game-accounts-section,steam-link-complete}.tsx, lib/{scrims,steam-link-popup,routes,errors,games}.ts, lib/api/scrims.ts, lib/hooks/scrims.ts, lib/api/mock/{scrims,backend,game-accounts}.ts, middleware.ts}`
+기준: 계약 `_workspace/01_architect_contract.md` 2·4·6·8·9-2절, D86·D87·D91·D93, 프런트 보고서 `02_frontend-dev_scrims.md`, 백엔드 보고서 `02_backend-dev_scrims.md`, core QA `03_qa-verifier_core.md` 참고 항목, 목업 Scrims·ScrimNew·ScrimDetail
+사용 가능 도구: Read, Grep, Glob, Bash(Git Bash), Write. 브라우저·스크린샷 도구 없음.
 
 ## 실행한 명령과 결과
 
 | 명령 | 결과 |
 | --- | --- |
-| `rm -rf apps/web/.next` 후 `corepack pnpm --filter web typecheck` | 오류 0 |
-| `corepack pnpm --filter web test` | **9 files, 80 passed** — 보고서 수치와 같음 |
-| `corepack pnpm --filter web build` | 성공. `/settings` 7.72 kB(Static), `/members/[id]` 8.23 kB(Dynamic), Middleware 49.4 kB — 보고서와 같음 |
-| `grep -rnE "#[0-9A-Fa-f]{3,8}\b\|rgba?\(" components app --include=*.tsx` | 0건 — hex·rgb 직접 사용 없음(D53) |
-| `grep -rnE "1421\|\+21\|#3 ELO\|76561\|58%" components app --include=*.tsx` | 0건 — 목업의 가짜 숫자·스팀 ID·「순방 %」를 하드코딩하지 않음 |
-| `TIER_META` 토큰 11개(`text-faint` … `text-orange-text`, `text-muted`) ↔ `app/globals.css`의 `--color-*` | 11개 모두 정의돼 있음 |
-| `grep -rn "riotgames\|steampowered\|steamcommunity.com/openid\|ddragon" apps/web/src` | 0건 — 외부 API 직접 호출 없음. 아이콘 이미지는 서버가 준 `icon_image_url`만 사용 |
-| 응답 단언 검색(`as GetMyGameAccountsResponse`, `as GetUserProfileResponse`, `as any`) | 0건. 캐시 갱신용 `setQueriesData<…>` 제네릭 1곳뿐(파싱된 데이터를 다시 씀) |
-| 브라우저 렌더(데스크톱·모바일 × 라이트·다크) | **미실행**(도구 없음) |
+| `corepack pnpm --filter web typecheck` | `tsc -p tsconfig.json --noEmit` 출력 없음(오류 0) |
+| `corepack pnpm --filter web test` | routes 6, nickname 6, scrims 15, steam-link-popup 7, client 14, game-accounts 17, format 7, mock/backend 5, hooks/game-accounts 2, mock/game-accounts 10, mock/scrims 19, theme 15, middleware 2 → **Test Files 13 passed (13), Tests 125 passed (125)** |
+| `corepack pnpm --filter web build` | `✓ Compiled successfully`, `Linting and checking validity of types` 통과, 12/12 페이지. `○ /scrims 3.23 kB`, `ƒ /scrims/[id] 8.3 kB`, `○ /scrims/new 176 B`, `○ /steam-link/complete 5.22 kB`, `ƒ Middleware 50.6 kB`. exit 0 |
+| 목 규칙 ↔ core 무작위 대조(스크래치, 코드 미수정) | mock/scrims.ts:159-194의 `orderWaitlist`·`validatePositions`·`computeOpenPositions`·`computeRestriction`을 그대로 떼어 `packages/core/dist`의 `orderWaitlist`·`validatePreferredPositions`(ok 여부)·`computeOpenPositions`·`computeScrimRestriction`과 각 20,000건 비교(동률 joined_at·짧은 id, 포지션 0–5개·정원 2–16·null/범위 밖 1지망, 임의 정책 1–4/1–30/1–10·반나절 양자화 시각·미래 시각). **불일치 0건** `{"wait":0,"open":0,"restr":0,"pos":0}` |
+| 하드코딩 색 검사 | S2 파일(components/scrims, steam-link-complete, game-accounts-section, app/(main)/scrims, app/steam-link, lib/games.ts, lib/scrims.ts)에 hex·rgb·hsl 0건. 색 유틸리티(bg-/text-/border-/fill-/stroke-…)를 globals.css `--color-*` 토큰 목록과 대조 → 토큰 밖 색 0건(나온 것은 text-sm·border-dashed 같은 크기·모양 유틸리티와 bg-transparent뿐). globals.css가 `--color-*: initial`로 기본 팔레트를 지움 |
 
-## 체크리스트 대조
-
-### E1 훅·호출
-- 훅 8개가 계약 12절의 이름 그대로 있음.
-- API 함수 8개가 모두 `apiClient.request(fillPath(ApiPath.x, {id}), shared스키마, …)` 형태(lib/api/game-accounts.ts:20-61). 메서드는 계약 4절과 같음.
-- 204 응답(DELETE 2개)은 `schema=null` 경로라 본문을 파싱하지 않음(client.ts:220).
-- `Retry-After`는 `ApiError.retryAfterSec`로 받음(client.ts `parseRetryAfter`). RATE_LIMITED와 GAME_PROVIDER_RATE_LIMITED는 「N초/분 뒤 가능」으로 안내함(`errorMessageWithRetry`). SYNC_LIMIT_EXCEEDED는 「자정(한국 시간)」 문구로 대신함.
-- 캐시 처리:
-  - 대표 지정: 낙관적 갱신, 실패하면 롤백(테스트 있음).
-  - 소유 확인·해제: 성공하면 `mine`·`profiles`를 무효화.
-  - sync: 202 응답의 accounts·quota를 바로 반영.
-- 필드 이름은 snake_case 그대로 쓰고 camelCase로 바꾸지 않음.
-
-### E2 설정 화면
-- 섹션 순서: 화면 테마 → 게임 계정 연동 → 디스코드(settings/page.tsx:17-19). 알림 섹션 없음(D48). 디스코드 「연동 코드 발급」 UI 없음(D23).
-- 라이엇 카드:
-  - lol·tft 두 행을 display_name으로 묶음. 카드 id·sync는 lol 행 기준(P6, lib/game-accounts.ts:48-51).
-  - 「대표」 배지, 「라이엇 ID · 롤, 롤체 공통 · … 동기화」, 롤·롤체 티어 요약.
-  - 동기화 실패 안내는 `SYNC_ERROR_MESSAGES`, 즉 GameAccountSyncError 7개를 Record로 매핑.
-  - 버튼: 「지금 갱신 · 오늘 N회 남음」(remaining 0이면 비활성), 부계정에만 「대표로 지정」, 「연동 해제」 확인 대화상자(대표면 승격될 계정 이름 안내).
-- 부계정 추가: `limits.riot_accounts_max`(D61)보다 적고 진행 중 확인이 없을 때만 보임. 한도에 닿으면 비활성 + 안내. 0개면 「라이엇 ID 연동」(D58).
-- 소유 확인 카드:
-  - 입력 검증은 shared `RiotIdInput`을 재사용(정규식 복제 없음).
-  - 아이콘 이미지가 없으면 `#번호`, 카운트다운 1초 간격 mm:ss.
-  - 만료(클라이언트 0초, 서버 expired, 410)되면 「다시 시작」.
-  - OWNERSHIP_CHECK_FAILED·RATE_LIMITED는 카드 안에 인라인으로 표시.
-  - 「이 아이콘이 없나요? 다른 아이콘 받기」(D65).
-  - 단계 표기는 1/2, 대조 중에는 2/2(P5).
-- 스팀:
-  - 미연동이면 「Steam으로 로그인」 버튼 1개로 `location.assign(authorize_url)`.
-  - 연동됨이면 personaname(D38, ID 숫자 없음), 「보유 게임 N개」.
-  - STEAM_PROFILE_PRIVATE면 「게임 정보 비공개」 배지, 목업 문구, 「다시 시도 · 오늘 N회 남음」, 「마지막 성공 값(MM.DD)」.
-- 콜백 쿼리: `SettingsPageQuery`로 파싱하고, 실패하면 무시 → 토스트 → `router.replace('/settings')`. 잘못된 값이어도 쿼리는 지움.
-
-### E3 프로필 화면
-- 헤더: 주 포지션 1순위 영문 워터마크, 「멤버/운영진 · YYYY.MM 가입」. ELO 순위는 표시 안 함.
-- 연동 칩: 라이엇 display_name(대표 표기), 「스팀 연동됨」, 디스코드 연동/미연동. 외부 ID는 표시하지 않음.
-- 갱신 버튼: `is_self`이고 quota가 있을 때만. 대상은 `tiers`의 lol `game_account_id`, 없으면 스팀 행(계약 8절 마지막 줄).
-- 카드 4개:
-  - 티어: tiers가 비면 「미연동」, rank null이면 「동기화 대기 중」, UNRANKED면 「이번 시즌 기록 없음」.
-  - 롤체 보조 줄: 「1위 N회 (비율)」(D66).
-  - 주 포지션: 「솔로 랭크 최근 N경기 기준 탑 NN%」.
-  - 내전 레이팅: 「준비 중」.
-- RATING HISTORY·BADGES·SCRIMS는 빈 상태. `scrim`·`badges`가 null이니 그대로 맞음.
-- 최근 솔로 랭크:
-  - `recent_matches`가 null이면 「라이엇 계정이 없어요」.
-  - items가 비고 `refresh_queued`면 스켈레톤, 아니면 빈 상태.
-  - 「라이엇 API · 시각」 표시.
-  - `refresh_queued`면 10초 뒤 한 번 다시 조회(hooks:135-143).
-- UUID가 아니거나 NOT_FOUND·VALIDATION_FAILED면 「멤버를 찾을 수 없어요」. 로딩·오류 상태 있음.
-
-### E4 폴링·시각·기타
-- 폴링: `sync.state ≠ idle`이면 2초, 진행 상태를 처음 본 시각부터 60초까지(`nextPollInterval`, 테스트 있음). 설정·프로필 둘 다 적용.
-- 시각 표기는 `Intl.DateTimeFormat(timeZone: 'Asia/Seoul')`로 KST 고정(format.ts). 브라우저 시간대와 무관함(format.test 있음).
-- 티어 색 매핑표는 `lib/tiers.ts` 한 곳에만 있고 토큰만 씀(D53). 항상 마크·라벨 텍스트를 함께 씀.
-- `routes.settings(q)`를 추가함. 프로필·설정 링크는 모두 `routes.*`로 만듦.
-- 목 백엔드: 9개 엔드포인트 중 브라우저가 호출하지 않는 steam callback을 뺀 8개를 흉내 냄. 응답은 `GameAccountView.parse` 등 shared 스키마를 통과함. 스팀 `authorize_url`은 `/settings?steam=linked`. 목 테스트 10개가 실제 클라이언트의 zod 파싱 경로로 흐름을 검증함(내부 필드 비노출 포함).
+미실행: 브라우저 목 모드 데스크톱·모바일 × 라이트·다크 육안 확인, 팝업 차단 수동 절차(브라우저 도구 없음). 결함이 아니라 미검증 항목이다.
 
 ## 결함
 
+blocker 0, major 0, minor 5.
+
 | # | 심각도 | 위치(파일:줄) | 기대 | 실제 | 재현 |
 | --- | --- | --- | --- | --- | --- |
-| m1 | minor | `apps/web/src/components/settings/game-accounts-section.tsx:349`(`open` 상태), 351(verifying 조기 반환), 368(`open && state==='more'`) | 부계정 소유 확인이 끝나면 「+ 부계정 추가」 버튼 상태로 돌아감 | `RiotAddArea`는 verifying일 때 다른 요소를 반환하지만 같은 트리 위치에 남아 있어 `open=true`가 유지됨. 확인이 성공해 `riot_verification`이 null이 되고 라이엇 ID가 아직 한도보다 적으면 입력 폼이 다시 열린 채로 보임 | 목 모드: 라이엇 1개 연동 → 「+ 부계정 추가」 → ID 입력 → 「바꿨어요, 확인」(5초 뒤 성공) → 새 카드 아래에 「부계정 추가」 입력 폼이 열린 채 남음. 데이터 오류는 아니고 표시 문제(취소 후 다시 열리는 것은 의도일 수도 있음) |
+| 1 | minor | apps/web/src/lib/api/mock/scrims.ts:159-194, :446-450, :462-479, :574-581 | 목이 core 규칙을 그대로 써서 core가 바뀌면 같이 바뀐다 | `orderWaitlist`·`validatePositions`·`computeOpenPositions`·`computeRestriction`·`canStart`·자동 마감·`settleRoster`(= planRosterAfterChange)·`scheduleIssue`(= validateScrimSchedule)를 목 안에 다시 적었다. 지금은 무작위 대조 불일치 0건이라 동작은 같다 | core는 시계·env·I/O 없이 `@gcd/shared`만 의존(core QA 확인). `apps/web/package.json`에 `"@gcd/core": "workspace:*"`를 넣고 목에서 import하기를 권고. 정책·정원 값이 env로 바뀌거나 S3에서 규칙이 늘면 갈라질 수 있다 |
+| 2 | minor | apps/web/src/lib/api/mock/scrims.ts:720-730(POST /join), :797-806(PATCH /scrims/:id) | 서버와 같은 판정 순서: Nest `@Body(ZodValidationPipe)`가 서비스(NOT_FOUND)보다 먼저 → 없는 내전 + 잘못된 본문 = 400 VALIDATION_FAILED | 목은 NOT_FOUND를 먼저 보고 그다음 본문을 parse → 같은 요청이 404 | 목 모드에서 `POST /scrims/{없는 uuid}/join` 본문 없이 → 목 404, 실제 API 400. 화면 동작에 영향 없음(둘 다 「찾을 수 없음」 또는 오류 문구) |
+| 3 | minor | apps/web/src/components/scrims/scrims-view.tsx:144 | 「더 보기」 실패 문구가 실제 오류 코드를 따른다 | `errorMessage('NETWORK_ERROR')` 고정. 커서 400(VALIDATION_FAILED)·401 등도 「연결」 문구로 보인다 | 다른 탭 커서처럼 서버가 400을 주면 네트워크 오류 안내가 뜬다. `isApiError(list.error) ? errorMessage(list.error.code) : …`로 첫 페이지 오류(:110)와 같게 처리 권장 |
+| 4 | minor | apps/web/src/components/scrims/scrim-detail.tsx:149-153, lib/hooks/scrims.ts:85 | 카운트다운이 0이 되면 「시작 시각이 지나 참가·취소할 수 없어요」로 바뀐다 | `join_closed`는 서버값이라 다음 재조회(최대 20초)까지 카운트다운이 `00:00:00`에 머물고 참가 버튼이 남는다. 누르면 서버가 SCRIM_JOIN_CLOSED(409)로 거절 → 문구 + 상세 재조회로 복구되므로 데이터 문제는 없다(D93대로) | 시작 1분 전 모집글 상세를 열어 두고 0초가 지난 직후 「참가하기」 → 409 문구. 0초 도달 시 `refetch()` 한 번 부르기를 권장 |
+| 5 | minor | apps/web/src/components/scrims/scrim-detail.tsx:389-398 | 계약 8절 「joined → 「노쇼 표시」(can_mark_no_show일 때)」 | 운영진이면 기한이 지나도 버튼을 **비활성 + 이유 툴팁**으로 보인다(누를 수는 없음). 서버 판단(can_mark_no_show)으로 막고 있어 안전하지만 계약 문구(노출 조건)와 다르다 | role admin으로 시작 7일이 지난 종료 내전 상세 → 비활성 「노쇼 표시」 버튼. 의도된 UX라면 계약 문구만 맞추면 된다 |
 
-## 참고 (결함 아님)
+## 교차 대조 표 — 엔드포인트 11개
 
-1. 소유 확인 카운트다운은 클라이언트 시계로 계산한다(`Date.parse(expires_at) - now`). 계약 12절은 기준 시계를 정하지 않았다. 판정은 서버가 하므로(만료 410) 시계가 어긋나도 데이터에는 영향이 없다.
-2. `sortAccounts`(낙관적 갱신 전용)는 verified_at이 같을 때 display_name으로 순서를 정한다. 계약은 id 순이다. 서버 응답이 오면 바로 덮어쓰므로 영향이 없다. `unlinkPromotes`는 서버 정렬을 안정 정렬로 유지해 계약과 같은 결과다.
-3. 폴링 60초 상한에 걸린 뒤 같은 계정이 idle로 돌아오지 않은 채 다시 「지금 갱신」을 누르면 폴링이 재개되지 않는다. 서버가 10분 넘게 멈춘 상태에서만 생기는 경우다.
-4. `lib/api/client.ts`의 `export type FetchLike =(input…` 띄어쓰기 1곳이 포맷과 다르다(동작 무관).
-5. 실제 API와의 교차 대조(오류 코드 실제 반환, `limits`·`GAME_ACCOUNT_ALREADY_LINKED_TO_ME` 응답)는 s1 단계에서 한다.
+| # | 계약 4절 | 백엔드 컨트롤러 | 웹 API(lib/api/scrims.ts) → 응답 parse | 웹 훅(lib/hooks/scrims.ts) | 목 핸들러(mock/scrims.ts) | 일치 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | GET /games | games.controller `@Get(ApiPath.games)` | listGames :30 → `ListGamesResponse` | useGames :56 | :584 | O |
+| 2 | GET /scrims | `list` `@Get(ApiPath.scrims)` + `ListScrimsQuery` | listScrims :42(game·status·cursor·limit) → `ListScrimsResponse` | useScrims :66(useInfiniteQuery, next_cursor) | :605(탭·정렬·커서 t 검사) | O |
+| 3 | POST /scrims 201 | `create` `@HttpCode(201)` | createScrim :52 → `CreateScrimResponse` | useCreateScrim :121 | :634 → 201 | O |
+| 4 | GET /scrims/:id | `get` | getScrim :57 → `GetScrimResponse` | useScrim :79(모집 중 20초 + 포커스) | :803 | O |
+| 5 | PATCH /scrims/:id | `update` | updateScrim :62 → `UpdateScrimResponse` | useUpdateScrim :131 | :805 | O |
+| 6 | POST /scrims/:id/join(본문 필수) | `join` `@Body(JoinScrimRequest)` 200 | joinScrim :67 → `JoinScrimResponse` | useJoinScrim :141 — 항상 `{ preferred_positions }` 전송(포지션 없는 게임은 `[]`) | :729 본문 없음 → VALIDATION_FAILED(테스트 :378) | O |
+| 7 | DELETE /scrims/:id/join | `leave` 200 | leaveScrim :72(본문 없음) → `LeaveScrimResponse` | useLeaveScrim :151 | :764 | O |
+| 8 | POST /scrims/:id/start | `start` 200 | startScrim :77 → `StartScrimResponse` | useStartScrim :161 | :778 | O |
+| 9 | POST /scrims/:id/cancel | `cancel` 200 | cancelScrim :82 → `CancelScrimResponse` | useCancelScrim :171 | :787(reason host/admin) | O |
+| 10 | PUT /scrims/:id/players/:userId/no-show | `setNoShow` RolesGuard + `@Roles('admin')` | setScrimNoShow :87(`{no_show}`) → `SetScrimNoShowResponse` | useSetScrimNoShow :181 | :685(역할 검사 먼저) | O |
+| 11 | GET /me/scrim-restriction | `myRestriction` | getMyScrimRestriction :95 → `GetMyScrimRestrictionResponse` | useMyScrimRestriction :91 | :590 | O |
+
+- 경로는 모두 `ApiPath` + `fillPath`(웹 하드코딩 경로 없음). 응답은 `apiClient.request(path, schema)`가 `safeParse`, 실패하면 INVALID_RESPONSE(client.ts `parseBody`). 제네릭 단언만 있는 호출 없음.
+- snake_case 그대로: 훅·화면이 `joined_count`, `open_positions`, `viewer.can_*`, `restricted_until` 등을 변환 없이 사용.
+- 상태 변경 응답 → `applyScrimDetail`(상세 캐시 `setQueryData` + 목록 무효화, D87). 실패 → `handleScrimMutationError`: SCRIM_BANNED면 제한 조회 무효화, 403·404·409면 상세·목록 무효화.
+- 목 viewer 규칙(mock :547-562)과 백엔드(scrim-views.service.ts:214-232), shared 주석(scrims.ts:203-209)이 같은 식: can_join·can_leave·can_edit·can_cancel·can_start·can_mark_no_show, `preferred_positions`는 joined·waitlist일 때만, `waitlist_order`는 (joined_at, 행 id) 순서. 목·백엔드 모두 scrim_players 행 id로 동률 처리.
+
+## 오류 코드 7개
+
+| code | 웹 문구(lib/errors.ts) | 화면 처리 |
+| --- | --- | --- |
+| SCRIM_NOT_RECRUITING | :46 | 상세 재조회 → 닫힌 상태 문구(ClosedStateText) |
+| SCRIM_JOIN_CLOSED | :47 | 재조회 → 「시작 시각이 지나 참가·취소할 수 없어요」 Notice, 방장은 수정 안내 |
+| SCRIM_HOST_CANNOT_LEAVE | :48 | 방장은 can_leave false라 버튼 없음 + 안내 문구(:603) |
+| SCRIM_BANNED | :49 + 해제 시각 | `scrimErrorText`(scrim-bits.tsx:114): 조회값 `restriction.until` 우선, 없으면 `Retry-After`로 「MM.DD HH:mm에 풀려요」. errorMessageWithRetry가 SCRIM_BANNED에 「N분 뒤」를 붙이지 않음(errors.ts:100) |
+| SCRIM_CAPACITY_BELOW_JOINED | :50 | 수정 대화상자 서버 오류 + 클라이언트 사전 검사(edit-dialog:55, 스테퍼 min = max(정원 하한, joined)) |
+| SCRIM_CANNOT_START | :51 | 방장 메뉴 InlineError, can_start false면 버튼 비활성 + `startBlockedReason` |
+| SCRIM_NO_SHOW_NOT_ALLOWED | :52 | 참가자 목록 InlineError |
+
+`ERROR_MESSAGES: Record<AppErrorCode, string>`이라 36개 누락은 typecheck가 막는다(통과).
+
+## 상태별 화면
+
+| 상태 | 상세 배지 / 진행 단계 | 참가 영역 | 방장 메뉴 |
+| --- | --- | --- | --- |
+| recruiting | 「모집 중」, 1단계 current, 카운트다운 | can_join → 참가하기, 참가 중 → 포지션 변경 + 참가 취소 | 수정·시작(조건 미달 비활성 + 이유)·모집 취소 |
+| full | 「정원 마감 · 팀 구성 중」, 1 done·2 current, WAITLIST 섹션 | 「대기열 등록」 + 「지금 신청하면 대기 N번」 | 같음 |
+| recruiting·full + join_closed | 「시작 대기」, 카운트다운 대신 「시작 시각이 지났어요」 | Notice(방장에겐 미루기 안내) | 같음 |
+| playing | 「경기 진행 중」, 1–2 done·3 current | 진행 중 문구 | 없음(can_* false), 운영진 노쇼 표시·정정 |
+| finished | 「종료」, 4단계 모두 done | 「끝난 내전이에요」 | 운영진 노쇼(기한 안) |
+| cancelled | 단계 대신 「취소된 내전 · 방장/운영진/자동 취소」 + 취소 시각 | 「취소된 내전이라…」 | 없음 |
+
+`lib/scrims.ts` `scrimSteps`·`scrimDetailBadge`·`scrimCardBadge`·`CANCEL_REASON_TEXT`가 계약 6절 표와 일치. 버튼 노출은 `viewer.can_*`만(운영진 노쇼 버튼의 노출 조건은 결함 5).
+
+## 라우트-링크 대조
+
+| 라우트 | app 파일 | 링크 생성 |
+| --- | --- | --- |
+| /scrims(?game&status, open 생략) | app/(main)/scrims/page.tsx(Suspense로 useSearchParams 감쌈, 빌드 ○) | `routes.scrims(q)` — 필터·탭 `router.replace`, 상세·작성의 「← 내전 목록」 |
+| /scrims/new | app/(main)/scrims/new/page.tsx | `routes.scrimNew()` — 헤더 버튼·빈 상태 |
+| /scrims/[id] | app/(main)/scrims/[id]/page.tsx | `routes.scrim(id)` — 카드 제목·버튼, 작성 성공 `router.push` |
+| /steam-link/complete | app/steam-link/complete/page.tsx(그룹 밖) | API 콜백 302(`STEAM_LINK_COMPLETE_PATH` = 같은 값), 목 authorize_url |
+
+- S2 파일에 `/scrims` 문자열 하드코딩 링크 없음(`scrims-view.tsx:37` pathname 비교와 nav 활성 판정만).
+- middleware matcher(middleware.ts:26) 제외 목록에 추가된 것은 `steam-link/`(슬래시 포함)뿐 → `/steam-link/` 아래만 쿠키 검사 제외. `/scrims`, `/scrims/new`, `/scrims/abc`, `/settings`는 계속 검사(middleware.test.ts). 범위 과다 아님.
+
+## 스팀 팝업(9-2)
+
+| 항목 | 결과 | 근거 |
+| --- | --- | --- |
+| 클릭에서 동기적으로 window.open | O | game-accounts-section.tsx:612(mutate 전에 연다) |
+| 차단(null) → display=redirect + location.assign | O | :614-620 |
+| 열림 → display=popup, 성공 시 popup.location.href, 실패 시 close + 토스트 + 리스너 정리 | O | :648-669 |
+| window message origin 검사 | O | steam-link-popup.ts:109-111 `ev.origin !== o.origin` 무시 |
+| 스키마 검사 | O | `SteamLinkPopupMessage.safeParse`(strict, type literal) :42-45 |
+| 첫 메시지만 | O | `done` 플래그 + 첫 유효 메시지에서 cleanup 후 onResult :102-108 (테스트 7개) |
+| BroadcastChannel 리스너 600초 유지, 닫힘 1초 감시 → 1회 재조회 + 버튼 복구 | O | :23, :655-661 |
+| 완료 페이지가 refresh를 부르지 않음 | O | steam-link-complete.tsx는 API 호출 없음. 루트 layout의 `Providers`(providers.tsx)는 QueryClient 생성·onSession 등록만, 쿼리 실행 없음. AppShell(인증 부팅)은 (main) 그룹에만 있음 |
+| 쿼리 파싱 실패 → INTERNAL_ERROR, 두 경로 전송 후 close, 300ms 뒤 「설정으로 돌아가기」(`routes.settings(query)`) | O | steam-link-popup.ts:26-39, steam-link-complete.tsx:24-37, :74 |
+
+## 목업 대조
+
+- 게임 필터: 선택 = `bg-accent text-on-accent`, 점 = `bg-on-accent`, 비선택 = 투명 + `text-text-2` + 게임 점 색 → 목업 Scrims.dc.html:178과 같다. 숫자 배지는 D86대로 없음.
+- 상태 탭: 선택 = `border-line-3 bg-surface-2 font-semibold text-text`, 높이 36·반경 10 → 목업과 같다.
+- 카드: 상태 알약(모집 중 accent / 정원 마감 orange / 참가 중 cyan), 버튼(참가하기 accent / 대기열 등록 line-2 / 참가 중 surface-2 + accent-ink), 내 카드 테두리 accent 35%(목업 `#D4FF3A55` → `border-accent/35` 토큰), 보조 줄 `text-orange-ink-2` → 목업 상수와 같다.
+- 상세 진행 단계: done = accent 배경·✓, current = on-accent 배경·accent-ink 글자·accent 테두리, todo = line-3 테두리·faint → 목업 ScrimDetail.dc.html:278-284와 같다.
+- 작성 게임 카드: 선택 = `border-accent bg-accent/5`(목업 `#D4FF3A0D`를 토큰으로), 비선택 `border-line bg-surface-2`.
+- 라이트/다크: 모든 색이 토큰 유틸리티라 `data-theme` 전환을 따른다. 실제 렌더 육안 확인은 미실행.
+
+## 웹 목 ↔ core
+
+- 무작위 대조 불일치 0건(위 표). 대기열 순서(joined_at → 행 id 코드 유닛), 1지망 = `preferred_positions[0]`, open_positions 식(나누어떨어지지 않으면 `[]`), 노쇼 판정(발동 m마다 (m − window, m], until = 최대 발동 + restriction, 미래 시각 무시, recentCount·last)이 core와 같다.
+- 승격(`settleRoster`)은 대기 1번부터 빈 자리만큼, preferred_positions·joined_at 유지 → `planRosterAfterChange`와 같은 결과. 시작 조건(`capacity_min === capacity_max`면 꽉 참, 아니면 2명)도 같다.
+- 그래도 복사본이라 결함 1로 core import를 권고한다.
+
+## 결함 처리 (리더, 2026-10-29)
+
+| # | 처리 |
+| --- | --- |
+| 1 | 그대로 둠(목 전용, 무작위 대조 불일치 0건). core import는 이후 슬라이스에서 검토 |
+| 2 | 그대로 둠(목 전용 판정 순서, 실제 API 영향 없음) |
+| 3 | 수정: scrims-view.tsx 「더 보기」 오류도 `isApiError ? errorMessage(code) : NETWORK_ERROR` |
+| 4 | 수정: scrim-detail.tsx `useJoinClosed` — 시작 시각 도달 즉시 화면에서 join_closed로 취급(카운트다운 → 「시작 시각이 지났어요」, 참가 영역 → 안내 문구)하고 상세를 한 번 재조회 |
+| 5 | 수정: `can_mark_no_show`가 false면 「노쇼 표시」 버튼을 숨김. 「노쇼 정정」은 서버가 기한을 걸지 않으므로(scrims.service.ts:397-401) 그대로 노출 |
+
+QA 재검증 없음. 리더가 `pnpm -r typecheck`(4개 Done), `pnpm -r test`(shared 53, core 148, web 125, api 332 passed / 27 skipped), `pnpm --filter web build`(성공)만 확인. 브라우저 육안 확인은 미실행.
+
+## 참고
+
+- core QA 결함 1(open_positions 합계가 빈 자리보다 클 수 있음)은 카드 보조 줄 「… 구함」에 그대로 보인다(scrims.ts:203). 계약 식을 따른 결과라 웹 결함으로 잡지 않았다.
+- 프런트 보고서 경로는 계약 12절(`02_frontend-dev_s2.md`)과 다르다(리더 지시 이름).

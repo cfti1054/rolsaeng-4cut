@@ -1,16 +1,15 @@
-# 계약: S1 게임 계정 연동·티어 동기화, 프로필·설정 화면
+# 계약: S2 내전 모집·참가·대기열·노쇼 제한, 목록·작성·상세 화면 + 인증 보완 2건
 
 명세: `게임 커뮤니티 대시보드 개발 문서.md`(이하 "문서"), 슬라이스: `_workspace/00_input/slice.md`
-선행 계약: `_workspace/S0/01_architect_contract.md`(D1–D31). 와이어 형식(S0 3절), 인증(S0 5절), 테마 규칙(S0 9절)은 그대로 쓴다. 이 문서는 S0 계약을 **확장**한다.
+선행 계약: `_workspace/S0/01_architect_contract.md`(D1–D31), `_workspace/S1/01_architect_contract.md`(D32–D72). 와이어 형식(S0 3절), 인증(S0 5절, 이 문서 9-1이 5-3을 일부 바꿈), 테마 규칙(S0 9절), 외부 식별자 비노출(S1 D38)은 그대로 쓴다. 이 문서는 두 계약을 **확장**한다.
 실제 계약은 코드가 우선한다: `packages/shared/src/**`, `apps/api/prisma/schema.prisma`.
 
 ## 변경 이력
 
 | 날짜 | 변경 | 비고 |
 | --- | --- | --- |
-| 2026-10-28 | S1 최초 작성: 연동·소유 확인·동기화·프로필 계약, 스키마 증분(마이그레이션 `20261028120000_s1`), 오류 코드 13개, 환경 변수 11개(→ 이후 변경으로 표 13행, 11절) | architect |
-| 2026-10-28 | 「확인 필요」 Q1–Q3 사용자 답변 반영. Q1: 라이엇 부계정 허용 + 대표 계정(D37 변경, D56–D58 추가) — `game_accounts.is_primary`, (user_id, game_id) UNIQUE 삭제, 부분 고유 인덱스(마이그레이션 수동 추가), `POST /me/game-accounts/:id/primary`, `GameAccountView.is_primary·rank`, 환경 변수 `RIOT_ACCOUNTS_MAX`. Q2: D45 확정. Q3: D40 확정. 영향 파일: `packages/shared/src/game-accounts.ts`·`profile.ts`·`paths.ts`·`constants/games.ts`·`contract.s1.test.ts`, `apps/api/prisma/schema.prisma`, `migrations/20261028120000_s1/migration.sql`(재생성), `.env.example`, 이 문서 1·2·3·4·5·6·8·11·12·13·14·15·16절 | architect |
-| 2026-10-28 | QA 계약 점검(`_workspace/03_qa-verifier_plan.md` P1–P7) 반영. **P1** sync_state 전이 맵에 멈춘 행 전용 전이 3개(queued→queued, running→queued, running→running) 추가 + `SYNC_STATE_STALE_MS`·`isStaleOnlySyncTransition`. **P4** `GetMyGameAccountsResponse.limits`(riot_accounts_max, steam_accounts_max) + `STEAM_ACCOUNTS_MAX`. **P3** 오류 코드 `GAME_ACCOUNT_ALREADY_LINKED_TO_ME` 분리(전체 29개), LIMIT_REACHED·ALREADY_LINKED 문구 갱신. P2 스팀 1개 DB 보장·P2002 구분 규칙, P5 단계 표기 1/2로 통일, P6 matches_synced_at은 lol 행 기준, P7 환경 변수 13행, 10절 apex rank 무시. 스키마 변경 없음. 영향 파일: `packages/shared/src/constants/transitions.ts`·`game-accounts.ts`·`common/errors.ts`·`contract.s1.test.ts`, `apps/api/src/common/app-error.ts`, `apps/web/src/lib/errors.ts`(32–34행) | architect |
+| 2026-10-29 | S2 최초 작성: 내전 엔드포인트 11개(게임 목록·노쇼 제한 조회 포함), 스키마 증분(마이그레이션 `20261029120000_s2`), 오류 코드 7개(전체 36개), 상태 전이 맵 보강, core 함수 13개, 인증 보완 2건(리프레시 하루 1회 회전, 스팀 팝업), 환경 변수 8개 | architect |
+| 2026-10-29 | 구현 반영(리더 승인): 목록 집계는 페이지 내전 id로 참가자 행 1회 조회해 개수·1지망·my_status 계산 / `last_no_show_at`은 조회 범위(37일) 안의 마지막 노쇼, 없으면 null / `POST /scrims/{id}/join` 본문 필수(포지션 없는 게임도 `{}`) / `viewer.preferred_positions`는 참가·대기 중일 때만, no_show면 `[]` / ScrimsModule이 ScheduleModule을 직접 import(중복 등록 방지 테스트 유지) / 잠금 경로 수 7개로 정정. 사용자 확인 Q1~Q3은 계약 기본값(D76·D78·D83) 확정 | 리더 |
 
 ---
 
@@ -18,570 +17,537 @@
 
 ### 포함 (문서 2장 행 기준)
 
-| 문서 2장 행 | S1 범위 |
+| 문서 2장 행 | S2 범위 |
 | --- | --- |
-| 계정 · 게임 계정 연동 (P0) | 라이엇 ID 연동 + 프로필 아이콘 소유 확인(lol·tft 2행, D25) — 라이엇 ID 최대 3개(부계정), 대표 계정 지정(D56). Steam OpenID 연동(1개), 연동 해제 |
-| 프로필 · 내 프로필 (P0) | **대표 라이엇 계정** 기준 게임별 티어(롤 솔로 랭크, 롤체 랭크), 주 포지션(솔로 랭크 최근 경기), 최근 전적(솔로 랭크). 부계정은 연동 칩에만. 내전 승률·레이팅 그래프·뱃지는 **빈 자리**(`scrim: null`, `badges: null`) |
-| (9장) 캐싱·갱신 | 티어 1시간(최근 활동 멤버 우선), 최근 전적 6시간 캐시(프로필 조회 시 큐 등록), 스팀 플레이타임 하루 1회 05:00 KST, 수동 새로고침 하루 5회(KST 자정 초기화), 429 `Retry-After` 대기 |
-| (8장) 화면 | `/members/[id]` 프로필, `/settings`의 「게임 계정 연동」·「디스코드 계정」(읽기 전용) 섹션. 「화면 테마」는 S0 그대로 |
+| 내전 · 모집글 (P0) | 작성(게임·제목·시작 시각·정원·규칙·진행 방식 3개), 수정(방장), 모집 취소(방장·운영진), 시작(방장·운영진), 시작 시각 + 60분 자동 마감 |
+| 내전 · 참가 관리 (P0) | 참가·대기 등록·취소, 1지망·2지망 포지션(포지션 게임), 정원 초과 시 대기열, 취소·정원 확대 시 대기 1번 자동 확정, `recruiting ↔ full` |
+| (7-4) 노쇼 패널티 | 운영진 노쇼 표시·정정 API, 최근 30일 3회 → 7일 참가·대기 등록·작성 제한, 제한 상태 조회 |
+| (8장) 화면 | `/scrims` 목록, `/scrims/new` 작성, `/scrims/[id]` 상세(슬롯·포지션 선택·대기열·참가/취소·방장 메뉴·진행 단계·운영진 노쇼 버튼) |
+| 인증 보완 (사용자 결정) | 리프레시 토큰 하루 1회 회전(9-1), 스팀 연동 팝업(9-2) |
 
 ### 제외
 
-내전 레이팅·그래프·승률·내전 기준 주 포지션(S3), 뱃지(P2), 알림 설정(알림 발송 기능 생기는 슬라이스, D48), 활동·플레이타임 랭킹(S5 — S1은 데이터 수집까지), 티어 랭킹 화면·티어 점수 계산(S4 — enum과 순서값만 S1에서 확정), 운영진 수동 소유 승인(S6 — 경로만 예약), 롤체 최근 전적(D40).
+팀 자동 밸런스·결과 입력·승인·ELO 반영·레이팅 그래프(S3 — 상세 응답 `balance: null`, `result: null` 자리만), 홈 모집 중 카드(S4), 관리자 화면(S6 — S2는 상세 화면의 운영진 노쇼 버튼까지), 디스코드 알림, 방장 위임, 스팀 내전의 세부 게임 선택(제목으로 대체, D89), 같은 시간대 중복 참가 제한(메인 기본값 5: 막지 않음).
 
 ---
 
-## 2. 오류 코드 (S1 추가분, `packages/shared/src/common/errors.ts`)
+## 2. 오류 코드 (S2 추가분, `packages/shared/src/common/errors.ts`)
 
-S0 오류 코드 15개는 그대로. 아래 14개 추가(전체 29개).
+S0 15개 + S1 14개는 그대로. 아래 7개 추가(전체 36개).
 
 | code | HTTP | 발생 |
 | --- | --- | --- |
-| GAME_PROVIDER_NOT_CONFIGURED | 503 | `RIOT_API_KEY`(라이엇 연동·동기화) 또는 `STEAM_API_KEY`(스팀) 비어 있음 |
-| GAME_PROVIDER_ERROR | 502 | 요청 처리 중 라이엇·스팀 호출 실패: 401/403(키 만료·권한), 5xx·타임아웃(1회 재시도 후), 응답 형식 불일치 |
-| GAME_PROVIDER_RATE_LIMITED | 503 | 요청 처리 중 외부 429, 또는 서버 토큰 버킷이 3초 안에 비지 않음. **`Retry-After` 헤더(초)** 동반 |
-| GAME_ACCOUNT_LIMIT_REACHED | 409 | 라이엇 ID가 이미 `RIOT_ACCOUNTS_MAX`개(기본 3), 또는 스팀을 이미 1개 연동함(D37). 한도는 `GetMyGameAccountsResponse.limits`로 웹에 전달 |
-| GAME_ACCOUNT_ALREADY_LINKED | 409 | 그 외부 계정(PUUID·스팀 ID)이 **다른 멤버**에게 연동돼 있음 → 「운영진에게 문의」(D45) |
-| GAME_ACCOUNT_ALREADY_LINKED_TO_ME | 409 | 내가 이미 연동한 라이엇 ID를 다시 추가(부계정 추가 시). 스팀은 1개라 이 경우 LIMIT_REACHED |
-| RIOT_ID_NOT_FOUND | 404 | Account-V1 by-riot-id 404 |
-| RIOT_SUMMONER_NOT_FOUND | 404 | Summoner-V4(kr) by-puuid 404 — KR 롤 기록 없음, 아이콘 확인 불가 |
-| OWNERSHIP_CHECK_FAILED | 409 | 현재 아이콘 ≠ 지정 아이콘. 확인은 pending 유지(다시 확인 가능) |
-| OWNERSHIP_CHECK_EXPIRED | 410 | 확인 제한 시간 경과, 또는 cancelled 상태 확인에 confirm |
-| STEAM_LINK_STATE_INVALID | 400 | `gcd_steam` 쿠키 없음·서명 불일치·600초 초과·쿼리 state 불일치 |
-| STEAM_LINK_CANCELLED | 400 | `openid.mode=cancel` |
-| STEAM_OPENID_INVALID | 400 | `openid.mode`≠id_res, op_endpoint·return_to·claimed_id 검증 실패, `check_authentication` 결과 `is_valid:true` 아님 |
-| SYNC_LIMIT_EXCEEDED | 429 | 오늘(KST) 수동 새로고침 한도 소진. **`Retry-After` = 다음 KST 자정까지 초** |
+| SCRIM_NOT_RECRUITING | 409 | 모집 중(recruiting·full)이 아닌 내전에 참가·취소·수정·시작·모집 취소 |
+| SCRIM_JOIN_CLOSED | 409 | 서버 시각 ≥ scheduled_at인데 참가·대기 등록·희망 포지션 변경·참가 취소 |
+| SCRIM_HOST_CANNOT_LEAVE | 409 | 방장이 `DELETE /scrims/:id/join` |
+| SCRIM_BANNED | 403 | 노쇼 제한 중 참가·대기 등록(새 신청)·모집글 작성. **`Retry-After` 헤더 = 해제까지 초(올림)** |
+| SCRIM_CAPACITY_BELOW_JOINED | 409 | 수정에서 capacity < 현재 joined 인원 |
+| SCRIM_CANNOT_START | 409 | 시작 조건 미충족(core `canStartScrim`: 고정 정원 게임은 꽉 차야, 그 외 2명 이상) |
+| SCRIM_NO_SHOW_NOT_ALLOWED | 409 | 노쇼 표시: 내전이 playing·finished 아님, 표시(true) 기한 경과, 대상 행이 joined·no_show 아님 |
 
-- `Retry-After`는 응답 **헤더**로만 준다(오류 본문은 S0 그대로 `{code, message}`). backend는 `AppError`에 `retryAfterSec` 옵션을 추가하고 error filter가 헤더를 붙인다.
-- 기존 코드 재사용: `NOT_FOUND`(남의 계정·확인 id 포함 — 존재 여부를 숨긴다), `RATE_LIMITED`(소유 확인 시작 하루 10회·확인 간격 5초, `Retry-After` 동반), `VALIDATION_FAILED`(path `:id`가 UUID 아님 포함).
-- **동기화 실패는 HTTP 오류가 아니다.** 동기화는 비동기(202)라 실패 사유는 `game_accounts.last_sync_error`에 `GameAccountSyncError` 값으로 기록하고 응답의 `sync.error`로 보여준다(D44). `STEAM_PROFILE_PRIVATE`는 여기에 있다.
-
-`GameAccountSyncError` (`constants/enums.ts`):
-
-| code | 발생 | 화면 |
-| --- | --- | --- |
-| STEAM_PROFILE_PRIVATE | GetOwnedGames 응답 `response`에 `game_count` 없음 | 목업 Settings 「플레이타임을 가져오지 못했어요 … 게임 세부 정보를 공개로」 + 「다시 시도 · 오늘 N회 남음」 |
-| ACCOUNT_NOT_FOUND | PUUID·스팀 ID 조회 404 | 「계정을 찾지 못했어요. 해제 후 다시 연동」 |
-| PROVIDER_AUTH_FAILED | 401/403. 재시도 안 함(키 만료) | 「잠시 후 자동으로 다시 시도」 |
-| PROVIDER_RATE_LIMITED | 같은 작업이 429로 3번 다시 넣어진 뒤에도 실패 | 같음 |
-| PROVIDER_UNAVAILABLE | 5xx·타임아웃이 백오프 3회 후에도 실패 | 같음 |
-| PROVIDER_NOT_CONFIGURED | 작업 실행 시 키 없음 | 「운영진에게 알려 주세요」 |
-| INTERNAL_ERROR | 그 밖(응답 형식 불일치 포함) | 같음 |
-
-스팀 콜백은 브라우저 이동이라 JSON 오류 대신 `302 {WEB_ORIGIN}/settings?steam_error={SteamLinkErrorCode}`. `SteamLinkErrorCode` = STEAM_LINK_STATE_INVALID | STEAM_LINK_CANCELLED | STEAM_OPENID_INVALID | GAME_PROVIDER_NOT_CONFIGURED | GAME_PROVIDER_ERROR | GAME_PROVIDER_RATE_LIMITED | GAME_ACCOUNT_LIMIT_REACHED | GAME_ACCOUNT_ALREADY_LINKED | UNAUTHENTICATED | INTERNAL_ERROR.
+- 기존 코드 재사용: `NOT_FOUND`(내전 없음, 노쇼 대상 사용자가 그 내전 참가 기록 없음), `FORBIDDEN`(방장 아닌 사람의 수정, 방장·운영진 아닌 사람의 시작·모집 취소, 운영진 아닌 사람의 노쇼 표시), `VALIDATION_FAILED`(zod 실패 + **서버가 DB 기준으로 검사하는 필드**: 정원 범위, 시작 시각 범위, 희망 포지션 — `details[{path, message}]`, path는 snake_case 필드명. D82).
+- `SCRIM_FULL`·`SCRIM_ALREADY_JOINED`·`POSITION_REQUIRED`는 만들지 않는다: 정원 초과는 대기열로 가고(오류 아님), 이미 참가 중인 사람의 POST는 희망 포지션 변경(멱등, D81), 포지션 누락은 VALIDATION_FAILED.
+- `Retry-After`는 S1과 같이 **헤더로만**(본문은 `{code, message}`). backend는 `AppError(..., { retryAfterSec })`, 웹 `ApiError.retryAfterSec`가 이미 있다. 웹은 SCRIM_BANNED를 받으면 `GET /me/scrim-restriction`을 다시 불러 해제 시각을 표시한다.
 
 ---
 
 ## 3. 스키마 변경 (`apps/api/prisma/schema.prisma`)
 
-마이그레이션: `apps/api/prisma/migrations/20261028120000_s1/migration.sql` — `prisma migrate diff --from-schema-datamodel <450b091의 schema.prisma> --to-schema-datamodel prisma/schema.prisma --script`로 생성한 **S0 이후 증분** + 맨 끝에 수동으로 추가한 부분 고유 인덱스 1개. DB 적용은 미실행(Docker 없음).
-
-> **이후 슬라이스 주의**: Prisma 6은 부분 인덱스를 모르므로 `prisma migrate dev`/`diff`가 `DROP INDEX "game_accounts_one_primary_per_user_game"`을 만들 수 있다. 그런 줄이 생기면 지우고 인덱스를 유지한다(QA 대조 항목).
+마이그레이션: `apps/api/prisma/migrations/20261029120000_s2/migration.sql` — `prisma migrate diff --from-schema-datamodel <7016593의 schema.prisma> --to-schema-datamodel prisma/schema.prisma --script`로 만든 **S1 이후 증분** + 맨 끝 수동 블록(기존 games 행의 정원 값 UPDATE 2줄). **`DROP INDEX` 줄 없음** — S1 부분 고유 인덱스 `game_accounts_one_primary_per_user_game`(S1 migration 수동 블록)는 그대로다. DB 적용은 미실행(Docker 없음).
 
 | 대상 | 변경 | 근거 |
 | --- | --- | --- |
-| enum `game_account_sync_state` | 새로: idle, queued, running | 6-1 진행 표시 |
-| enum `riot_link_verification_status` | 새로: pending, verified, expired, cancelled | 5-1 |
-| **riot_link_verifications** (새 테이블) | user_id(FK Cascade), puuid, game_name, tag_line, icon_id int, status, expires_at, check_count int, last_checked_at?, verified_at?, created_at, updated_at. 인덱스 (user_id, status), (user_id, created_at) | D33 진행 중 확인을 game_accounts와 분리 |
-| game_accounts | **삭제**: verification_challenge, verification_expires_at (S0에서 만들었지만 쓰는 코드 없음 — 데이터 손실 없음) | D33 |
-| game_accounts | **추가**: sync_state(기본 idle), sync_state_at?, matches_synced_at? | 6-1, 9장 6시간 캐시 |
-| game_accounts | **추가**: is_primary(기본 false). 인덱스 (user_id) → (user_id, game_id)로 교체(UNIQUE 아님 — 라이엇 부계정 허용) | D37, D56 |
-| game_accounts | **부분 고유 인덱스** `game_accounts_one_primary_per_user_game` ON (user_id, game_id) **WHERE is_primary**. Prisma 6 스키마로 표현할 수 없어 `migration.sql` 맨 끝 「수동 추가」 블록에 직접 썼다(schema.prisma에는 주석만) | D56 |
-| game_account_sync_requests | game_account_id NOT NULL → **nullable, ON DELETE SET NULL**(S0는 Cascade) | D41 해제·재연동으로 횟수 회복 방지 |
-| recent_matches.summary | 형식 확정: shared `LolMatchSummary` | 7절 |
+| enum `scrim_cancel_reason` (새로) | host, admin, not_started | D80, D78 |
+| games | **추가**: capacity_min int(기본 2), capacity_max int(기본 16), capacity_default int(기본 8). 수동 블록이 lol = 10/10/10, tft = 2/8/8로 갱신(steam은 기본값). 시드(`GAME_SEED`, `seed.ts`)도 같은 값 | D76, 메인 기본값 3 |
+| scrims | **추가**: rated bool(기본 true), auto_balance bool(기본 true), use_positions bool(기본 true), started_at?, cancelled_at?, cancel_reason? | D77, D78, D80 |
+| scrim_players | **변경 없음**. S0 컬럼으로 충분: preferred_positions text[](= [1지망, 2지망?]), joined_at(대기 순번 기준), no_show_marked_at·no_show_marked_by. 인덱스 (scrim_id, status), (user_id, status, no_show_marked_at) 그대로 사용 | D82, D83, D85 |
+| refresh_tokens | **변경 없음**. 회전 판단은 `created_at`(= 현재 토큰 발급 시각)으로 한다 | D73 |
 
-컬럼 의미(S1 확정):
+컬럼 의미(S2 확정):
 
 | 컬럼 | 의미 |
 | --- | --- |
-| game_accounts.is_primary | 대표 계정. 라이엇: 사용자당 라이엇 ID 하나의 lol·tft 두 행만 true(항상 둘이 함께 바뀜). 스팀: 항상 true. 대표 라이엇 계정이 쓰이는 곳: 프로필 티어 카드·주 포지션·최근 전적(S1), 팀 밸런스 티어 시드(S3), 티어 랭킹(S4) |
-| game_accounts.verified / verified_at | S1부터 행은 소유 확인이 끝난 계정만 생성 → 항상 true / 생성 시각. (S6 운영진 승인도 같은 규칙) |
-| game_accounts.external_id | 라이엇 PUUID(lol·tft 같은 값), 스팀 64비트 ID. **응답 노출 금지**(D38) |
-| game_accounts.display_name | 라이엇 `게임이름#태그`(Account-V1 표기), 스팀 personaname(D52) |
-| game_accounts.last_synced_at | 마지막 **성공** 시각. 라이엇 = 티어, 스팀 = 플레이타임 |
-| game_accounts.last_sync_error / _at | 마지막 실패 `GameAccountSyncError` 코드와 시각. 다음 성공 시 둘 다 null |
-| game_accounts.matches_synced_at | lol 행만. 최근 전적 마지막 성공 시각 |
-| rank_snapshots.queue / tier / division | `RankedQueue` / `RankTier`(UNRANKED 포함) / `RiotDivision` 또는 null(UNRANKED·MASTER 이상) |
-| steam_playtime | minutes_total ← playtime_forever, minutes_recent ← playtime_2weeks(없으면 0), app_name ← name |
+| scrims.capacity | 정원(방장 포함). games.capacity_min ≤ capacity ≤ capacity_max |
+| scrims.rated / auto_balance / use_positions | 진행 방식 **적용값**(작성 시 서버가 auto_balance = 입력 && games.has_teams, use_positions = 입력 && games.has_positions로 저장). rated·auto_balance는 S3가 쓴다. use_positions는 S2 참가 검증에 쓴다 |
+| scrims.started_at | playing으로 바뀐 시각(수동·자동) |
+| scrims.cancelled_at / cancel_reason | cancelled로 바뀐 시각·이유 |
+| scrim_players.preferred_positions | use_positions 내전: 1–2개(1지망 필수, 2지망 선택), 그 외 `[]` |
+| scrim_players.joined_at | 마지막 참가 신청 시각. 재참가(cancelled → joined/waitlist) 때 갱신 → 대기열 맨 뒤. **대기 → 승격 때는 갱신하지 않는다** |
+| scrim_players.no_show_marked_at / _by | no_show로 표시한 시각·운영진. 정정(no_show → joined) 시 둘 다 null. 노쇼 집계 기준 시각(D83) |
+| scrim_players.position / team | S3 팀 밸런스 확정 시 채움. S2는 항상 null |
 
 ---
 
-## 4. 엔드포인트 (S1)
+## 4. 엔드포인트 (S2)
 
-모두 `/api/v1` 접두사, Request/Response 이름은 `packages/shared` export 이름, 경로 상수는 `ApiPath`(웹은 `fillPath(ApiPath.x, { id })`).
+모두 `/api/v1` 접두사, Request/Response 이름은 `packages/shared` export 이름, 경로 상수는 `ApiPath`(웹은 `fillPath`). path `:id`·`:userId`는 UUID(아니면 VALIDATION_FAILED). 인증은 모두 JWT(S0 가드). 오류 판정 순서는 표의 왼쪽부터(5절 흐름 단계 순서와 같다).
 
-| 메서드 | 경로 (`ApiPath`) | 인증 | Request | Response | 오류 코드 |
+| 메서드 | 경로 (`ApiPath`) | 권한 | Request | Response | 오류 코드 |
 | --- | --- | --- | --- | --- | --- |
-| GET | /me/game-accounts (`myGameAccounts`) | JWT | - | 200 `GetMyGameAccountsResponse`(accounts, riot_verification, sync_quota, **limits**) | UNAUTHENTICATED, ACCESS_TOKEN_EXPIRED |
-| POST | /me/game-accounts (`myGameAccounts`) | JWT | `LinkGameAccountRequest` | 200 `LinkGameAccountResponse` (steam이면 Set-Cookie `gcd_steam`) | VALIDATION_FAILED, GAME_PROVIDER_NOT_CONFIGURED, GAME_ACCOUNT_LIMIT_REACHED, RATE_LIMITED, RIOT_ID_NOT_FOUND, GAME_ACCOUNT_ALREADY_LINKED_TO_ME, GAME_ACCOUNT_ALREADY_LINKED, RIOT_SUMMONER_NOT_FOUND, GAME_PROVIDER_RATE_LIMITED, GAME_PROVIDER_ERROR |
-| POST | /me/game-accounts/riot-verifications/:id/confirm (`riotVerificationConfirm`) | JWT | 본문 없음, `IdParam` | 200 `ConfirmRiotVerificationResponse` | VALIDATION_FAILED, NOT_FOUND, OWNERSHIP_CHECK_EXPIRED, RATE_LIMITED, OWNERSHIP_CHECK_FAILED, RIOT_SUMMONER_NOT_FOUND, GAME_ACCOUNT_LIMIT_REACHED, GAME_ACCOUNT_ALREADY_LINKED_TO_ME, GAME_ACCOUNT_ALREADY_LINKED, GAME_PROVIDER_* |
-| DELETE | /me/game-accounts/riot-verifications/:id (`riotVerification`) | JWT | `IdParam` | 204 | VALIDATION_FAILED, NOT_FOUND |
-| GET | /me/game-accounts/steam/callback (`steamLinkCallback`) | `gcd_steam` 쿠키(**JWT 가드 없음**) | `SteamLinkCallbackQuery` | 302 `{WEB_ORIGIN}/settings?steam=linked` | 302 `/settings?steam_error={SteamLinkErrorCode}` |
-| DELETE | /me/game-accounts/:id (`myGameAccount`) | JWT | `IdParam` | 204 | VALIDATION_FAILED, NOT_FOUND |
-| POST | /me/game-accounts/:id/primary (`myGameAccountPrimary`) | JWT | 본문 없음, `IdParam` | 200 `SetPrimaryGameAccountResponse` | VALIDATION_FAILED, NOT_FOUND |
-| POST | /me/game-accounts/:id/sync (`myGameAccountSync`) | JWT | 본문 없음, `IdParam` | **202** `SyncGameAccountResponse` | VALIDATION_FAILED, NOT_FOUND, GAME_PROVIDER_NOT_CONFIGURED, SYNC_LIMIT_EXCEEDED |
-| GET | /users/:id/profile (`userProfile`) | JWT(로그인 멤버 누구나) | `IdParam` | 200 `GetUserProfileResponse` | VALIDATION_FAILED, NOT_FOUND |
-| (S6 예약) | POST /admin/riot-verifications/:id/approve | admin | - | - | S6에서 정의. S1은 구현하지 않음 |
+| GET | /games (`games`) | 멤버 | - | 200 `ListGamesResponse` | - |
+| GET | /scrims (`scrims`) | 멤버 | `ListScrimsQuery` | 200 `ListScrimsResponse` | VALIDATION_FAILED(커서 해석 실패·다른 탭 커서 포함) |
+| POST | /scrims (`scrims`) | 멤버 | `CreateScrimRequest` | **201** `CreateScrimResponse` | VALIDATION_FAILED, SCRIM_BANNED |
+| GET | /scrims/:id (`scrim`) | 멤버 | `IdParam` | 200 `GetScrimResponse` | VALIDATION_FAILED, NOT_FOUND |
+| PATCH | /scrims/:id (`scrim`) | 방장 | `UpdateScrimRequest` | 200 `UpdateScrimResponse` | VALIDATION_FAILED, NOT_FOUND, FORBIDDEN, SCRIM_NOT_RECRUITING, SCRIM_CAPACITY_BELOW_JOINED |
+| POST | /scrims/:id/join (`scrimJoin`) | 멤버 | `JoinScrimRequest` | 200 `JoinScrimResponse` | VALIDATION_FAILED, NOT_FOUND, SCRIM_NOT_RECRUITING, SCRIM_JOIN_CLOSED, SCRIM_BANNED |
+| DELETE | /scrims/:id/join (`scrimJoin`) | 멤버 | 본문 없음 | 200 `LeaveScrimResponse` | VALIDATION_FAILED, NOT_FOUND, SCRIM_NOT_RECRUITING, SCRIM_JOIN_CLOSED, SCRIM_HOST_CANNOT_LEAVE |
+| POST | /scrims/:id/start (`scrimStart`) | 방장·운영진 | 본문 없음 | 200 `StartScrimResponse` | VALIDATION_FAILED, NOT_FOUND, FORBIDDEN, SCRIM_NOT_RECRUITING, SCRIM_CANNOT_START |
+| POST | /scrims/:id/cancel (`scrimCancel`) | 방장·운영진 | 본문 없음 | 200 `CancelScrimResponse` | VALIDATION_FAILED, NOT_FOUND, FORBIDDEN, SCRIM_NOT_RECRUITING |
+| PUT | /scrims/:id/players/:userId/no-show (`scrimPlayerNoShow`) | **운영진(admin)** | `SetScrimNoShowParams` + `SetScrimNoShowRequest` | 200 `SetScrimNoShowResponse` | VALIDATION_FAILED, FORBIDDEN, NOT_FOUND, SCRIM_NO_SHOW_NOT_ALLOWED |
+| GET | /me/scrim-restriction (`myScrimRestriction`) | 멤버 | - | 200 `GetMyScrimRestrictionResponse` | - |
 
-- 대표 지정 `POST …/:id/primary`는 문서에 없어 추가(D56). 라이엇 행이면 한 트랜잭션에서 기존 대표 lol·tft → false **다음에** 대상 라이엇 ID lol·tft → true(순서를 바꾸면 부분 고유 인덱스 위반). 이미 대표인 행·스팀 행은 변경 없이 200.
-- 문서 6장 `DELETE /me/game-accounts`는 `/me/game-accounts/:id`로 구체화했다(어느 계정인지 필요). `GET /me/game-accounts`와 소유 확인 경로 2개는 문서에 없어 추가(D35, D32).
-- 오류 판정 순서는 표의 왼쪽부터(5절 흐름의 단계 순서와 같다).
-- `GameAccountView`(계정 1행) 필드: `id, game, provider, display_name, verified_at, is_primary, rank|null, sync{state, synced_at, matches_synced_at, error{code, at}|null}, steam_owned_game_count`. 라이엇은 라이엇 ID마다 lol·tft 2행이 같은 display_name·is_primary·sync.state·sync.synced_at·sync.error로 나온다. 단 `sync.matches_synced_at`은 **lol 행만** 값이 있고 tft 행은 null — 웹은 provider + display_name으로 묶어 라이엇 ID당 카드 1개로 그리고, 카드의 동기화 정보는 **lol 행 값**을 쓴다. `rank` = 이 행의 최신 스냅샷(lol 솔로 / tft), 부계정 포함(D57).
-- 계정 목록 정렬(설정·프로필 공통): 대표 라이엇(lol, tft) → 부계정(verified_at 오름차순, 같으면 id 순, 각 lol, tft) → 스팀.
+- 문서 6장에 없는 경로: `/games`(D75), `PATCH /scrims/:id`·`/start`·`/cancel`(D78, D80), `PUT …/no-show`(D83), `/me/scrim-restriction`(D84). 문서 6장 `POST /scrims/{id}/balance`·`/result*`는 S3.
+- **상태를 바꾸는 엔드포인트 응답은 전부 갱신 후 `ScrimDetail`**(D87). 직렬화는 반드시 shared 스키마 parse를 거친다(S1 D38 규칙 — users의 email·discord_id 미포함, `ScrimUserRef`는 id·nickname·avatar_url만).
+- `FORBIDDEN`은 내전 존재 확인(NOT_FOUND) 다음에 판정한다. 노쇼 표시는 역할 검사가 먼저(`@Roles('admin')` 가드)라 FORBIDDEN이 NOT_FOUND보다 앞선다.
+- `DELETE /scrims/:id/join`은 본문 있는 200(D81, D87). 참가 기록이 없거나 이미 취소면 변경 없이 200.
 
----
+### 4-1. 목록 `GET /scrims`
 
-## 5. 연동 흐름
-
-### 5-1. 라이엇: 프로필 아이콘 소유 확인 (D32, D33)
-
-```
-riot_link_verifications.status
-  pending ──(아이콘 일치)──────────▶ verified
-     │ ──(now ≥ expires_at, 확인 시점에 지연 반영)──▶ expired
-     └ ──(사용자 취소 / 새 확인 시작)──▶ cancelled
-  아이콘 불일치: pending 유지(제한 시간 안 재확인 가능)
-```
-shared `RIOT_LINK_VERIFICATION_TRANSITIONS`. 상태 변경은 `canTransition` 검사 후 조건부 update(`WHERE id=? AND status='pending'`).
-
-**시작 `POST /me/game-accounts {provider:'riot', riot_id:'게임이름#태그'}`**
-
-1. `RiotIdInput`으로 파싱(마지막 `#` 기준, 이름 1–16자, 태그 1–5자 문자·숫자) → 실패 VALIDATION_FAILED.
-2. `RIOT_API_KEY` 없음 → GAME_PROVIDER_NOT_CONFIGURED.
-3. 사용자의 라이엇 ID 수(lol 행 수) ≥ `RIOT_ACCOUNTS_MAX`(기본 3) → GAME_ACCOUNT_LIMIT_REACHED.
-4. 오늘(KST) 이 사용자의 riot_link_verifications 생성 수 ≥ 10(`RIOT_VERIFICATION_DAILY_START_LIMIT`) → RATE_LIMITED(Retry-After = 다음 KST 자정까지).
-5. Account-V1 `by-riot-id`(지역 `asia`) → 404면 RIOT_ID_NOT_FOUND. PUUID·표기(gameName, tagLine) 획득.
-6. 그 PUUID의 lol 행이 이미 있음 → 그 행이 본인 것이면 GAME_ACCOUNT_ALREADY_LINKED_TO_ME, 다른 사용자 것이면 GAME_ACCOUNT_ALREADY_LINKED.
-7. Summoner-V4 `by-puuid`(플랫폼 `kr`) → 404면 RIOT_SUMMONER_NOT_FOUND. 현재 `profileIconId` 획득.
-8. `icon_id = pickVerificationIcon(현재 아이콘, Math.random)`(core) — `RIOT_VERIFICATION_ICON_IDS`(0–28) 중 현재와 다른 것.
-9. 트랜잭션: 이 사용자의 pending 확인 → cancelled, 새 행 insert(`expires_at = now + RIOT_VERIFICATION_TTL_SEC`).
-10. 200 `{ provider:'riot', verification }`. `icon_image_url`은 Data Dragon `…/cdn/{버전}/img/profileicon/{id}.png`, 버전을 못 구하면 null.
-
-**확인 `POST /me/game-accounts/riot-verifications/:id/confirm`**
-
-1. `id`+`user_id`로 조회, 없으면 NOT_FOUND.
-2. status=verified → 200(멱등, 현재 lol·tft 행으로 응답). cancelled/expired → OWNERSHIP_CHECK_EXPIRED. pending인데 `now ≥ expires_at` → expired로 바꾸고 OWNERSHIP_CHECK_EXPIRED.
-3. `last_checked_at`이 5초 이내 → RATE_LIMITED(Retry-After = 남은 초). 아니면 `last_checked_at=now, check_count+1`.
-4. Summoner-V4 by-puuid → `profileIconId ≠ icon_id` → OWNERSHIP_CHECK_FAILED.
-5. 트랜잭션(사용자 advisory lock `pg_advisory_xact_lock(hashtext('game-accounts:' || user_id))` — 연동·해제·대표 지정이 공유): 라이엇 ID 수가 이미 한도면 GAME_ACCOUNT_LIMIT_REACHED, PUUID가 이미 연동돼 있으면 시작 6단계와 같은 구분(본인 → ALREADY_LINKED_TO_ME, 타인 → ALREADY_LINKED). insert의 P2002는 아래 「P2002 구분」 규칙. lol·tft 두 행 insert(`external_id=puuid, display_name=formatRiotId, verified=true, verified_at=now, is_primary=(사용자에게 라이엇 행이 없었음), sync_state=queued, sync_state_at=now`). 확인 → verified, verified_at=now.
-6. 커밋 후 `riot-full` 작업 등록(reason `link`, **횟수 차감 없음**). 200 `{ verification, accounts:[lol, tft] }`.
-
-**취소 `DELETE …/riot-verifications/:id`**: 본인 것 아니면 NOT_FOUND. pending → cancelled. 이미 끝난 상태면 변경 없이 204.
-
-**설정 화면 상태 표시**: `GET /me/game-accounts`의 `riot_verification` = 가장 최근 확인이 pending이면 그 값(expires_at 지났으면 status를 `expired`로 바꿔 내려줌), 아니면 null. 웹은 `expires_at`까지 카운트다운(목업 「08:42」), 0이 되면 「다시 시작」.
-
-### 5-2. 스팀: OpenID 2.0 (D34)
-
-**시작 `POST /me/game-accounts {provider:'steam'}`**
-
-1. `STEAM_API_KEY` 없음 → GAME_PROVIDER_NOT_CONFIGURED. 스팀 행 이미 있음 → GAME_ACCOUNT_LIMIT_REACHED.
-2. `state` = 32바이트 난수 base64url. 쿠키 `gcd_steam`(`STEAM_LINK_COOKIE`) = COOKIE_SECRET 서명 JSON `{ state, user_id, iat }`; HttpOnly, SameSite=Lax, **Path=/api/v1/me/game-accounts/steam**, Max-Age=600, production에서 Secure.
-3. `return_to = {WEB_ORIGIN}/api/v1/me/game-accounts/steam/callback?state={state}`, `realm = {WEB_ORIGIN}`(S0 D1: 웹 오리진 프록시).
-4. 200 `{ provider:'steam', authorize_url }` = `STEAM_OPENID_ENDPOINT?openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup&openid.return_to=…&openid.realm=…&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.claimed_id=http://specs.openid.net/auth/2.0/identifier_select`(값은 URL 인코딩).
-5. 웹: `location.href = authorize_url`.
-
-**콜백 `GET /me/game-accounts/steam/callback?state=…&openid.*=…`** (JWT 없음 — 브라우저 이동. 사용자는 서명 쿠키의 user_id로 식별)
-
-1. `gcd_steam` 즉시 삭제(성공·실패 무관, 같은 Path).
-2. `openid.mode=cancel` → STEAM_LINK_CANCELLED. `openid.mode≠id_res` → STEAM_OPENID_INVALID.
-3. 쿠키 없음·서명 불일치·`iat`+600초 초과·쿼리 `state` 불일치(상수 시간 비교) → STEAM_LINK_STATE_INVALID.
-4. 형식 검증 → 실패 시 STEAM_OPENID_INVALID: `openid.ns`=`http://specs.openid.net/auth/2.0`, `openid.op_endpoint`=`STEAM_OPENID_ENDPOINT`, `openid.return_to`가 3번에서 만든 값과 정확히 같음, `openid.claimed_id`가 `STEAM_CLAIMED_ID_PATTERN`에 맞고 `openid.identity`와 같음.
-5. `check_authentication`: 받은 `openid.*` 전부를 그대로 두고 `openid.mode`만 `check_authentication`으로 바꿔 `STEAM_OPENID_ENDPOINT`에 `POST`(form). 응답 본문에 `is_valid:true` 줄이 없으면 STEAM_OPENID_INVALID. 네트워크·5xx → GAME_PROVIDER_ERROR.
-6. 쿠키의 user_id 사용자가 없으면 UNAUTHENTICATED.
-7. GetPlayerSummaries → personaname(실패해도 진행, 이름 `스팀 사용자`, D52).
-8. 트랜잭션(같은 사용자 advisory lock): 스팀 행 이미 있음 → GAME_ACCOUNT_LIMIT_REACHED, 스팀 ID가 다른 사용자에게 있음 → GAME_ACCOUNT_ALREADY_LINKED. 행 insert(verified, `is_primary=true`, `sync_state=queued`). 스팀 1개 제한은 이 잠금 + 검사가 1차, **DB에서도** 부분 고유 인덱스 `game_accounts_one_primary_per_user_game`이 보장한다(스팀 행은 항상 is_primary=true라 사용자당 스팀 대표 행 = 스팀 행 최대 1개).
-9. 커밋 후 `steam-playtime` 작업 등록(reason `link`, 횟수 차감 없음). `302 {WEB_ORIGIN}/settings?steam=linked`.
-10. 2–8 실패는 `302 {WEB_ORIGIN}/settings?steam_error={code}`, 예상 못한 예외는 INTERNAL_ERROR.
-
-비공개 프로필은 연동 실패가 아니다: 연동은 성공하고 첫 동기화가 `STEAM_PROFILE_PRIVATE`로 기록된다(목업 Settings 「게임 정보 비공개」 배지).
-
-### 5-2a. insert 고유 제약 위반(P2002) 구분
-
-잠금 + 사전 검사가 1차 방어이고, P2002는 경합·누락 대비 2차 방어다. Prisma 오류의 `meta.target`(필드 배열 또는 인덱스 이름)로 구분한다.
-
-| 위반한 제약 | 라이엇 연동(5-1 확인 5단계) | 스팀 연동(5-2 8단계) |
+| 탭(`status`) | 포함 상태 | 정렬(커서 키) |
 | --- | --- | --- |
-| `game_accounts_game_id_external_id_key` (game_id, external_id) | 기존 행 소유자를 다시 조회해 본인 → GAME_ACCOUNT_ALREADY_LINKED_TO_ME, 타인 → GAME_ACCOUNT_ALREADY_LINKED | GAME_ACCOUNT_ALREADY_LINKED(본인이면 이미 스팀이 있다는 뜻이라 LIMIT_REACHED) |
-| `game_accounts_one_primary_per_user_game` (user_id, game_id) WHERE is_primary | 대표 결정 경합 — 잠금 안에서는 생기지 않아야 함 → INTERNAL_ERROR + 로그 | GAME_ACCOUNT_LIMIT_REACHED |
+| `open`(기본) | recruiting, full (시작 시각이 지났지만 아직 시작·자동 마감 전인 것 포함) | scheduled_at ASC, id ASC |
+| `playing` | playing | scheduled_at DESC, id DESC |
+| `ended` | finished, cancelled | scheduled_at DESC, id DESC |
 
-`meta.target`을 해석하지 못하면 INTERNAL_ERROR. 구분 함수 하나(backend `common/`)로 두고 단위 테스트한다.
+- `game` 있으면 그 게임만. 인덱스 `(game_id, status, scheduled_at)` / `(status, scheduled_at)`.
+- 커서 = base64url(JSON `{ t: 탭, s: scheduled_at ISO, id }`). 해석 실패·`t`가 요청 탭과 다름 → VALIDATION_FAILED(details path `cursor`). 다음 페이지는 `(scheduled_at, id)` 튜플 비교(ASC는 `>`, DESC는 `<`).
+- 집계: 페이지의 내전 id들로 `scrim_players`를 status별 groupBy(joined·waitlist·no_show 수), 요청자 행 1회 조회, use_positions 내전은 joined 행의 `preferred_positions[1]`(1지망)로 `computeOpenPositions`. N+1 금지.
+- 탭별 개수(목업 필터의 「전체 6」 숫자)는 내려주지 않는다(D86).
 
-### 5-3. 연동 해제 `DELETE /me/game-accounts/:id`
+### 4-2. `ScrimSummary` / `ScrimDetail` 필드 (shared `scrims.ts`가 원본)
 
-본인 행 아니면 NOT_FOUND. 라이엇 행(lol·tft 어느 쪽이든)이면 같은 라이엇 ID(같은 external_id)의 lol·tft 두 행을, 스팀이면 그 행을 삭제(D46). 대표 라이엇 ID를 지웠고 남은 라이엇 ID가 있으면 **같은 트랜잭션**(사용자 advisory lock)에서 가장 먼저 연동한 것(verified_at 오름차순, 같으면 lol 행 id 순)의 lol·tft를 `is_primary=true`로(D56). rank_snapshots·recent_matches·steam_playtime은 Cascade, game_account_sync_requests는 SetNull(횟수 기록 유지). 실행 중인 작업은 계정이 없으면 아무것도 하지 않고 끝낸다.
+| 필드 | 값 |
+| --- | --- |
+| game | `ScrimGameRef {code, name, has_positions, has_teams, positions}` |
+| host | `ScrimUserRef {id, nickname, avatar_url}`(avatar_url 조립은 S0 `Me`와 같은 함수) |
+| joined_count | 모집 중: joined 수. 시작 후: joined + no_show 수 |
+| waitlist_count | waitlist 수 |
+| options | `{rated, auto_balance, use_positions}` 저장된 적용값 |
+| open_positions | status가 recruiting·full이고 use_positions일 때만 계산, 그 외 `[]` |
+| join_closed | `now ≥ scheduled_at`(core `isJoinClosed`) |
+| my_status | 요청자 행 status, cancelled·없음 → null |
+| players (상세) | joined + no_show 행. 순서: 방장 먼저, 그다음 joined_at ASC, 같으면 user id ASC |
+| waitlist (상세) | waitlist 행, core `orderWaitlist` 순서, `order` 1부터. 시작·취소 뒤에도 그대로 보여준다(D95) |
+| viewer (상세) | `ScrimViewer` — shared 주석의 can_* 규칙. `restricted_until` = core `computeScrimRestriction(...).until`(제한 아니면 null). can_join은 제한 중이면 false |
+| balance, result | 항상 null(S3 자리, `z.null()` — 이후 nullable로 넓히기만) |
 
 ---
 
-## 6. 동기화
+## 5. 흐름 (서버)
 
-### 6-1. 상태 (`game_accounts.sync_state`, shared `GAME_ACCOUNT_SYNC_STATE_TRANSITIONS`)
+### 5-0. 공통: 내전 행 잠금 (D85)
 
-```
-idle → queued    수동 새로고침, 연동 직후
-idle → running   주기 작업·프로필 조회 전적 갱신이 바로 실행
-queued → running 작업자 시작
-queued → idle    작업 버림(계정 해제 등)
-running → idle   성공·실패 모두(결과는 last_synced_at / last_sync_error)
+참가·취소·수정·시작·모집 취소·노쇼 표시·자동 마감은 모두 **한 트랜잭션 안에서 먼저 내전 행을 잠근다**:
 
-멈춘 행 전용(sync_state_at < now − 10분 = SYNC_STATE_STALE_MS, 조건부 update의 WHERE로 보장):
-queued → queued   멈춘 작업 정리: 다시 등록 + sync_state_at=now
-running → queued  멈춘 작업 정리: 실행 중 죽은 작업을 다시 등록 + sync_state_at=now
-running → running 작업자가 멈춘 running 행을 다시 잡음(잠금 재획득) + sync_state_at=now
-```
-
-- 전이 맵: shared `GAME_ACCOUNT_SYNC_STATE_TRANSITIONS`. 위 3개 전이는 맵에 있지만 `isStaleOnlySyncTransition(from, to)`가 true인 전이이므로, 반드시 `sync_state_at < now() − interval '10 minutes'` 조건을 WHERE에 넣은 조건부 update로만 실행한다(조건 없이 쓰면 QA 위반).
-- 라이엇 lol·tft 두 행은 항상 함께 바꾼다. 상태를 바꿀 때마다 `sync_state_at=now`.
-- 작업자 잠금: `UPDATE … SET sync_state='running', sync_state_at=now() WHERE id IN (대상 행) AND (sync_state IN ('idle','queued') OR sync_state_at < now()-10분)` — idle/queued → running, 또는 멈춘 running → running. 영향 0행이면 다른 작업자가 실행 중 → 이 작업은 건너뜀.
-- 웹 폴링: `sync.state ≠ idle`인 계정이 있으면 `GET /me/game-accounts`(프로필은 `GET /users/:id/profile`)를 2초 간격, 최대 60초 다시 조회.
-
-### 6-2. 작업 목록 (문서 9장, external-api-integration 5절)
-
-| 작업 | 생산자·주기 | 대상·순서 | 하는 일 | BullMQ 우선순위 |
-| --- | --- | --- | --- | --- |
-| `riot-full` | 수동 새로고침, 소유 확인 성공 직후 | 그 라이엇 ID의 lol·tft 행 | Account-V1 by-puuid로 display_name 갱신 → lol 티어(League-V4 by-puuid, `RANKED_SOLO_5x5`) → tft 티어(TFT-League by-puuid, `RANKED_TFT`) → **대표 계정일 때만** 최근 전적(아래 `riot-matches`와 같음) | 1 |
-| `steam-playtime` (manual/link) | 수동 새로고침, 스팀 연동 직후 | 그 스팀 행 | GetPlayerSummaries로 display_name 갱신 → GetOwnedGames | 1 |
-| `riot-matches` | `GET /users/:id/profile` 조회 시 **대표** lol 행의 `matches_synced_at`이 null 또는 6시간 초과이고 `sync_state=idle`이며 `last_sync_error_at`이 30분 이내가 아닐 때 | 그 lol 행 | Match-V5 ids(`queue=420&type=ranked&count=20`) → `recent_matches`에 없는 매치만 상세 조회 → `LolMatchSummary`로 upsert → 계정당 played_at 최신 20개만 남김 → `matches_synced_at=now` | 2 |
-| `riot-tier` | cron **매시 정각**(`0 * * * *`, Asia/Seoul) | 아래 SQL 순서(대표·부계정 모두, D57) | lol·tft 티어만 | 활동 멤버의 대표 3, 그 외 4 |
-| `steam-playtime` (schedule) | cron **매일 05:00 KST**(`0 5 * * *`, Asia/Seoul) | 모든 스팀 행(`last_synced_at` 오래된 순) | GetOwnedGames만 | 5 |
-| 멈춘 작업 정리 | cron 5분마다 + 프로세스 시작 시 | `sync_state IN (queued, running) AND sync_state_at < now()-10분`(시작 시: in-process 모드는 전부) | 같은 종류 작업을 다시 등록하고 `queued, sync_state_at=now`(전이 queued→queued / running→queued, 6-1 멈춘 행 전용) | - |
-
-`riot-tier` 대상 선택(라이엇 lol 행 기준, tft 행은 같은 사용자 것을 함께):
 ```sql
-WHERE ga.verified AND ga.sync_state = 'idle'
-  AND (ga.last_synced_at IS NULL OR ga.last_synced_at < now() - interval '55 minutes')
-ORDER BY
-  CASE WHEN u.last_login_at >= now() - interval '7 days'
-         OR EXISTS (SELECT 1 FROM scrim_players sp WHERE sp.user_id = u.id AND sp.joined_at >= now() - interval '7 days')
-         OR EXISTS (SELECT 1 FROM activity_logs al WHERE al.user_id = u.id AND al.started_at >= now() - interval '7 days')
-       THEN 0 ELSE 1 END,
-  ga.is_primary DESC,          -- 대표 먼저, 부계정은 같은 활동 그룹 안에서 뒤로
-  ga.last_synced_at NULLS FIRST
+SELECT id, status, capacity, scheduled_at, host_id, use_positions, game_id
+FROM scrims WHERE id = $1 FOR UPDATE
 ```
-(scrim_players·activity_logs는 S2·S5 전까지 비어 있어 사실상 `last_login_at` 기준.)
 
-**결과 저장 규칙**
-- 티어: 큐별 항목이 없으면 `UNRANKED`(division null, 0/0/0). `toRankValue`(core)로 변환, 같은 큐의 최신 스냅샷과 `isSameRank`(core)가 false일 때만 새 `rank_snapshots` 행(`captured_at=now`, D55). `last_synced_at`은 성공할 때마다 갱신.
-- 성공한 부분만 시각 갱신: 티어 성공 → `last_synced_at`, 전적 성공 → `matches_synced_at`. 어느 부분이든 실패하면 `last_sync_error/_at`을 두 행에 기록. 모든 부분이 성공하면 둘 다 null.
-- **실패해도 기존 데이터를 지우지 않는다.** 스팀 비공개면 기존 steam_playtime 행 유지(목업 「마지막 성공 값(10.20)」).
-- 스팀: `response.game_count`가 없으면 STEAM_PROFILE_PRIVATE. `game_count: 0`은 공개 + 보유 0개(성공).
-- 매치: `played_at` = `info.gameEndTimestamp`(없으면 `gameStartTimestamp`), `win` = participant.win, `placement` = null, `duration_sec` = `info.gameDuration`, position = `toLolPosition(teamPosition)`.
+- 없으면 NOT_FOUND. 이후 참가자 수 조회·변경은 이 잠금 아래에서 한다(READ COMMITTED에서 잠금 대기 후 다음 문장은 앞 트랜잭션의 커밋을 본다). 같은 내전의 동시 요청은 직렬화되고, 마지막 자리에 동시에 참가하면 한 명만 joined, 나머지는 waitlist(메인 기본값 6).
+- 불변식(서비스가 매 변경 후 유지, QA 대조): **waitlist가 1명 이상이면 joined 수 = capacity**, **joined 수 ≤ capacity**, status = joined 수 ≥ capacity ? full : recruiting(모집 중일 때).
+- 상태 변경은 `canTransition`(shared 맵) 검사 후에만. 위반이면 INTERNAL_ERROR + 로그(잠금 아래라 정상 흐름에서는 생기지 않음).
+- 같은 사용자의 중복 행은 `(scrim_id, user_id)` UNIQUE가 막는다. 잠금 + 기존 행 조회가 1차 방어.
 
-### 6-3. 큐 구현 (D43)
+### 5-1. 작성 `POST /scrims`
 
-- **생산자는 Redis 유무와 무관하게 `@nestjs/schedule` cron**. cron 핸들러는 `pg_try_advisory_lock(작업별 상수 키)`를 얻은 경우에만 대상 선택·등록을 하고 끝나면 푼다(여러 인스턴스 중복 방지). `SYNC_JOBS_ENABLED=false`면 cron 등록 자체를 안 한다.
-- **소비자**는 `SyncQueue` 인터페이스(9절) 뒤에 둔다.
-  - `REDIS_URL` 있음: `BullMqSyncQueue` — 큐 `external-sync`, 우선순위 위 표, `jobId`로 중복 제거(`{kind}:{대상 행 id}`, manual/link는 `manual:{행 id}` 별도).
-  - `REDIS_URL` 없음: `InProcessSyncQueue` — 메모리 우선순위 큐, 제공자(riot/steam)별 동시 실행 1, 같은 키 중복 제거. 재시작으로 잃은 수동 요청은 DB `sync_state`가 원본이라 「멈춘 작업 정리」가 다시 등록한다.
-- 테스트는 in-process 구현과 `SyncQueue` 목으로 한다(이 PC에 Redis 없음). BullMQ 구현은 작성만 하고 실행 미확인으로 보고.
+1. zod `CreateScrimRequest`(제목 정규화 2–40자, rules 1000자, 포지션 형식·중복·최대 2) → VALIDATION_FAILED.
+2. games 행(code) 조회. 서버 검사 → VALIDATION_FAILED(details 모아서 한 번에):
+   - `scheduled_at`: core `validateScrimSchedule(scheduledAt, now, SCRIM_SCHEDULE_MAX_DAYS_AHEAD)` — now < scheduled_at ≤ now + 30일.
+   - `capacity`: core `isCapacityInRange`.
+   - `host_preferred_positions`: core `validatePreferredPositions(입력, game.positions, 적용 use_positions)`.
+3. 노쇼 제한(5-6) → SCRIM_BANNED + Retry-After.
+4. 트랜잭션: scrims insert(status recruiting, 적용값 options) + scrim_players insert(방장, joined, preferred_positions, joined_at = now). capacity가 1인 경우는 범위상 없음(min 2). 201 `ScrimDetail`.
 
-### 6-4. 호출 한도·재시도 (external-api-integration 4절)
+### 5-2. 참가·대기 등록·희망 포지션 변경 `POST /scrims/:id/join`
 
-| 상황 | 백그라운드 작업 | HTTP 요청 처리 중(연동 시작·확인·스팀 콜백) |
-| --- | --- | --- |
-| 토큰 버킷 | 호스트별(`{asia}.api.riotgames.com`, `{kr}.api.riotgames.com`) 초당 `RIOT_RATE_LIMIT_PER_SEC`, 2분당 `RIOT_RATE_LIMIT_PER_2MIN`. 빌 때까지 대기 | 3초 넘게 기다려야 하면 GAME_PROVIDER_RATE_LIMITED(Retry-After = 예상 대기 초) |
-| 429 | `Retry-After`(없으면 60초)만큼 그 호스트를 멈춤(BullMQ: `queue.pause` → 타이머 → `resume`, in-process: 해당 레인 일시정지) 후 작업을 다시 넣음. **즉시 재시도 금지.** 같은 작업 3번째 429 → PROVIDER_RATE_LIMITED 기록 | 호스트 멈춤은 같게 적용, 요청은 GAME_PROVIDER_RATE_LIMITED + Retry-After 그대로 |
-| 5xx·타임아웃(`EXTERNAL_API_TIMEOUT_MS`) | 지수 백오프 1·2·4초, 3회 후 PROVIDER_UNAVAILABLE | 1회 재시도 후 GAME_PROVIDER_ERROR |
-| 401/403 | 재시도 없음, PROVIDER_AUTH_FAILED + 로그 「라이엇 키 만료/권한」 | GAME_PROVIDER_ERROR |
-| 404 | 계정 조회면 ACCOUNT_NOT_FOUND. 리그 항목 없음은 오류 아님(빈 배열 → UNRANKED) | 5-1 각 단계 코드 |
+트랜잭션 + 5-0 잠금:
+1. status ∉ {recruiting, full} → SCRIM_NOT_RECRUITING.
+2. `isJoinClosed(scheduled_at, now)` → SCRIM_JOIN_CLOSED.
+3. `validatePreferredPositions(body.preferred_positions, game.positions, scrim.use_positions)` 실패 → VALIDATION_FAILED(path `preferred_positions`).
+4. 요청자 행이 joined·waitlist → preferred_positions만 갱신(상태·joined_at 그대로). 200.
+5. 노쇼 제한(5-6) → SCRIM_BANNED + Retry-After. (4번보다 뒤: 이미 참가한 사람의 포지션 변경은 막지 않는다, D83)
+6. joined 수 n. `placeNewParticipant(n, capacity)` → joined | waitlist. 행이 없으면 insert, cancelled면 같은 행 update(전이 cancelled → joined | waitlist). joined_at = now.
+7. joined로 들어갔고 n + 1 = capacity면 recruiting → full.
+8. 200 `ScrimDetail`(웹은 `viewer.status`·`viewer.waitlist_order`로 「참가 확정」/「대기 N번」 안내).
 
-스팀은 호출량이 작아 토큰 버킷을 두지 않고 429·5xx 규칙만 같은 방식으로 적용한다.
+### 5-3. 참가 취소 `DELETE /scrims/:id/join`
+
+트랜잭션 + 5-0 잠금:
+1. status ∉ {recruiting, full} → SCRIM_NOT_RECRUITING.
+2. join_closed → SCRIM_JOIN_CLOSED.
+3. 요청자 = 방장 → SCRIM_HOST_CANNOT_LEAVE(메인 기본값 4).
+4. 요청자 행 없음·cancelled → 변경 없이 200.
+5. waitlist → cancelled. 200.
+6. joined → cancelled, 그다음 `planRosterAfterChange({capacity, joinedCount: n − 1, waitlist})`:
+   - `promoteIds`(대기 1번부터 빈 자리만큼) → waitlist → joined. **preferred_positions·joined_at은 그대로**(메인 기본값 7).
+   - `nextStatus`가 현재와 다르면 전이(full → recruiting).
+7. 200 `ScrimDetail`. (승격 알림은 알림 슬라이스)
+
+### 5-4. 수정 `PATCH /scrims/:id`
+
+트랜잭션 + 5-0 잠금:
+1. 방장 아님 → FORBIDDEN. status ∉ {recruiting, full} → SCRIM_NOT_RECRUITING.
+2. 서버 검사(보낸 필드만): scheduled_at·capacity 범위 → VALIDATION_FAILED.
+3. capacity < joined 수 → SCRIM_CAPACITY_BELOW_JOINED.
+4. 갱신. capacity를 바꿨으면 `planRosterAfterChange({capacity: 새 값, joinedCount, waitlist})`로 승격 + 상태(recruiting ↔ full).
+5. auto_balance는 적용값 규칙(has_teams) 적용. game·use_positions는 스키마가 막는다.
+6. **시작 시각이 이미 지난 모집글도 수정 가능**(미래로 미루면 join_closed가 풀린다, D92). join_closed 상태에서 다른 필드만 바꾸는 것도 허용.
+
+### 5-5. 시작·모집 취소·자동 마감 (D78, D80)
+
+**시작 `POST /scrims/:id/start`** — 방장 또는 운영진. 잠금 → 권한(FORBIDDEN) → status ∉ {recruiting, full} → SCRIM_NOT_RECRUITING → `canStartScrim({requiresFull: game.start_requires_full, capacity, joinedCount})`(D97) false → SCRIM_CANNOT_START → status = playing, started_at = now. 시각 제한 없음(시작 시각 전이어도 시작 가능). 대기열 행은 그대로 둔다(D95).
+
+**모집 취소 `POST /scrims/:id/cancel`** — 방장(reason host) 또는 운영진(방장이 아니면 reason admin). 잠금 → 권한 → status ∉ {recruiting, full} → SCRIM_NOT_RECRUITING → status = cancelled, cancelled_at = now, cancel_reason. 참가자 행은 그대로(이력).
+
+**자동 마감 cron** — `*/5 * * * *`(Asia/Seoul), `SCRIM_JOBS_ENABLED=true`일 때만 등록, 트랜잭션 안 `pg_try_advisory_xact_lock(hashtext('scrim-auto-close'))`를 얻은 경우에만 실행(S1 D62와 같은 방식).
+1. 대상: `status IN ('recruiting','full') AND scheduled_at <= now() - SCRIM_AUTO_CLOSE_AFTER_MIN분`, scheduled_at 오름차순 최대 100건.
+2. 건마다 별도 트랜잭션 + 5-0 잠금 후 다시 판정: `decideOverdueScrim({status, scheduledAt, now, autoCloseAfterMin, canStart})`
+   - `'start'` → playing, started_at = now.
+   - `'cancel'` → cancelled, cancelled_at = now, cancel_reason = not_started.
+   - null(그사이 수정·시작됨) → 건너뜀.
+3. 프로세스 시작 시 1회 실행(서버가 꺼져 있던 동안 밀린 것 처리).
+
+### 5-6. 노쇼 제한 판정 (문서 7-4, D83)
+
+```
+조회: SELECT no_show_marked_at FROM scrim_players
+      WHERE user_id = $1 AND status = 'no_show'
+        AND no_show_marked_at > noShowLookbackStart(now, policy)     -- now − (window + restriction)
+판정: computeScrimRestriction(marks, now, policy)
+```
+
+- 규칙: 노쇼 표시 시각 m마다, 구간 (m − 30일, m]의 노쇼가 3회 이상이면 m이 「제한 발동」. 제한 해제 시각 `until` = 가장 늦은 발동 m + 7일. `now < until`이면 제한 중.
+- 「일」은 24시간 단위 이동 구간(**KST 날짜 경계 아님**). 화면 표시는 KST.
+- 노쇼 표시 시각이 now보다 뒤인 행은 무시(시계 오차).
+- policy = 환경 변수 `SCRIM_NO_SHOW_THRESHOLD`(3), `SCRIM_NO_SHOW_WINDOW_DAYS`(30), `SCRIM_NO_SHOW_RESTRICTION_DAYS`(7).
+- 제한 대상: **새 참가·새 대기 등록·모집글 작성**. 이미 참가·대기 중인 내전은 그대로 두고, 그 내전의 희망 포지션 변경과 참가 취소도 허용한다.
+- 캐시 컬럼을 두지 않고 요청마다 계산한다(사용자당 최근 37일 노쇼 행 몇 개).
+- `SCRIM_BANNED`의 `Retry-After` = `ceil((until − now) / 1000)`.
+- `GET /me/scrim-restriction` = 같은 판정 결과 + `policy`(웹 안내 문구용).
+
+### 5-7. 노쇼 표시·정정 `PUT /scrims/:id/players/:userId/no-show`
+
+`@Roles('admin')` → 트랜잭션 + 5-0 잠금:
+1. status ∉ {playing, finished} → SCRIM_NO_SHOW_NOT_ALLOWED.
+2. 대상 사용자 행 없음 → NOT_FOUND. 행 status ∉ {joined, no_show} → SCRIM_NO_SHOW_NOT_ALLOWED(대기·취소자는 표시 대상 아님).
+3. `no_show: true`:
+   - 이미 no_show → 변경 없이 200.
+   - `isNoShowMarkWindowOpen(scheduled_at, now, SCRIM_NO_SHOW_MARK_WINDOW_DAYS)` false → SCRIM_NO_SHOW_NOT_ALLOWED.
+   - joined → no_show, no_show_marked_at = now, no_show_marked_by = 요청자.
+4. `no_show: false`: 이미 joined → 200. no_show → joined, 두 컬럼 null(기한 없음).
+5. 방장도 표시 대상이 될 수 있다. 200 `ScrimDetail`.
+6. S3 이후 레이팅·결과와의 관계(노쇼자를 결과에서 뺄지)는 S3 계약에서 정한다.
 
 ---
 
-## 7. 수동 새로고침 (`POST /me/game-accounts/:id/sync`, D41)
+## 6. 상태 전이 (`packages/shared/src/constants/transitions.ts`, S2 확정)
 
-1. 본인 행 아니면 NOT_FOUND. 제공자 키 없음 → GAME_PROVIDER_NOT_CONFIGURED.
-2. 트랜잭션 + `pg_advisory_xact_lock(hashtext('sync-quota:' || user_id))`(동시 요청으로 5회를 넘지 않게):
-   - 대상 행(라이엇이면 lol·tft)이 `queued`/`running`이고 `sync_state_at`이 10분 이내 → **차감 없이** 202(`quota_consumed=false`).
-   - `used` = `game_account_sync_requests`에서 `user_id`이고 `created_at ≥ 오늘 KST 00:00`(core `kstDayWindow(now).start`)인 행 수. `used ≥ SYNC_DAILY_LIMIT` → SYNC_LIMIT_EXCEEDED, `Retry-After` = `kstDayWindow(now).end - now`(초, 올림).
-   - `game_account_sync_requests` insert(`game_account_id` = 요청한 행 id) + 대상 행 `queued`.
-3. 커밋 후 `riot-full` 또는 `steam-playtime`(reason manual) 등록. 202 `{ accounts, sync_quota, quota_consumed:true }`.
+```
+scrims:        recruiting → full | playing | cancelled         (recruiting → playing 추가, D78)
+               full → recruiting | playing | cancelled
+               playing → finished                              (S3 결과 승인)
+scrim_players: waitlist → joined | cancelled
+               joined → cancelled | no_show                    (joined → waitlist 삭제, D79)
+               cancelled → joined | waitlist                   (재참가: 같은 행, joined_at 갱신)
+               no_show → joined                                (운영진 정정)
+```
 
-규칙: 사용자 단위, 라이엇·스팀 **합산**, 라이엇 1회 = lol·tft 함께. 외부 호출이 실패해도 차감 유지(목업 「다시 시도 · 오늘 4회 남음」). 연동 직후·프로필 조회·주기 작업은 차감하지 않는다. `SyncQuota.resets_at`은 `+09:00` 오프셋 표기(`2026-10-29T00:00:00.000+09:00`), core `buildSyncQuota`가 만든다.
+| 전이 | 일으키는 곳 |
+| --- | --- |
+| scrims recruiting → full | 5-2 7단계, 5-4 정원 축소 |
+| scrims full → recruiting | 5-3 6단계(대기열 없음), 5-4 정원 확대(대기열 부족) |
+| scrims recruiting·full → playing | 5-5 시작, 자동 마감 'start' |
+| scrims recruiting·full → cancelled | 5-5 모집 취소, 자동 마감 'cancel' |
+| players waitlist → joined | 5-3 승격, 5-4 정원 확대 승격 |
+| players joined·waitlist → cancelled | 5-3 |
+| players cancelled → joined·waitlist | 5-2 6단계 |
+| players joined ↔ no_show | 5-7 |
 
----
+웹 진행 단계 표시(목업 ScrimDetail 「모집 · 팀 구성 · 경기 진행 · 결과 승인」):
 
-## 8. 프로필 응답 (`GET /users/:id/profile`)
-
-로그인 멤버 누구나 조회. 사용자 없으면 NOT_FOUND.
-
-| 필드 | 내용 | 빈 상태 |
-| --- | --- | --- |
-| user | `ProfileUser {id, nickname, role, avatar_url, discord_linked, joined_at}`. `discord_linked` = discord_id가 있고 `dev-`로 시작하지 않음 | - |
-| is_self | 요청자 = 대상 | - |
-| game_accounts | `GameAccountView[]` 전부(대표 + 부계정 + 스팀, 4절 정렬). 화면은 연동 칩으로만 쓴다 | `[]` → 「연동한 계정이 없어요」 |
-| tiers | **대표** 라이엇 계정의 lol·tft 2개 `ProfileTierCard{game_account_id, game, queue, rank, synced_at}`. rank = 해당 큐 최신 스냅샷 | `[]`(라이엇 없음), `rank: null`(아직 동기화 성공 없음), `rank.tier='UNRANKED'`(언랭) |
-| main_position | core `computeMainPosition(대표 lol 행 recent_matches 최신 20개의 summary.position)` | null(롤 없음·경기 없음·포지션 전부 null) |
-| recent_matches | 대표 lol 행의 `{items: RecentLolMatch[] 최신 10개, synced_at: matches_synced_at, refresh_queued}`. 6-2 조건이면 `riot-matches` 등록하고 `refresh_queued=true`, sync_state가 idle이 아니어도 true | null(롤 계정 없음), `items: []`(경기 없음·첫 동기화 전) |
-| sync_quota | `is_self`일 때만 `SyncQuota` | null(다른 사람) |
-| scrim | **S3 자리. S1은 항상 null** | 웹: 「내전 기록은 곧 열려요」류 빈 상태(레이팅 카드·그래프·최근 내전 3곳) |
-| badges | **P2 자리. S1은 항상 null** | 웹: 뱃지 빈 상태 |
-
-- `RecentLolMatch`: `id`(우리 UUID), played_at, win, champion_id, champion_key, champion_name(Data Dragon ko_KR, 없으면 key), champion_image_url|null, position, kills, deaths, assists, duration_sec. `summary`가 `LolMatchSummary`로 파싱되지 않는 행은 건너뛴다.
-- 자리 필드 규칙(D39): 이후 슬라이스는 `z.null()`을 `객체.nullable()`(badges는 `배열.nullable()`)로 **넓히기만** 한다. null은 언제나 「표시할 데이터 없음」이라 S1 웹 코드가 그대로 동작한다.
-- 목업 Profile의 「지금 갱신 · 오늘 N회 남음」은 `is_self`일 때만: 대표 라이엇 lol 행 id로, 없고 스팀만 있으면 스팀 행 id로 `POST …/sync`.
-
-### 외부 식별자 비노출 (D38)
-
-어떤 응답에도 넣지 않는다: `game_accounts.external_id`(PUUID·스팀 64비트 ID), `riot_link_verifications.puuid`, `recent_matches.external_match_id`, users의 email·discord_id(프로필). 본인 설정 화면도 같다(목업 Settings의 스팀 ID 숫자 대신 personaname). shared 응답 스키마는 해당 필드가 없고 zod `object`가 모르는 키를 제거하므로 직렬화가 스키마 parse를 거치면 새지 않는다 — **QA는 응답 스키마 parse 경로를 우회하는 코드가 없는지 확인한다.** 로그에도 PUUID 원문 대신 game_account id를 쓴다.
+| 상태 | 표시 |
+| --- | --- |
+| recruiting | 1단계 진행 중. join_closed면 배지 「시작 대기」 |
+| full | 1단계 완료, 2단계(팀 구성) 진행 중 — 「정원 마감 · 팀 구성 중」. join_closed면 「시작 대기」 |
+| playing | 1–2단계 완료, 3단계 진행 중 |
+| finished | 4단계 모두 완료 |
+| cancelled | 단계 표시 대신 「취소된 내전」 + cancel_reason 문구(방장 취소 / 운영진 취소 / 시작되지 않아 자동 취소) |
 
 ---
 
-## 9. 구현 인터페이스 (API 내부 계약)
+## 7. core 함수 (`packages/core`, domain-logic) — 새 파일 `src/scrim.ts`, `src/no-show.ts`
 
-shared가 아니라 `apps/api` 내부 경계다. integration이 **첫 작업으로** `apps/api/src/integrations/contracts.ts`에 아래 타입을 만들고, backend는 그 타입과 목으로 병렬 작업한다.
+I/O 없음, 시각은 인자로. 모두 단위 테스트 필수. 환경 변수 값은 인자로 받는다(core는 env를 읽지 않는다).
 
 ```ts
-export type ExternalErrorKind = 'not_found' | 'auth' | 'rate_limited' | 'unavailable' | 'bad_response' | 'not_configured';
-export class ExternalApiError extends Error { kind: ExternalErrorKind; retryAfterSec?: number }
-
-export interface RiotApi {
-  /** mode 'interactive' = HTTP 요청 처리 중(3초 대기 한도, 1회 재시도), 'background' = 작업자(6-4) */
-  getAccountByRiotId(gameName: string, tagLine: string, mode: CallMode): Promise<{ puuid: string; gameName: string; tagLine: string }>;
-  getAccountByPuuid(puuid: string, mode: CallMode): Promise<{ puuid: string; gameName: string; tagLine: string }>;
-  getSummonerByPuuid(puuid: string, mode: CallMode): Promise<{ profileIconId: number }>;
-  getLolLeagueEntries(puuid: string): Promise<RiotLeagueEntry[]>;   // background
-  getTftLeagueEntries(puuid: string): Promise<RiotLeagueEntry[]>;   // background
-  getLolMatchIds(puuid: string, opts: { queue: number; count: number }): Promise<string[]>;
-  getLolMatch(matchId: string): Promise<RiotMatch>;                  // 필요한 필드만 zod로 파싱
-}
-export type CallMode = 'interactive' | 'background';
-export type RiotLeagueEntry = { queueType: string; tier: string; rank: string; leaguePoints: number; wins: number; losses: number };
-
-export interface SteamApi {
-  getOwnedGames(steamId: string): Promise<{ visibility: 'private' } | { visibility: 'public'; games: { appId: number; name: string | null; minutesTotal: number; minutesRecent: number }[] }>;
-  getPlayerSummary(steamId: string): Promise<{ personaName: string } | null>;
-  /** 5-2 4·5단계. 형식 불일치·is_valid≠true → { ok:false }, 네트워크·5xx → ExternalApiError */
-  verifyOpenIdAssertion(query: Record<string, string>, expectedReturnTo: string): Promise<{ ok: true; steamId: string } | { ok: false }>;
-}
-
-export interface DataDragon {
-  profileIconUrl(iconId: number): Promise<string | null>;
-  champion(championId: number): Promise<{ key: string; nameKo: string; imageUrl: string | null } | null>;
-}
-
-export type SyncJobKind = 'riot-full' | 'riot-tier' | 'riot-matches' | 'steam-playtime';
-export type SyncJobReason = 'manual' | 'link' | 'profile-view' | 'schedule' | 'recovery';
-export type SyncJob = { kind: SyncJobKind; gameAccountId: string; reason: SyncJobReason; priority: number };
-export interface SyncQueue { enqueue(job: SyncJob): Promise<void> }   // 중복 키는 조용히 무시
-export const RIOT_API = Symbol('RIOT_API'); export const STEAM_API = Symbol('STEAM_API');
-export const DATA_DRAGON = Symbol('DATA_DRAGON'); export const SYNC_QUEUE = Symbol('SYNC_QUEUE');
+export type NoShowPolicy = { threshold: number; windowDays: number; restrictionDays: number };
+export type ScrimRestrictionState = { restricted: boolean; until: Date | null; recentCount: number; lastNoShowAt: Date | null };
+export type WaitlistRow = { id: string; joinedAt: Date };
+export type OpenScrimStatus = 'recruiting' | 'full';
 ```
-
-경계: **backend**는 HTTP 엔드포인트(4절 전부), 소유 확인·연동·해제·횟수 검사·`idle→queued` 전이와 `SyncQueue.enqueue` 호출, 프로필 조회까지. **integration**은 외부 클라이언트, 한도·재시도, Data Dragon, 큐 구현, 작업자(결과 DB 기록, `queued→running→idle`), cron 생산자, 멈춘 작업 정리.
-
-### integration 확인 항목 (공식 문서로 확인 후 보고서에 URL·날짜)
-
-| # | 항목 |
-| --- | --- |
-| I1 | 경로: Account-V1 `by-riot-id`·`by-puuid`, Summoner-V4 `by-puuid`, League-V4 `entries/by-puuid`, TFT-League `by-puuid`, Match-V5 `matches/by-puuid/{puuid}/ids`(queue·type·count), `matches/{id}` |
-| I2 | 아이콘 0–28이 모든 계정에서 선택 가능한지. 아니면 `RIOT_VERIFICATION_ICON_IDS` 변경을 architect에 요청 |
-| I3 | TFT 리그 항목의 wins/losses 의미(1등 기준 / 4등 이내 기준). 웹의 「순방 %」 표기 여부가 여기에 달림 — frontend에 전달 |
-| I4 | Steam OpenID `check_authentication` 응답 형식, GetOwnedGames 비공개 응답 형태(`{"response":{}}`), GetPlayerSummaries |
-| I5 | Data Dragon versions.json·profileicon·champion(ko_KR) 경로 |
-
----
-
-## 10. core 함수 (`packages/core`, domain-logic)
-
-I/O 없음, 시각은 인자로. 모두 단위 테스트 필수.
 
 | 함수 | 시그니처 | 규칙 |
 | --- | --- | --- |
-| kstDayWindow | `(now: Date) => { start: Date; end: Date }` | start = now의 KST 날짜 00:00(+09:00)을 가리키는 시각, end = start + 24h. 경계: KST 23:59:59.999 / 00:00:00.000 |
-| buildSyncQuota | `(used: number, limit: number, now: Date) => SyncQuota` | remaining = max(0, limit−used), resets_at = `kstDayWindow(now).end`를 `YYYY-MM-DDT00:00:00.000+09:00`로 |
-| computeMainPosition | `(positions: readonly (LolPosition \| null)[]) => MainPosition \| null` | 입력은 최신순. 앞 `RECENT_MATCHES_MAX`(20)개만, null 제외한 수 = sample_size(0이면 null). 경기 수 내림차순, 동률은 `LolPosition` 순서, 최대 2개. ratio = count/sample_size 소수 둘째 자리 반올림. source `riot_ranked_solo` |
-| pickVerificationIcon | `(currentIconId: number, random: () => number) => number` | `RIOT_VERIFICATION_ICON_IDS`에서 현재 아이콘 뺀 목록 중 `floor(random()*n)`번째 |
-| toRankValue | `(entry: { tier: string; rank: string; leaguePoints: number; wins: number; losses: number } \| undefined) => RankValue` | undefined → UNRANKED 0/0/0. `RIOT_APEX_TIERS`면 division null(라이엇이 주는 `rank` 값 'I'는 **무시**하고 검사도 하지 않음). 모르는 tier·rank 문자열 → 예외(작업자는 INTERNAL_ERROR로 기록) |
-| isSameRank | `(a: RankValue, b: RankValue) => boolean` | tier·division·lp·wins·losses 모두 같음 |
-| isMatchesCacheStale | `(matchesSyncedAt: Date \| null, now: Date, ttlHours?: number) => boolean` | null 또는 `now − synced ≥ ttlHours`(기본 `RECENT_MATCHES_TTL_HOURS`) |
+| computeScrimRestriction | `(noShowMarkedAt: readonly Date[], now: Date, policy: NoShowPolicy) => ScrimRestrictionState` | 5-6. now보다 뒤인 값 무시. 발동 m: (m − window, m] 안 개수 ≥ threshold. until = 최대 발동 m + restriction(제한 아니면 null). recentCount = (now − window, now] 개수. lastNoShowAt = now 이하 최대값. 입력 순서 무관 |
+| noShowLookbackStart | `(now: Date, policy: NoShowPolicy) => Date` | now − (windowDays + restrictionDays)일. 이 시각 **초과**만 조회하면 판정이 같음을 테스트로 보인다 |
+| orderWaitlist | `<T extends WaitlistRow>(rows: readonly T[]) => T[]` | joinedAt ASC, 같으면 id 문자열 ASC. 입력 불변 |
+| placeNewParticipant | `(joinedCount: number, capacity: number) => 'joined' \| 'waitlist'` | joinedCount < capacity → joined |
+| statusForJoinedCount | `(joinedCount: number, capacity: number) => OpenScrimStatus` | joinedCount ≥ capacity → full |
+| planRosterAfterChange | `(input: { capacity: number; joinedCount: number; waitlist: readonly WaitlistRow[] }) => { promoteIds: string[]; nextStatus: OpenScrimStatus }` | 빈 자리 = max(0, capacity − joinedCount), `orderWaitlist` 앞에서 그만큼. nextStatus = statusForJoinedCount(joinedCount + 승격 수). joinedCount > capacity면 RangeError |
+| validatePreferredPositions | `(input: readonly string[], gamePositions: readonly string[], usePositions: boolean) => { ok: true } \| { ok: false; message: string }` | usePositions: 1–2개, 모두 gamePositions 안, 중복 없음. 아니면 `[]`만 허용 |
+| validateScrimSchedule | `(scheduledAt: Date, now: Date, maxDaysAhead: number) => 'ok' \| 'not_future' \| 'too_far'` | scheduledAt ≤ now → not_future, > now + maxDaysAhead일 → too_far |
+| isCapacityInRange | `(capacity: number, range: { min: number; max: number; step?: number }) => boolean` | 정수 && min ≤ capacity ≤ max && (capacity − min) % step = 0 (D97) |
+| canStartScrim | `(input: { requiresFull: boolean; capacity: number; joinedCount: number }) => boolean` | requiresFull → joinedCount = capacity, 아니면 joinedCount ≥ `SCRIM_MIN_PLAYERS_TO_START`(2) (D97) |
+| decideOverdueScrim | `(input: { status: ScrimStatus; scheduledAt: Date; now: Date; autoCloseAfterMin: number; canStart: boolean }) => 'start' \| 'cancel' \| null` | status가 recruiting·full이고 now ≥ scheduledAt + autoCloseAfterMin분일 때만: canStart → start, 아니면 cancel. 그 외 null |
+| computeOpenPositions | `(positions: readonly string[], capacity: number, firstChoices: readonly (string \| null)[]) => { position: string; count: number }[]` | 빈 자리(capacity − firstChoices.length) 0이면 `[]`. capacity가 positions.length로 나누어떨어지지 않으면 `[]`. 포지션당 정원 = capacity / positions.length, 남은 수 = 그 값 − 1지망이 그 포지션인 수, 1 이상만 positions 순서로 |
+| isJoinClosed | `(scheduledAt: Date, now: Date) => boolean` | now ≥ scheduledAt |
+| isNoShowMarkWindowOpen | `(scheduledAt: Date, now: Date, windowDays: number) => boolean` | now ≤ scheduledAt + windowDays일 |
+
+`packages/core/src/index.ts`에 export 추가. 기존 S1 함수는 그대로.
 
 ---
 
-## 11. 환경 변수 (`.env.example` 반영됨, 표 13행 = 신규 10개 + 기존 3개 의미·기본값 변경: RIOT_API_KEY, STEAM_API_KEY, REDIS_URL)
+## 8. 화면 (frontend)
 
-| 변수 | 사용처 | 기본 | 비고 |
-| --- | --- | --- | --- |
-| RIOT_API_KEY | api | (키 필요) | S0에 자리만 있었음. 비면 라이엇 연동·동기화 GAME_PROVIDER_NOT_CONFIGURED / PROVIDER_NOT_CONFIGURED |
-| STEAM_API_KEY | api | (키 필요) | 같음(스팀) |
-| RIOT_REGIONAL_ROUTING | api | asia | Account-V1·Match-V5 호스트 `{값}.api.riotgames.com` |
-| RIOT_PLATFORM_ROUTING | api | kr | Summoner-V4·League-V4·TFT-League |
-| RIOT_RATE_LIMIT_PER_SEC | api | 20 | 호스트별 |
-| RIOT_RATE_LIMIT_PER_2MIN | api | 100 | 호스트별 |
-| EXTERNAL_API_TIMEOUT_MS | api | 5000 | 라이엇·스팀·Data Dragon·Steam OpenID |
-| RIOT_VERIFICATION_TTL_SEC | api | 600 | 소유 확인 제한 시간 |
-| RIOT_ACCOUNTS_MAX | api | 3 | 사용자당 라이엇 ID 최대 개수(D37, D56). 1 이상 정수. 스팀은 1개 고정 |
-| RIOT_DDRAGON_VERSION | api | (빈 값) | 비면 versions.json 최신값을 하루 1회 캐시 |
-| SYNC_DAILY_LIMIT | api | 5 | 수동 새로고침 하루 한도 |
-| SYNC_JOBS_ENABLED | api | true | false면 cron 미등록(테스트) |
-| REDIS_URL | api | **빈 값으로 변경**(D47) | 있으면 BullMQ, 없으면 in-process |
-
-`config/env.ts`(backend)는 위 값을 zod로 검증한다. 숫자는 양의 정수, 라우팅은 소문자 영문. 키가 없어도 서버는 시작한다.
-
----
-
-## 12. 화면 (frontend)
-
-### `/settings` (목업 Settings, 섹션 순서: 화면 테마 → 게임 계정 연동 → 디스코드 계정. **알림 섹션 없음**)
+### `/scrims` (목업 Scrims)
 
 | 영역 | 데이터 | 동작 |
 | --- | --- | --- |
-| 게임 계정 연동 · 라이엇 카드(연동됨, 라이엇 ID마다 1장, 대표 먼저) | provider=riot 행을 display_name으로 묶음(2행 → 1카드), 「라이엇 ID · 롤, 롤체 공통 · HH:mm 동기화」, 대표면 「대표」 배지, 롤·롤체 티어 요약(`rank`), sync.error 있으면 안내 | 「지금 갱신 · 오늘 N회 남음」(lol 행 id로 sync, remaining 0이면 비활성), 부계정이면 「대표로 지정」(primary), 「연동 해제」(확인 대화상자, 대표를 해제하면 「다음 계정이 대표가 돼요」 안내) |
-| 라이엇 「+ 부계정 추가」 | 라이엇 ID 수 < `limits.riot_accounts_max`이고 진행 중 확인이 없을 때(목업 「부계정 추가」, D58). 라이엇 연동이 하나도 없으면 「라이엇 ID 연동」 문구 | 아래 1단계로 |
-| 라이엇 카드(미연동) — 라이엇 ID 입력(단계 표기 없음) | - | 라이엇 ID 입력(`게임이름#태그`) → POST → 오류 코드별 문구 |
-| 라이엇 카드 — 아이콘 변경(「소유 확인 1/2 단계」, 목업·D58) | `riot_verification` | 아이콘 이미지(없으면 `#번호`), 「게임 클라이언트에서 프로필 아이콘을 #N으로 바꿔 주세요」, `expires_at` 카운트다운, 「바꿨어요, 확인」(confirm), 「취소」(DELETE). expired → 「다시 시작」. OWNERSHIP_CHECK_FAILED는 카드 안 인라인 안내 |
-| 라이엇 카드 — 확인 중(「소유 확인 2/2 단계」) | confirm 요청 진행 중 | 버튼 비활성 + 「라이엇 API로 아이콘을 대조하고 있어요」. 성공 시 연동된 카드로 바뀜 |
-| 스팀 카드(미연동) | - | 「Steam으로 로그인」 버튼 1개 → POST {provider:'steam'} → `location.href = authorize_url` |
-| 스팀 카드(연동됨) | display_name, 「보유 게임 N개」(`steam_owned_game_count`), STEAM_PROFILE_PRIVATE면 「게임 정보 비공개」 배지 + 목업 안내 문구 + 「다시 시도 · 오늘 N회 남음」(sync) + 「마지막 성공 값(MM.DD)」(synced_at 있을 때) | 「연동 해제」 |
-| 스팀 콜백 결과 | `SettingsPageQuery`(`steam=linked` / `steam_error`) | 토스트 후 쿼리 제거(`router.replace('/settings')`) |
-| 디스코드 계정(읽기 전용) | `GET /me`: avatar_url, discord_username, discord_guild_verified_at | 「로그인한 디스코드 계정」 표시만. 연동 코드 발급 UI 없음(D23) |
+| 헤더 | - | 「모집글 작성」 → `/scrims/new`. 제한 중이면 비활성 + 해제 시각 툴팁 |
+| 노쇼 제한 배너 | `GET /me/scrim-restriction` restricted | 「노쇼 {recent_no_show_count}회로 {until KST MM.DD HH:mm}까지 내전 참가·모집이 제한돼요」 |
+| 게임 필터 | `GET /games`(sort_order) + 「전체」 | 쿼리 `game`. 숫자 배지 없음(D86) |
+| 상태 탭 | 모집 중 / 진행 중 / 종료 = open / playing / ended | 쿼리 `status`. URL 쿼리와 동기화 |
+| 카드 | `ScrimSummary` | 게임 태그(`GAME_META`), 상태 배지(my_status joined → 「참가 중」, waitlist → 「대기 중」, 그 외 status·join_closed로 「모집 중 / 정원 마감 / 시작 대기 / 진행 중 / 종료 / 취소됨」), 제목, KST 시각(「오늘 21:00」 「토요일 20:00」), 방장, 태그(options: 「자동 밸런스」 「포지션 선택」 「ELO 반영 / ELO 미반영」), 인원 `joined/capacity` + 점 표시, 보조 줄(open_positions → 「서폿 1 · 정글 1 구함」, 정원 마감·대기 있음 → 「대기 N명」, 그 외 「N자리 남음」) |
+| 카드 버튼 | - | 모두 상세로 이동(문구만 「참가하기」 / 「대기열 등록」 / 「참가 중 · 상세 보기」) — 포지션 선택이 상세에 있어서(D91) |
+| 페이징 | next_cursor | 「더 보기」(무한 스크롤 아님) |
+| 빈 상태 | items [] | 탭별 문구 + 「모집글 작성」 |
 
-### `/members/[id]` (목업 Profile)
+### `/scrims/new` (목업 ScrimNew)
 
-| 영역 | 데이터 | S1 |
+| 영역 | 데이터 | 동작 |
 | --- | --- | --- |
-| 헤더 | user, main_position 1순위(「TOP LANER」 등), joined_at(「YYYY.MM 가입」), role | ELO 순위 「#3 ELO」는 S3 — 표시 안 함 |
-| 연동 칩 | game_accounts(라이엇 display_name, 「스팀 연동됨」), user.discord_linked(「디스코드 연동/미연동」) | |
-| 갱신 버튼 | is_self일 때만, sync_quota | 8절 마지막 줄 |
-| 카드 4개 | 롤 솔로 랭크·롤체 랭크(tiers), 주 포지션(main_position, 「솔로 랭크 최근 N경기 기준 탑 71%」), 내전 레이팅 | 내전 레이팅 카드는 빈 상태(scrim=null) |
-| RATING HISTORY / SCRIMS 최근 내전 / BADGES | scrim, badges | 빈 상태 |
-| RANKED SOLO 최근 솔로 랭크 | recent_matches | 「라이엇 API · HH:mm」= synced_at, refresh_queued면 10초 뒤 1회 재조회 |
+| 01 게임 선택 | `GET /games` | 카드(이름, 설명 = has_teams·has_positions로 「팀전 · 포지션 있음」 「개인 순위전」 「팀전」). 고르면 정원 = capacity.default |
+| 02 기본 정보 | - | 제목(2–40자), 날짜 + 시작 시간(KST 입력 → `YYYY-MM-DDTHH:mm:00+09:00`), 정원 스테퍼(capacity.min–max, min = max면 고정 표시) |
+| 내 희망 포지션 | game.positions | 포지션 받는 내전일 때만: 1지망(필수)·2지망(선택). 목업에 없지만 방장이 참가자 1번이라 필요(D82) |
+| 03 진행 방식 | - | 토글 3개: 팀 자동 밸런스(has_teams 아니면 비활성), 포지션 희망 받기(has_positions 아니면 비활성), 시즌 ELO에 반영 |
+| 04 규칙 | - | textarea 1000자 |
+| 미리보기 | 입력값 | 목업 PREVIEW 카드 |
+| 제출 | `POST /scrims` | 성공 → `/scrims/{id}`. VALIDATION_FAILED details를 필드 아래에. 노쇼 제한 중이면 상단 배너 + 제출 비활성 |
 
-- 티어 색: 목업의 `#3DDC97` 같은 티어 hex는 **새로 들이지 않고** 기존 토큰으로 매핑(D53). 매핑표는 `apps/web/src/lib/` 한 곳.
-- 훅 이름: `useMyGameAccounts`, `useSetPrimaryGameAccount`, `useLinkGameAccount`, `useConfirmRiotVerification`, `useCancelRiotVerification`, `useUnlinkGameAccount`, `useSyncGameAccount`, `useUserProfile`.
-- 목 백엔드(`NEXT_PUBLIC_API_MOCK`)에 S1 엔드포인트 추가. 스팀은 `authorize_url`을 `/settings?steam=linked`로 돌려 흐름을 흉내 낸다.
+### `/scrims/[id]` (목업 ScrimDetail)
+
+| 영역 | 데이터 | 동작 |
+| --- | --- | --- |
+| 헤더 | game, status, title, scheduled_at, host, options, rules | 「오늘 21:00 · 방장 X · 시즌 ELO 반영」, 규칙 본문(접기), 모집 중이면 「시작까지 HH:MM:SS」 카운트다운 |
+| 진행 단계 | status | 6절 표 |
+| ROSTER 참가자 | players, capacity | 슬롯 capacity개(빈 슬롯 포함). 닉네임(프로필 링크), 방장 표시, 1지망·2지망 칩, no_show 배지. 실력값·NEW 배지는 S3(표시 안 함) |
+| WAITLIST | waitlist | 순번·닉네임·희망 포지션. 모집 중일 때만 섹션 표시 |
+| 참가 영역 | viewer | 포지션 받는 내전: 1지망·2지망 선택(현재 값 = viewer.preferred_positions). 버튼: can_join → 「참가하기」(정원 마감이면 「대기열 등록」), 참가·대기 중 → 「포지션 변경」(같은 POST) + can_leave → 「참가 취소」. 결과 토스트: 「참가 확정」 / 「대기 {waitlist_order}번으로 등록」. join_closed → 「시작 시각이 지나 참가·취소할 수 없어요」. restricted_until → 제한 안내 |
+| 방장 메뉴 | viewer.can_edit / can_start / can_cancel | 「수정」(대화상자: 제목·날짜·시간·정원·규칙·ELO 반영·자동 밸런스), 「시작」(확인 대화상자, can_start false면 비활성 + 이유), 「모집 취소」(확인 대화상자). 운영진도 can_start·can_cancel이면 같은 메뉴 |
+| 운영진 노쇼 | role admin, status playing·finished | 참가자 슬롯마다 joined → 「노쇼 표시」(can_mark_no_show일 때), no_show → 「노쇼 정정」(항상). `PUT …/no-show` |
+| AUTO BALANCE / RESULT | balance, result (null) | 빈 상태 카드(「팀 밸런스는 곧 열려요」 「결과 입력은 곧 열려요」). 목업 내용은 S3 |
+| 갱신 | - | 모집 중이면 20초 간격 재조회 + 창 포커스 시 재조회. 상태 변경 응답(ScrimDetail)으로 캐시를 바로 교체하고 목록 캐시 무효화 |
+
+- 훅: `useGames`, `useScrims`(useInfiniteQuery), `useScrim`, `useCreateScrim`, `useUpdateScrim`, `useJoinScrim`, `useLeaveScrim`, `useStartScrim`, `useCancelScrim`, `useSetScrimNoShow`, `useMyScrimRestriction`.
+- `lib/routes.ts`: `scrims(q?: {game?, status?})`, `scrimNew()`, `scrim(id)`, `steamLinkComplete()`. 포지션 표기는 기존 `POSITION_META`(lib/games.ts) 재사용, 게임 색은 `GAME_META`·토큰 클래스(hex 금지, D53).
+- 목 백엔드(`NEXT_PUBLIC_API_MOCK`)에 S2 엔드포인트 11개(대기열 승격·노쇼 제한 흉내 포함).
 
 ---
 
-## 13. 담당 배정
+## 9. 인증 보완 (사용자 결정)
 
-S1 실행 구현자: **integration**, **backend**, **logic**, **frontend** (+ qa).
+### 9-1. 리프레시 토큰 하루 1회 회전 (D73) — S0 5-3 5단계 변경
+
+`POST /auth/refresh` 흐름(S0 5-3) 중 1–4단계(Origin, 쿠키 없음, 조회·만료, 폐기된 토큰 처리 = 유예 10초·재사용 감지·D26)는 **그대로**. 5단계만 둘로 나눈다:
+
+| 조건(현재 토큰, `revoked_at IS NULL`, 미만료) | 처리 | 응답 |
+| --- | --- | --- |
+| `now − created_at < REFRESH_ROTATE_AFTER_HOURS`(기본 24시간) | **회전하지 않음**. DB 쓰기 없음 | 200 `RefreshTokenResponse`(새 액세스 토큰, DB 최신 role), **Set-Cookie 없음** |
+| `now − created_at ≥ REFRESH_ROTATE_AFTER_HOURS` | S0 5단계 그대로 회전(같은 family, **같은 expires_at**, 조건부 update로 기존 토큰 폐기 + replaced_by_id) | 200 + Set-Cookie `gcd_rt`(새 토큰, Max-Age = 남은 수명) |
+
+- `created_at`은 「이 토큰이 발급된 시각」이다(로그인 또는 직전 회전). 그래서 같은 계열에서 회전은 최대 하루 1번.
+- 재사용 감지와의 관계: 감지 대상은 여전히 「회전으로 폐기된 토큰(`replaced_by_id` 있음)」뿐이다. 회전하지 않은 동안 같은 토큰을 여러 번 쓰는 것은 정상 사용이다. 회전 직후 옛 토큰은 10초 유예(동시 탭) 후 재사용 감지 대상(D3, D26 그대로).
+- 절대 만료: 로그인 시점부터 `REFRESH_TOKEN_TTL_DAYS`(30일) 그대로. 회전·미회전 모두 expires_at을 늘리지 않는다. 「마지막 사용부터 30일」은 채택하지 않음(사용자 결정).
+- 동시 요청: 24시간이 지난 토큰으로 두 탭이 동시에 refresh → 한쪽은 회전, 다른 쪽은 조건부 update 0행 → 유예 경로(S0 5-3 6번)로 액세스 토큰만. 변경 없음.
+- `REFRESH_ROTATE_AFTER_HOURS=0`이면 매번 회전(S1까지 동작). 0 이상 정수.
+- backend: `RotateResult`에 `{ kind: 'kept'; userId }` 추가, 컨트롤러는 `rotated`일 때만 Set-Cookie. 웹 변경 없음.
+- 보안 영향: 탈취된 리프레시 쿠키는 다음 회전(최대 24시간) 전까지 재사용 감지에 걸리지 않는다. 사용자 보고(「접속할 때마다 로그인」)를 줄이는 대가로 받아들인 위험이다(D73).
+- 테스트(backend): 24시간 미만 → Set-Cookie 없음·DB 행 수 변화 없음, 정확히 24시간 → 회전, 0 → 항상 회전, 회전 후 10초 안 옛 토큰 → 유예, 10초 후 → REUSED + 계열 폐기, 로그아웃 후 → INVALID(D26), 미회전 토큰도 expires_at 지나면 INVALID.
+
+### 9-2. 스팀 연동 팝업 (D74) — S1 5-2 확장
+
+**요청**: `LinkGameAccountRequest` steam 변형에 `display: 'redirect' | 'popup'`(기본 redirect, shared `SteamLinkDisplay`). 기존 `{provider:'steam'}` 요청은 redirect로 그대로 동작(호환).
+
+**API 시작(S1 5-2 시작 2·3단계 변경)**
+- `gcd_steam` 쿠키 payload에 `display` 추가: `{ state, user_id, iat, display }`. 검증 스키마는 `display`를 선택값으로 받고 없으면 redirect(배포 직후 10분 안의 옛 쿠키 호환).
+- `return_to = {WEB_ORIGIN}/api/v1/me/game-accounts/steam/callback?state={state}` — popup이면 끝에 `&display=popup`. 파라미터 순서 고정(state 먼저).
+
+**API 콜백(S1 5-2 콜백 변경점)**
+- 4단계 `openid.return_to` 비교 기준 = `steamReturnTo(config, 쿠키.state, 쿠키.display)`.
+- 도착지 결정: 쿠키가 유효하면 쿠키의 display, 쿠키가 없거나 깨졌으면 쿼리 `display === 'popup'`일 때만 popup(쿼리는 오류를 보여줄 페이지 선택에만 쓰고 검증에는 쓰지 않는다).
+- popup: `302 {WEB_ORIGIN}/steam-link/complete?steam=linked` 또는 `?steam_error={SteamLinkErrorCode}`(`STEAM_LINK_COMPLETE_PATH`). redirect: S1 그대로 `/settings?steam=linked|steam_error=…`.
+
+**웹: 설정 화면 「Steam으로 로그인」**
+1. 클릭 핸들러에서 **동기적으로** 먼저 `window.open('', 'gcd-steam-link', 'popup,width=520,height=720')`(사용자 동작 안에서 열어야 차단되지 않음).
+2. 반환값이 null(차단) → `POST {provider:'steam', display:'redirect'}` → `location.assign(authorize_url)`(S1 흐름, `/settings?steam=…` 토스트 그대로).
+3. 열렸으면 `POST {provider:'steam', display:'popup'}` → 성공 시 `popup.location.href = authorize_url`, 실패 시 `popup.close()` + 오류 토스트.
+4. 결과 수신(둘 다 등록, **첫 메시지 하나만** 처리):
+   - `BroadcastChannel(STEAM_LINK_BROADCAST_CHANNEL)` 메시지
+   - `window` `message` 이벤트: `event.origin === window.location.origin`인 것만
+   - 공통: `SteamLinkPopupMessage.safeParse(data)` 성공만. 처리 = `useMyGameAccounts` 무효화(새로고침 없이 재조회) + 토스트(linked → 성공, error → `ERROR_MESSAGES[code]`) + 리스너 정리.
+5. 팝업 닫힘 감시: 1초마다 `popup.closed` 확인, 메시지 없이 닫혔으면 계정 목록을 한 번 재조회하고 버튼을 다시 활성화한다. **BroadcastChannel 리스너는 `STEAM_LINK_STATE_TTL_SEC`(600초)까지 유지**(스팀 페이지가 COOP로 opener 관계를 끊으면 `popup.closed`가 일찍 true가 될 수 있어서).
+
+**웹: 완료 페이지 `/steam-link/complete`** (`app/steam-link/complete/page.tsx`, `(main)`·`(auth)` 그룹 밖)
+- 인증 부팅(`/auth/refresh`)을 하지 않는다 — 팝업이 refresh를 부르면 원래 창과 회전 경쟁이 생긴다. middleware matcher에서 `steam-link/` 제외.
+- `SteamLinkCompletePageQuery`로 쿼리 파싱(실패 → `{status:'error', code:'INTERNAL_ERROR'}`) → 메시지 생성 → `new BroadcastChannel(...).postMessage(msg)`(지원 시) + `window.opener?.postMessage(msg, window.location.origin)` → `window.close()`.
+- 300ms 뒤에도 열려 있으면(opener 없음·닫기 거부) 결과 문구 + 「설정으로 돌아가기」 링크(`routes.settings(query)` — 기존 토스트 흐름) 표시.
+- 목 백엔드: popup이면 `authorize_url = /steam-link/complete?steam=linked`.
+
+---
+
+## 10. 구현 경계 (backend 모듈)
+
+| 위치 | 내용 |
+| --- | --- |
+| `apps/api/src/modules/games/` | `GET /games`(GameCatalog 재사용 가능) |
+| `apps/api/src/modules/scrims/` | 4절 엔드포인트(games·restriction 제외 9개), 5절 흐름, 직렬화(`ScrimSummary`/`ScrimDetail` parse), 커서 |
+| `apps/api/src/modules/scrims/scrim-restriction.service.ts` | 5-6(조회 + core 판정), `GET /me/scrim-restriction`, 작성·참가에서 재사용 |
+| `apps/api/src/modules/scrims/scrim-auto-close.ts` | 5-5 cron(`@nestjs/schedule`, `SCRIM_JOBS_ENABLED`) |
+| `apps/api/src/common/scrim-lock.ts`(또는 scrims 안) | 5-0 `SELECT … FOR UPDATE` 헬퍼(`$queryRaw`) |
+| `modules/auth/refresh-token.service.ts`, `auth.controller.ts` | 9-1 |
+| `modules/game-accounts/steam-link*.ts`, `game-accounts.controller.ts` | 9-2 API |
+| `config/env.ts` | 11절 8개 |
+
+---
+
+## 11. 환경 변수 (`.env.example` 반영됨, 신규 8개)
+
+| 변수 | 사용처 | 기본 | 비고 |
+| --- | --- | --- | --- |
+| REFRESH_ROTATE_AFTER_HOURS | api | 24 | 0 이상 정수. 9-1 |
+| SCRIM_SCHEDULE_MAX_DAYS_AHEAD | api | 30 | 양의 정수. 시작 시각 상한(메인 기본값 2) |
+| SCRIM_AUTO_CLOSE_AFTER_MIN | api | 60 | 양의 정수. 5-5 |
+| SCRIM_JOBS_ENABLED | api | true | `true`/`false`만(D72와 같은 엄격 파싱). false면 자동 마감 cron 미등록 |
+| SCRIM_NO_SHOW_THRESHOLD | api | 3 | 양의 정수(메인 기본값 1) |
+| SCRIM_NO_SHOW_WINDOW_DAYS | api | 30 | 양의 정수 |
+| SCRIM_NO_SHOW_RESTRICTION_DAYS | api | 7 | 양의 정수 |
+| SCRIM_NO_SHOW_MARK_WINDOW_DAYS | api | 7 | 양의 정수. 노쇼 표시 기한(D83) |
+
+기본값 상수는 shared(`REFRESH_ROTATE_AFTER_HOURS_DEFAULT`, `SCRIM_*_DEFAULT`, `NO_SHOW_*_DEFAULT`)에 있다. Railway 배포에서 값을 안 넣어도 기본값으로 동작한다.
+
+---
+
+## 12. 담당 배정
+
+S2 실행 구현자: **logic**, **backend**, **frontend** (+ qa). integration은 할 일 없음(외부 API 호출 없음).
 
 ### 의존 순서
 
 ```
 architect(완료)
-  ├─ logic ──────────────────────────────┐
-  ├─ integration 1단계: contracts.ts ─┬─ integration 나머지 ─┤
-  │                                   └─ backend(목으로) ────┼─ backend 실제 구현 연결 → qa
-  └─ frontend(목 백엔드로) ─────────────────────────────────┘
+  ├─ logic(core 13개) ───────────────┐
+  ├─ backend(core import 이름만 맞추고 시작) ─┼─ backend 테스트 통과 → qa
+  └─ frontend(목 백엔드로) ─────────────┘
 ```
-logic·frontend·integration은 바로 시작. backend는 `contracts.ts`가 생기면 시작하고 core 함수는 logic 완료 전까지 시그니처대로 임시 구현 없이 import만 맞춘다(테스트는 logic 완료 후 통과).
+셋 다 바로 시작. backend는 core 함수를 7절 시그니처대로 import하고, logic 완료 전에는 core 의존 테스트가 실패해도 된다(S1과 같은 방식). 인증 보완 2건은 내전과 독립이라 backend·frontend가 먼저 끝내도 된다.
 
 ### logic (domain-logic-dev) — `packages/core/src/**`
 
-1. 10절 함수 7개 + vitest. KST 경계, 동률, 표본 20 초과, null 포지션, apex·언랭, 모르는 tier 예외 케이스 포함.
-2. 보고서: `_workspace/02_logic-dev_s1.md`.
+1. 7절 함수 13개 + vitest. 경계: 노쇼 정확히 3회·30일 경계(구간 시작 배제·끝 포함)·until 경계(now = until이면 해제)·발동 후 4번째 노쇼로 연장·오래된 발동 + 최근 1회(L 기준만 보면 틀리는 경우, 5-6 규칙)·미래 시각 무시·`noShowLookbackStart`로 자른 입력과 전체 입력의 판정 동일, 대기열 동률(joinedAt 같음 → id), 승격 수 > 대기 수, joinedCount > capacity 예외, 포지션 중복·범위 밖·포지션 없는 게임에 값, 시작 시각 = now·정확히 30일, 고정 정원 9/10, open_positions 1지망 쏠림·나누어떨어지지 않는 정원, 자동 마감 경계(정확히 60분).
+2. 보고서: `_workspace/02_logic-dev_s2.md`.
 
-### integration (integration-dev) — `apps/api/src/integrations/**`, `apps/api/src/jobs/**`, `apps/api/test/fixtures/{riot,steam}/**`
+### backend (backend-dev) — `apps/api/src/**`, `apps/api/test/**`
 
-1. `integrations/contracts.ts`(9절) — **가장 먼저**.
-2. 공통 HTTP(타임아웃, `ExternalApiError` 분류), `rate-limiter.ts`(호스트별 버킷 2개, 429 일시정지).
-3. `riot/*`(`RiotApi` 구현, 라우팅은 환경 변수), `steam/*`(`SteamApi`: GetOwnedGames `include_appinfo=1&include_played_free_games=1`, GetPlayerSummaries, OpenID 검증), `ddragon.ts`.
-4. `jobs/`: `SyncQueue` 두 구현(BullMQ, in-process), 작업자 4종(sync_state 갱신은 6-1 전이 + 멈춘 행 조건, 6-2 결과 저장 규칙, `riot-full`의 전적은 대표일 때만, `riot-tier`는 부계정 포함·대표 먼저), cron 생산자 3종(advisory lock, `SYNC_JOBS_ENABLED`), 멈춘 작업 정리. 의존성 추가: `@nestjs/schedule`, `bullmq`(Nest 11 호환 버전, 고정 버전 표기).
-5. fixture: 정상, 언랭, MASTER(division 무시), 429(+Retry-After), 401, 5xx, 스팀 비공개 `{"response":{}}`, 스팀 0개 공개, OpenID `is_valid:false`. 실제 키·PUUID·스팀 ID 금지(가짜 값).
-6. 테스트: 클라이언트 분류·재시도·429 일시정지(가짜 타이머), 작업자 결과 저장(DB 필요분은 작성만), in-process 큐 우선순위·중복 제거.
-7. 보고서: `_workspace/02_integration-dev_s1.md`(9절 I1–I5 확인 결과 포함, 실제 호출은 「키 필요」).
-
-### backend (backend-dev) — `apps/api/src/modules/game-accounts/**`, `modules/profile/**`(또는 users 확장), `config/env.ts`, `common/**`
-
-1. `config/env.ts`: 11절 표 13행 전부.
-2. `AppError` `retryAfterSec` + error filter `Retry-After` 헤더.
-3. 4절 엔드포인트 9개, 5·7·8절 흐름 전부. 대표 계정(D56): 첫 라이엇 연동 대표, 대표 지정(기존 false → 대상 true 순서), 대표 해제 시 승격 — 모두 사용자 advisory lock 트랜잭션. 개수 한도 `RIOT_ACCOUNTS_MAX`. 스팀 콜백은 JwtGuard 없이, `gcd_steam` 서명·검증은 S0 `gcd_oauth`와 같은 유틸 재사용.
-4. 직렬화: `GameAccountView`(last_sync_error 문자열이 `GameAccountSyncError`에 없으면 INTERNAL_ERROR로), `GetUserProfileResponse` — 반드시 shared 스키마 parse를 거친다(D38).
-5. 테스트(목 `RiotApi`/`SteamApi`/`SyncQueue`): 소유 확인 성공·불일치·만료·5초 간격·하루 10회, 이미 연동(본인/타인), 라이엇 4번째 → LIMIT_REACHED, 첫 연동 대표·두 번째 부계정, 대표 지정 멱등·남의 계정 NOT_FOUND, 대표 해제 → 가장 오래된 부계정 승격, 프로필 티어·주 포지션·전적이 대표 기준, 스팀 콜백 분기(취소·state·return_to 변조·claimed_id 변조·is_valid false·성공), 해제 시 두 행 삭제·횟수 기록 유지, sync 차감·중복 미차감·한도 초과 Retry-After, 프로필 빈 상태·타인 조회 시 sync_quota null·external_id 미포함. 같은 라이엇 ID 재추가 → ALREADY_LINKED_TO_ME, P2002 구분 함수(5-2a) 단위 테스트. DB 필요분(동시 sync 5회 경계 `Promise.all`, 실제 P2002, 부분 고유 인덱스가 대표·스팀 2개를 거부)은 작성만.
-6. 보고서: `_workspace/02_backend-dev_s1.md`.
+1. `config/env.ts`: 11절 8개.
+2. 9-1 리프레시 회전(테스트 포함, DB 필요분은 작성만).
+3. 9-2 스팀 팝업 API: 요청 display, 쿠키 payload, return_to, 콜백 도착지. 테스트: popup 성공·각 오류 → `/steam-link/complete?…`, 쿠키 없음 + 쿼리 display=popup → 완료 페이지로 STATE_INVALID, redirect는 S1 테스트 그대로 통과, 쿠키 display ≠ return_to display(변조) → STEAM_OPENID_INVALID.
+4. `GET /games`, 내전 9개 + `GET /me/scrim-restriction`. 5절 흐름 전부, 5-0 잠금, `canTransition` 검사, 직렬화 parse, 커서, 자동 마감 cron(advisory xact lock, 시작 시 1회).
+5. `test/support/fake-prisma.ts`에 S2 모델(scrims·scrim_players·games capacity) 추가.
+6. 테스트(DB 없이): 작성(검증 details·노쇼 제한 Retry-After·방장 자동 참가), 목록(탭·정렬·커서·다른 탭 커서 거부·my_status·open_positions), 참가(joined/waitlist/재참가 맨 뒤/포지션 변경 멱등/포지션 없는 게임에 포지션 → 400/join_closed/제한 중 새 신청 403·포지션 변경은 허용), 취소(대기 1번 승격·포지션 유지·full→recruiting·방장 409·멱등), 수정(정원 축소 409·확대 승격·미루기로 join_closed 해제·비방장 403), 시작(고정 정원 미달 409·2명·운영진 가능), 모집 취소(이유 host/admin), 노쇼(비운영진 403·시작 전 409·기한 경과 409·정정은 기한 없음·대기자 409·멱등), 자동 마감 분기, 응답에 email·discord_id 없음. **DB 필요(작성만)**: 마지막 자리 동시 참가 `Promise.all` 10건 → joined = capacity·나머지 waitlist, 동시 취소+참가에서 불변식 유지, 동시 refresh 24시간 경계.
+7. 보고서: `_workspace/02_backend-dev_s2.md`.
 
 ### frontend (frontend-dev) — `apps/web/**`
 
-1. 12절 두 화면(라이엇 다계정 카드·부계정 추가·대표 지정 포함), 훅 8개, `lib/routes.ts`(settings 쿼리), `lib/errors.ts` S1 문구 다듬기(architect 초안 있음), 목 백엔드 S1 엔드포인트.
-2. 폴링 규칙(6-1), 카운트다운, 빈 상태(scrim·badges·recent_matches·tiers).
-3. 검증: `corepack pnpm --filter web typecheck && test && build`, 목 모드로 데스크톱·모바일 × 라이트·다크.
-4. 보고서: `_workspace/02_frontend-dev_s1.md`.
+1. 8절 세 화면, 훅 11개, `lib/routes.ts`, `lib/errors.ts` S2 문구 다듬기(architect 초안 있음), 목 백엔드 S2.
+2. 9-2 스팀 팝업(설정 카드 수정, 완료 페이지, middleware matcher 제외, 목 동작).
+3. KST 표시·입력(날짜+시간 → `+09:00`), 카운트다운, 빈 상태(balance·result·목록).
+4. 검증: `corepack pnpm --filter web typecheck && test && build`, 목 모드로 데스크톱·모바일 × 라이트·다크. 팝업 차단 대체 경로는 수동 확인 절차를 보고서에 적는다.
+5. 보고서: `_workspace/02_frontend-dev_s2.md`.
 
 ### qa (qa-verifier)
 
-- 교차 대조: 4절 9개 엔드포인트 ↔ 컨트롤러 ↔ 웹 훅, 오류 코드 29개 ↔ `DEFAULT_ERROR_MESSAGE` ↔ 웹 `ERROR_MESSAGES`, Prisma enum 2개 ↔ shared enum, 전이 맵 2개 ↔ 상태 갱신 코드.
-- 마이그레이션에 부분 고유 인덱스 `game_accounts_one_primary_per_user_game`이 있는지, 대표 갱신 순서(기존 false → 대상 true).
-- 보안 경계: 외부 식별자 비노출(8절), 남의 계정 대표 지정 → NOT_FOUND, 스팀 콜백 변조(return_to·claimed_id·op_endpoint·state), 남의 계정·확인 id → NOT_FOUND, 해제·재연동으로 횟수 회복 불가, 동시 sync 한도.
+- 교차 대조: 4절 11개 엔드포인트 ↔ 컨트롤러 ↔ 웹 훅, 오류 코드 36개 ↔ `DEFAULT_ERROR_MESSAGE` ↔ 웹 `ERROR_MESSAGES`, Prisma enum `scrim_cancel_reason` ↔ shared `ScrimCancelReason`, 전이 맵 2개 ↔ 상태 갱신 코드(6절 표), `GAME_SEED` 정원 ↔ 마이그레이션 수동 UPDATE.
+- 5-0 잠금이 7개 변경 경로(수정·참가·참가 취소·시작·모집 취소·노쇼·자동 마감) 모두에 있는지, 불변식(대기 있으면 꽉 참) 위반 경로가 없는지.
+- 마이그레이션에 `DROP INDEX "game_accounts_one_primary_per_user_game"` 없음.
+- 보안 경계: 비방장 수정·시작·취소 → 403, 비운영진 노쇼 → 403, 제한 우회(취소 후 재참가·작성), 스팀 팝업 메시지 origin·스키마 검사, 완료 페이지가 refresh를 부르지 않음, 리프레시 미회전 시 Set-Cookie 없음.
 
 ---
 
-## 14. 결정 사항 (S1, D32부터)
+## 13. 결정 사항 (S2, D73부터)
 
 | # | 결정 | 이유 |
 | --- | --- | --- |
-| D32 | 라이엇 소유 확인 = 프로필 아이콘 변경. 기본 아이콘 0–28 중 현재와 다른 것, 제한 10분, 불일치는 같은 확인으로 재시도, 시간 초과는 새로 시작. 경로 `POST …/riot-verifications/:id/confirm`, `DELETE …/riot-verifications/:id` 추가 | 메인 기본값 1, 문서 9장, external-api-integration 2절, 목업 Settings |
-| D33 | 진행 중 확인은 새 테이블 `riot_link_verifications`에 두고 `game_accounts` 행은 확인 성공 시에만 만든다. S0의 `game_accounts.verification_challenge/_expires_at`은 삭제 | 미확인 행이 `(game_id, external_id)` UNIQUE를 차지하면 남의 라이엇 ID를 입력만 해서 진짜 주인의 연동을 막을 수 있다(선점). 쓰는 코드가 없어 지금 바꾸는 비용이 가장 낮다 |
-| D34 | 스팀 소유 확인 = Steam OpenID 2.0. 시작은 JWT가 있는 `POST /me/game-accounts {provider:'steam'}`가 서명 쿠키 `gcd_steam`(user_id 포함) + `authorize_url`을 주고, 콜백은 쿠키로 사용자를 식별, 서버가 `check_authentication` 검증 | 메인 기본값 2. 액세스 토큰이 메모리에만 있어(S0 D2) 브라우저 이동 요청에 JWT를 실을 수 없다. 쿠키 Path를 콜백 경로로 좁혀 다른 요청에 안 실림 |
-| D35 | `GET /me/game-accounts` 추가, 페이징 없는 객체 응답(`accounts` 최대 7행 = 라이엇 ID 3개 × lol·tft + 스팀 1, + `riot_verification` + `sync_quota`) | 설정 화면에 연동 상태·진행 중 확인·남은 횟수가 필요한데 문서 6장에 조회 경로가 없음. 사용자당 행 수 상한이 작아 커서가 의미 없다 |
-| D36 | 「제공자」(riot/steam) 개념을 shared 상수 `GAME_PROVIDER_BY_CODE`로 둔다. games 테이블 컬럼은 추가하지 않음 | 연동·해제·동기화를 제공자 단위로 묶어야 함(D25). 새 게임 추가 시 enum·시드와 함께 한 줄 추가로 충분(설계 원칙 3 유지) |
-| D37 | **(변경 — 사용자 답변 Q1)** 라이엇 ID는 사용자당 최대 `RIOT_ACCOUNTS_MAX`(기본 3)개, 스팀은 1개. `(user_id, game_id)` UNIQUE는 두지 않고 개수는 사용자 advisory lock + 검사로 보장. 랭킹·밸런스·프로필에 쓸 계정은 대표 계정(D56)으로 정한다 | 최초안(라이엇 1개)은 사용자 결정(2026-10-28)으로 바뀜. 3개·스팀 1개는 리더 기본값 |
-| D38 | PUUID·스팀 ID·라이엇 매치 ID·이메일·discord_id는 프로필·설정 어디에도 노출하지 않음. 스팀은 personaname 표시 | 메인 기본값 7. 본인 설정까지 같은 규칙으로 두면 QA 규칙이 단순해지고 직렬화 실수 여지가 줄어든다 |
-| D39 | 프로필의 미구현 자리는 `scrim: null`, `badges: null`(S1 스키마 `z.null()`). 이후 슬라이스는 nullable로 넓히기만 | 필드를 빼 두면 S3에서 응답 모양이 바뀌고, null 의미를 「데이터 없음」으로 고정하면 웹 빈 상태 코드가 그대로 재사용된다 |
-| D40 | **(사용자 확정 Q3)** 최근 전적·주 포지션 = 대표 계정의 롤 **솔로 랭크(queue 420)** 최근 20경기. 프로필에는 10경기. 롤체 최근 전적은 S1 범위 밖(`recent_matches.placement` 자리만) | 목업 「RANKED SOLO 최근 솔로 랭크」, 메인 기본값 5. 롤체 Match API는 별도라 호출량이 두 배가 된다. 사용자 확정(2026-10-28) |
-| D41 | 수동 새로고침 횟수는 DB(`game_account_sync_requests`)로 센다: 사용자 단위, 라이엇·스팀 합산, KST 자정 초기화, 라이엇 1회 = lol·tft, 진행 중이면 미차감, 실패해도 차감, advisory lock으로 동시 요청 직렬화. 해제 시 기록 유지(FK SetNull) | 메인 기본값 6, Redis 없이 동작. 해제·재연동으로 횟수를 되살리는 우회 차단 |
-| D42 | 수동 새로고침은 비동기 202 + `sync_state` 폴링 | 라이엇 전체 동기화는 호출 20여 건이라 개발 키 한도에서 요청 시간 안에 끝난다는 보장이 없다 |
-| D43 | cron 생산자는 Redis 유무와 무관하게 `@nestjs/schedule` + `pg_try_advisory_lock`, 소비자만 BullMQ/in-process로 교체. 수동 요청의 원본은 DB `sync_state` | 메인 기본값 3. 두 모드의 차이를 소비자 한 곳으로 줄여 Redis 없는 PC에서도 대부분을 테스트 |
-| D44 | 동기화 실패 사유는 HTTP `ErrorCode`가 아닌 `GameAccountSyncError`(STEAM_PROFILE_PRIVATE 포함). 스팀 콜백 실패는 디스코드용 `OAUTH_*`를 재사용하지 않고 `STEAM_LINK_*` 별도 코드 | 동기화는 비동기라 HTTP 응답으로 실패를 줄 수 없다. `OAUTH_DENIED` 기본 메시지가 「디스코드 로그인 취소」라 의미가 섞인다 |
-| D45 | **(사용자 확정 Q2)** 다른 멤버가 이미 연동한 외부 계정은 409 GAME_ACCOUNT_ALREADY_LINKED + 「운영진에게 문의」 안내. 소유 확인을 통과해도 옮기지 않음 | 사용자 결정(2026-10-28). 계정 양도·도용 분쟁은 운영진 판단(S6) |
-| D46 | 연동 해제 = 행 삭제(티어 이력·전적·플레이타임 Cascade) | 해제한 계정의 과거 티어를 계속 보여줄 화면이 없다. 다시 연동하면 다시 쌓인다 |
-| D47 | `.env.example`의 `REDIS_URL` 기본값을 빈 값으로 | S1부터 값이 있으면 BullMQ로 붙으려 한다. 그대로 복사한 Redis 없는 환경이 연결 오류로 시작하지 않게 |
-| D48 | S0 D17의 「알림 설정 API 노출은 S1」을 철회, 알림 발송 기능 슬라이스로 미룸 | slice.md 제외 목록. 컬럼은 S0 그대로 둔다 |
-| D49 | 라이엇 표시 이름(Riot ID 변경)은 연동 시와 수동 새로고침(`riot-full`) 때만 갱신, 주기 작업은 티어만 | 시간당 호출을 계정당 2건으로 유지 |
-| D50 | 프로필 조회가 6시간 지난 전적 갱신을 큐에 넣는다(조회자 무관, 차감 없음). 30분 안에 실패 기록이 있으면 넣지 않음 | 문서 9장 「프로필 조회 시 6시간 이내 값이 없으면 갱신」. 키 만료 같은 지속 실패에 조회마다 호출하는 것을 막음 |
-| D51 | 소유 확인 남용 방지: 시작 하루 10회(KST), 확인 간격 5초 → RATE_LIMITED | 시작·확인마다 라이엇 호출이 생겨 개발 키 한도를 소모 |
-| D52 | 스팀 display_name = GetPlayerSummaries personaname(실패 시 「스팀 사용자」), 수동 새로고침 때 갱신 | D38로 스팀 ID를 못 보여주므로 사람이 알아볼 이름 필요 |
-| D53 | 티어 색은 새 hex 없이 기존 토큰으로 매핑(매핑표는 웹 lib 한 곳) | S0 9-2 「컴포넌트 hex 금지」 유지. 예외는 D28 하나뿐 |
-| D54 | `ApiPath`에 `:id` 템플릿을 두고 shared `fillPath`로 채운다 | 서버 라우트와 웹 호출이 같은 상수를 쓰게(S0 규칙 확장) |
-| D55 | 티어 스냅샷은 tier·division·lp·wins·losses 중 하나라도 바뀔 때만 새 행. 언랭도 스냅샷으로 저장 | external-api-integration 5절. 시간당 동기화로 같은 행이 쌓이는 것 방지, 언랭 전환도 이력에 남김 |
-| D56 | **(사용자 결정 Q1)** 대표 계정 `game_accounts.is_primary`. 라이엇은 라이엇 ID 단위(lol·tft 두 행 함께), 사용자당 1개. 첫 라이엇 연동이 자동 대표, 대표를 해제하면 남은 것 중 가장 먼저 연동한 것(verified_at, id 순) 승격, `POST /me/game-accounts/:id/primary`로 변경. 「사용자·게임별 대표 최대 1개」는 부분 고유 인덱스(WHERE is_primary)로 DB에서 보장 — Prisma가 표현 못 해 마이그레이션 SQL에 수동 추가. 스팀 행은 항상 is_primary=true. 대표를 쓰는 곳: 프로필 티어 카드·주 포지션·최근 전적(S1), 팀 밸런스 티어 시드(S3), 티어 랭킹(S4) | 사용자 결정(2026-10-28). 첫 대표·승격 규칙은 리더 기본값. 스팀을 항상 true로 두면 「게임별 대표 계정」 조회를 제공자 구분 없이 같은 조건으로 쓸 수 있다 |
-| D57 | 부계정 티어도 동기화하고(`riot-tier`, 대표 다음 순서) 설정 목록의 `GameAccountView.rank`로 보여준다. 프로필 티어 카드·랭킹·밸런스에는 쓰지 않는다. 부계정 최근 전적은 수집하지 않는다 | 부계정을 대표로 바꾸면 바로 티어가 있어야 하고, 설정에서 대표를 고를 근거가 된다. 전적은 호출량이 커서 대표만 |
-| D58 | 목업 Settings의 「부계정 추가 · 소유 확인 1/2 단계」를 그대로 살린다(진행 중 확인은 여전히 사용자당 1개). 단계 표기: 라이엇 ID 입력은 표기 없음, 아이콘 변경 = 1/2, 확인(대조) 중 = 2/2 | 사용자 결정 Q1 |
-| D59 | (QA P1) 멈춘 행 정리·재획득을 위해 sync_state 전이에 queued→queued, running→queued, running→running을 추가하되, 10분(`SYNC_STATE_STALE_MS`) 지난 행에만 조건부 update로 허용 | 흐름을 두 단계(running→idle→queued)로 쪼개면 그 사이에 수동 요청이 끼어 중복 등록·횟수 판단이 흔들린다. 한 번의 조건부 update가 원자적 |
-| D60 | (QA P3) 본인이 이미 연동한 라이엇 ID 재추가는 `GAME_ACCOUNT_ALREADY_LINKED_TO_ME`로 분리 | 부계정 허용(Q1) 후 「다른 멤버가 연동」 문구가 본인에게 나가는 오류 방지 |
-| D61 | (QA P4) 연동 개수 한도를 `GetMyGameAccountsResponse.limits`로 내려준다 | `RIOT_ACCOUNTS_MAX`는 서버 환경 변수라 웹이 알 수 없음. 서버·웹 한도 불일치 방지 |
-| D62 | 동기화 생산자의 DB 잠금은 세션 잠금(`pg_try_advisory_lock`)이 아니라 트랜잭션 잠금(`pg_try_advisory_xact_lock`)을 트랜잭션 안에서 쓴다 | integration 발견. 커넥션 풀에서 세션 잠금은 다른 커넥션에서 풀릴 수 있다. 리더 승인(2026-10-28) |
-| D63 | BullMQ는 큐 하나(`external-sync`)를 쓴다. 429 시 `worker.rateLimit`이 큐 전체를 멈추므로 라이엇 429가 스팀 작업도 잠시 멈출 수 있다 — 허용 | 빈도가 낮고 큐 분리는 운영 복잡도만 늘림. 문제가 되면 제공자별 큐로 나눈다. 리더 승인 |
-| D64 | 서버 시작 시 갓 `running`인 행은 건드리지 않고, 10분이 지나 멈춘 행 규칙(D59)으로만 회수한다 | 계약의 「시작 시 전부 정리」와 D59 멈춘 행 전용 규칙이 충돌. D59를 우선. 리더 승인 |
-| D65 | 소유 확인 아이콘 후보 0–28이 모든 계정에서 선택 가능한지 공식 문서로 확인하지 못함(I2 미확인). 화면에 「이 아이콘이 없으면 다른 아이콘 받기」(= 재시작, 다른 아이콘 지정) 경로를 둔다. 실제 키로 확인 전까지 위험으로 남긴다 | integration I2. 실키 확인 필요 |
-| D66 | 롤체 리그의 `wins`는 1위 횟수, `losses`는 2–8위(I3). 웹은 「순방 %」를 표시하지 않고 「1위 N회」와 1위 비율로 표기한다. 목업 Profile의 「순방 58%」 표기는 따르지 않는다 | integration I3(라이엇 스키마 필드 설명 기준, 부분 확인). 순방(4위 이내) 비율은 매치 데이터가 필요해 S1 범위 밖 |
-| D67 | 멈춘 작업 정리(D59)와 서버 시작 시 queued 행 재등록은 라이엇이면 원래 종류와 상관없이 `riot-full`로 넣는다(6-2 「같은 종류 작업」 문구 대체). 이 회수 경로에 한해 D49의 「주기 작업은 티어만」 예외로 표시 이름 갱신을 허용한다 | QA integration m1. 행에 작업 종류가 저장되지 않으며 `riot-full`은 다른 종류를 모두 포함해 데이터 손실이 없다. 회수는 드문 경로라 호출 수 영향이 작다. 리더 결정(2026-10-29) |
-| D68 | 중복 제거 키 형식은 `{kind}-{id}`(예: `manual-{id}`, `riot-tier-{id}`). 계약의 `{kind}:{id}` 표기를 대체 | BullMQ 6.5가 `:`가 들어간 jobId를 거부. QA integration 참고 |
-| D69 | `SYNC_JOBS_ENABLED=false`는 cron 생산자(주기 작업·멈춘 작업 정리)만 끈다. 큐 소비자는 항상 실행한다 | QA integration m2. 소비자까지 끄면 수동 새로고침이 횟수만 차감되고 실행되지 않는다. 리더 결정 |
-| D70 | `main.ts`는 `load-env.ts`로 `.env`를 AppModule import보다 먼저 읽는다 | `JobsModule.forRoot()`가 import 시점의 env(`REDIS_URL`, `SYNC_JOBS_ENABLED`)를 읽기 때문. backend B1, 리더 승인(2026-10-29) |
-| D71 | 스팀 연동 실패 이동은 `/settings?steam_error={코드}`(shared `SettingsPageQuery`). 리더 지시문의 `?steam=코드` 표기는 오기 | backend B2 |
-| D72 | `SYNC_JOBS_ENABLED`는 `true`/`false`만 허용하고 그 밖의 값은 기동 실패(`config/env.ts`). integration `options.ts`의 관대한 파싱은 검증을 통과한 값만 받으므로 그대로 둔다 | backend B11 |
+| D73 | **(사용자 결정)** 리프레시 토큰은 현재 토큰 발급(`created_at`) 후 `REFRESH_ROTATE_AFTER_HOURS`(24) 이상 지났을 때만 회전, 아니면 같은 토큰 유지·Set-Cookie 없음. 재사용 감지·10초 유예·D26·30일 절대 만료 그대로. 스키마 변경 없음 | 회전된 쿠키가 저장되지 못하면 다음 접속 때 재사용 감지로 로그인이 끊김(사용자 보고). 회전 빈도를 하루 1번으로 줄여 그 위험 창을 줄인다. 대가: 탈취 쿠키 감지가 최대 24시간 늦어짐 |
+| D74 | **(사용자 결정)** 스팀 연동 팝업. 결과 전달은 BroadcastChannel + `opener.postMessage`(targetOrigin·origin 검사) **둘 다** 보내고 첫 메시지만 처리. 팝업 여부는 요청 `display` → 쿠키 payload·return_to 쿼리. 팝업 도착지 `/steam-link/complete`(인증 부팅 없음). 차단 시 redirect | 스팀 페이지가 COOP를 쓰면 opener가 끊겨 postMessage만으로는 실패할 수 있고, 구형 Safari는 BroadcastChannel이 없다. 둘 다 같은 오리진 한정이라 위조 위험이 없다. 쿠키 없이도 오류 페이지를 고를 수 있게 return_to에 display를 싣는다 |
+| D75 | `GET /games` 추가(정원 범위·포지션·속성). 응답은 `paginated` 모양, next_cursor 항상 null | 작성 폼이 정원 범위를 알아야 하고, 게임은 데이터(설계 원칙 3)라 웹 상수 대신 DB에서 받는다 |
+| D76 | 정원 범위를 games 컬럼 `capacity_min/max/default`로. 롤 10 고정, 롤체 2–8(기본 8), 스팀 2–16(기본 8). 마이그레이션 수동 UPDATE로 기존 행도 맞춤 | 메인 기본값 3. 롤 5:5 밸런스(7-2)는 10명 전제. 목업 기본값(롤 10, 롤체 8, 스팀 8) |
+| D77 | 목업 「진행 방식」 토글 3개를 scrims 컬럼 `rated`·`auto_balance`·`use_positions`로 저장(적용값). S2는 use_positions만 동작에 쓰고 나머지는 S3 | 목업 ScrimNew·Scrims 태그(「ELO 미반영」)에 있고, 나중에 컬럼을 추가하면 기존 모집글 값이 비게 된다 |
+| D78 | 시작: 방장·운영진 수동(`POST /start`, 시각 제한 없음). 조건 = 고정 정원 게임은 꽉 참, 그 외 2명 이상. 시작 시각 + 60분이 지나도 시작 안 했으면 cron이 자동 마감(조건 충족 → playing, 미달 → cancelled `not_started`). 전이 recruiting → playing 추가 | 슬라이스가 architect에 위임. 방장이 버튼을 잊어도 결과 입력(S3, playing 필요)이 막히지 않게 자동 시작을 두고, 사람이 안 모인 모집글이 목록에 계속 남지 않게 자동 취소 |
+| D79 | 정원을 joined 수 아래로 줄이지 못하게 하고(SCRIM_CAPACITY_BELOW_JOINED) 전이 joined → waitlist 삭제 | 확정 참가자를 대기로 밀어내는 규칙(누구를?)이 필요 없어진다 |
+| D80 | 모집 취소는 `POST /scrims/:id/cancel`(삭제 아님), 방장·운영진. `cancelled_at`·`cancel_reason` 기록, 참가자 행은 그대로 | 문서 6장에 경로 없음. 취소 이력·이유 표시(목업 「종료」 탭). 운영진 정리 권한 필요 |
+| D81 | `POST /join`은 이미 참가·대기 중이면 희망 포지션만 바꾸는 멱등 요청. `DELETE /join`은 참가 기록 없으면 200. 둘 다 200 + ScrimDetail. `SCRIM_ALREADY_JOINED` 없음 | 상세 화면 「포지션 변경」을 별도 경로 없이 처리, 더블 클릭·재시도에 안전 |
+| D82 | 희망 포지션 1–2개(1지망 필수, 2지망 선택, 중복 금지), 값 검증은 games.positions 기준(서버). 실패는 `VALIDATION_FAILED` + details. 방장도 작성 시 고른다(`host_preferred_positions`) | 「미드 고정」처럼 1지망만 있는 사람 허용. 게임은 데이터라 enum 대신 DB 값. 방장 = 참가자 1번(메인 기본값 4) |
+| D83 | 노쇼: 운영진만, 대상 joined·no_show 행, 내전 playing·finished, 표시는 시작 시각부터 7일 안(정정은 기한 없음). 집계 기준 = `no_show_marked_at`, 24시간 단위 이동 구간(KST 아님), 발동한 노쇼마다 7일(가장 늦은 것 기준). 제한은 새 참가·대기 등록·작성만 막고 기존 참가와 포지션 변경·취소는 허용. 캐시 컬럼 없이 요청마다 계산 | 문서 7-4. S0 인덱스 `(user_id, status, no_show_marked_at)` 그대로 사용. 표시 기한으로 「한 달 지난 노쇼를 몰아서 표시」해 바로 제한이 걸리는 것 방지. 기간은 시간 길이라 KST 경계가 필요 없다 |
+| D84 | SCRIM_BANNED(403)는 `Retry-After`(해제까지 초) 헤더로 해제 시각을 전하고, 본문은 S0 형식 유지. 상세 안내는 `GET /me/scrim-restriction`. 상세 응답 `viewer.restricted_until`에도 포함 | 오류 본문에 필드를 늘리지 않는다는 S0·S1 규칙 유지 |
+| D85 | 동시성: 명단을 바꾸는 모든 경로가 트랜잭션 첫 문장에서 `SELECT … FROM scrims WHERE id=? FOR UPDATE`. 대기 순번 = (joined_at, id) | 메인 기본값 6. 조건부 update보다 승격·상태 변경을 한 번에 다루기 쉽고, 잠금 범위가 내전 1행이라 경합이 작다 |
+| D86 | 목록 `status`는 탭 값(open·playing·ended, 기본 open)이고 raw 상태값이 아니다. 탭별 개수는 내려주지 않는다. 커서에 탭을 넣어 다른 탭 커서를 거부 | 목업 탭이 상태 묶음(모집 중 = recruiting+full). 목업 필터 숫자는 별도 count 쿼리가 필요해 S2에서 뺌 |
+| D87 | 내전 상태 변경 응답은 모두 ScrimDetail | 웹이 응답으로 상세를 바로 갱신(재조회 왕복 제거), 대기 순번 안내에 필요 |
+| D88 | 상세는 모든 멤버가 조회(취소된 내전 포함). 슬롯 순서 = 방장 먼저, joined_at 순. balance·result는 `z.null()` 자리 | 목업 상세. D39와 같은 확장 규칙 |
+| D89 | 스팀 내전의 세부 게임 선택 필드는 만들지 않는다(제목에 게임 이름) | 슬라이스 기본값. S5 플레이타임 랭킹과 묶을 때 app_id 필드를 다시 검토 |
+| D90 | 상세 화면에 운영진 노쇼 표시·정정 버튼 포함 | 버튼 2개 수준이라 간단하고, 없으면 S6 전까지 노쇼 규칙을 쓸 방법이 없다 |
+| D91 | 목록 카드 버튼은 모두 상세로 이동(목록에서 바로 참가하지 않음) | 포지션 게임은 참가 전에 1지망을 골라야 한다. 게임별로 버튼 동작이 갈리지 않게 |
+| D92 | 참가·대기·취소·포지션 변경은 시작 시각에 마감. 방장은 마감 뒤에도 시작 시각을 미래로 미뤄 다시 열 수 있다 | 메인 기본값 2. 연기할 방법이 없으면 취소 후 다시 모집해야 한다 |
+| D93 | 버튼 노출(can_*)과 join_closed는 서버가 계산해 응답에 넣는다(표시용, 서버는 요청 때 다시 검사) | 클라이언트 시계 오차·역할 판단 중복 방지 |
+| D94 | 방장은 참가 취소 불가, 위임 없음. 방장의 포지션 변경은 같은 `POST /join` | 메인 기본값 4 |
+| D95 | 시작·모집 취소·자동 마감 때 대기열 행은 waitlist 그대로 둔다(자동 cancelled 하지 않음). 상세의 대기열 섹션은 모집 중일 때만 보인다 | 이력 보존, 전이 하나 덜 씀 |
+| D96 | 자동 마감 cron은 `SCRIM_JOBS_ENABLED`로 따로 끈다(SYNC_JOBS_ENABLED와 분리), 5분 주기, `pg_try_advisory_xact_lock` | 동기화 작업과 성격이 달라 테스트에서 따로 끄고 싶다. D62 방식 재사용 |
+| D97 | (사용자 결정, D76·D78 수정) 롤 정원 10 고정 → 2–10명 2명 단위(1:1–5:5), 정한 정원이 꽉 차야 시작. games에 `capacity_step`(기본 1)·`start_requires_full`(기본 false) 추가(마이그레이션 `20261029160000_s2_capacity_step`), `GameCapacityRange`에 `step`·`start_requires_full`. core `isCapacityInRange(capacity, {min, max, step?})`는 (capacity − min)이 step의 배수인지도 검사, `canStartScrim({requiresFull, …})`. 롤체·스팀은 단위 1, 2명 이상 시작(변경 없음). 정원 6·8처럼 포지션 수(5)로 나누어떨어지지 않으면 open_positions는 [] | 소규모 내전 허용, 두 팀 인원 동일 유지 |
+| D98 | (사용자 결정) 스팀 내전은 어떤 스팀 게임인지 필수로 고른다. games에 `requires_steam_app`(기본 false, steam만 true), scrims에 `steam_app_id`·`steam_app_name`(nullable) 추가(마이그레이션 `20261029170000_s2_steam_app`). `GameView.requires_steam_app`, `ScrimSummary.steam_app: {app_id, name} \| null`, 작성 `steam_app_id`(requires_steam_app 게임만 필수, 다른 게임이면 400), 수정 `steam_app_id`(바꿀 때만). `GET /steam-apps?q=`(로그인 필요): q가 비면 멤버 보유 게임(steam_playtime 보유 계정 수 많은 순, 최대 20), q가 있으면 보유 게임 이름 일치(최대 10) 다음 스팀 상점 검색(키 불필요 `storesearch`, 검색어별 10분 캐시) — 합쳐 최대 20, 상점 실패는 `store_unavailable: true`로 보유 결과만. 이름은 보유 기록 → 최근 상점 검색 결과 → 상점 `appdetails` 순으로 서버가 정해 저장(상점에 없으면 400, 상점 오류면 502). 외부 호출은 잠금 트랜잭션 밖에서. 배너 이미지는 `steamAppHeaderImageUrl`(CDN header.jpg). 웹 배너 태그: 롤은 정원/2로 `LEAGUE · 2V2`처럼 표시 | 같은 "스팀" 내전이라도 게임이 달라 고르는 기준이 필요. 이름을 저장해 상점 장애에도 목록이 깨지지 않게 |
+---
+
+## 14. 확인 필요 (사용자 판단)
+
+메인 기본값 1–7은 그대로 반영했다(1 → D83·11절, 2 → D92·11절, 3 → D76, 4 → D94, 5 → 1절 제외, 6 → D85, 7 → 5-3). 아래만 사용자 확인이 필요하다. 답이 오기 전에는 표의 「현재 계약」대로 구현한다.
+
+| # | 질문 | 현재 계약(보수적 기본) | 다른 선택지 |
+| --- | --- | --- | --- |
+| Q1 | 내전 시작 처리: 방장(또는 운영진)이 「시작」을 누르고, 시작 시각 60분 뒤까지 안 누르면 자동 처리(조건 충족 → 진행 중, 미달 → 자동 취소)해도 되나? | D78 | (a) 시작 시각에 즉시 자동 시작 (b) 자동 처리 없이 방장만 (c) 60분 대신 다른 값(환경 변수로 바꿀 수 있음) |
+| Q2 | 롤 내전은 10명 고정이고 10명이 다 차야 시작할 수 있다. 8명·6명 내전(4:4, 3:3)도 허용할까? | D76, D78 | 롤 정원 범위를 6–10 짝수로 열기(밸런스 S3 영향: 포지션 5개 전제가 깨짐) |
+| Q3 | 노쇼 30일·7일 계산 기준을 「운영진이 표시한 시각」으로 하고, 표시는 내전 시작 후 7일 안에만 받는다. 「내전 시작 시각」 기준이 더 맞나? | D83 | 내전 시작 시각 기준(늦게 표시해도 과거 시점으로 계산) |
 
 ---
 
-## 15. 확인 필요 (사용자 판단)
+## 15. 영향받는 기존 파일
 
-현재 남은 항목 없음. 2026-10-28 질문 3건은 사용자 답변으로 해결됐다.
-
-| # | 질문 | 해결 |
-| --- | --- | --- |
-| Q1 | 라이엇 부계정(목업 「부계정 추가」)을 허용하나? | 여러 개 허용 + 대표 계정 지정 → D37 변경, D56–D58 |
-| Q2 | 다른 멤버가 이미 연동한 계정을 소유 확인 통과자에게 옮기나? | 옮기지 않고 막음 + 운영진 문의 안내 → D45 확정 |
-| Q3 | 최근 전적·주 포지션 범위 | 솔로 랭크(420)만 → D40 확정 |
-
-메인 기본값 1–7(아이콘 소유 확인, Steam OpenID, 큐 대체 경로, asia/kr 라우팅, 주 포지션 규칙, 하루 5회 합산, 프로필 공개·외부 식별자 비노출)은 이 계약에 그대로 반영했다(D32, D34, D43, 11절, D40, D41, D38).
-
----
-
-## 16. 영향받는 기존 파일 (S0 계약 변경분)
+architect가 이번에 바꾼 것:
 
 | 파일 | 변경 |
 | --- | --- |
-| `packages/shared/src/common/errors.ts` | 오류 코드 14개·HTTP 상태 추가 |
-| `packages/shared/src/constants/enums.ts` | GameProvider, GameAccountSyncState, GameAccountSyncError, RiotLinkVerificationStatus |
-| `packages/shared/src/constants/games.ts` | GAME_PROVIDER_BY_CODE, GAME_CODES_BY_PROVIDER |
-| `packages/shared/src/constants/transitions.ts` | RIOT_LINK_VERIFICATION_TRANSITIONS, GAME_ACCOUNT_SYNC_STATE_TRANSITIONS(멈춘 행 전이 포함), SYNC_STATE_STALE_MS, isStaleOnlySyncTransition |
-| `packages/shared/src/paths.ts` | S1 경로 8개, `fillPath` |
+| `packages/shared/src/common/errors.ts` | 오류 코드 7개·HTTP 상태 |
+| `packages/shared/src/constants/enums.ts` | `ScrimCancelReason` |
+| `packages/shared/src/constants/games.ts` | `GameSeed.capacity_min/max/default`, `GAME_SEED` 값 |
+| `packages/shared/src/constants/transitions.ts` | scrims recruiting → playing 추가, scrim_players joined → waitlist 삭제, 주석 |
+| `packages/shared/src/paths.ts` | S2 경로 8개(games, scrims, scrim, scrimJoin, scrimStart, scrimCancel, scrimPlayerNoShow, myScrimRestriction) |
+| `packages/shared/src/auth.ts` | `REFRESH_ROTATE_AFTER_HOURS_DEFAULT`, refresh 주석 |
+| `packages/shared/src/game-accounts.ts` | `SteamLinkDisplay`, `LinkGameAccountRequest` steam `display`, `SteamLinkCallbackQuery.display`, `STEAM_LINK_COMPLETE_PATH`, `STEAM_LINK_BROADCAST_CHANNEL`, `STEAM_LINK_MESSAGE_TYPE`, `SteamLinkCompletePageQuery`, `SteamLinkPopupMessage` |
 | `packages/shared/src/index.ts` | 새 모듈 export |
-| 새 파일 | `packages/shared/src/constants/riot.ts`, `game-accounts.ts`, `profile.ts`, `contract.s1.test.ts` |
-| `apps/api/prisma/schema.prisma` + `migrations/20261028120000_s1/` | 3절 |
-| `apps/api/src/common/app-error.ts` | `DEFAULT_ERROR_MESSAGE`에 S1 코드 14개(타입 검사 통과용 기본 문구) |
-| `apps/web/src/lib/errors.ts` | `ERROR_MESSAGES`에 S1 코드 14개(초안, frontend가 다듬음) |
-| `.env.example` | 11절 변수(RIOT_ACCOUNTS_MAX 포함), REDIS_URL 빈 값 |
-| `_workspace/S0/01_architect_contract.md` 6절 game_accounts 행 | 역사 기록으로 두고 수정하지 않음 — S1 이후는 이 문서 3절이 우선 |
+| 새 파일 | `packages/shared/src/scrims.ts`, `game-catalog.ts`, `contract.s2.test.ts` |
+| `packages/shared/src/contract.s1.test.ts` | steam 요청 parse 결과에 `display: 'redirect'`(1줄) |
+| `apps/api/prisma/schema.prisma` + `migrations/20261029120000_s2/` | 3절 |
+| `apps/api/prisma/seed.ts` | games 정원 3개 컬럼 upsert |
+| `apps/api/src/common/app-error.ts` | `DEFAULT_ERROR_MESSAGE` S2 7개 |
+| `apps/web/src/lib/errors.ts` | `ERROR_MESSAGES` S2 7개(초안) |
+| `.env.example` | 11절 8개 |
+
+구현자가 바꿔야 하는 기존 파일(계약 변경 영향): `apps/api/src/modules/auth/refresh-token.service.ts`·`auth.service.ts`·`auth.controller.ts`(9-1), `modules/game-accounts/steam-link.service.ts`·`steam-link-cookie.ts`·`game-accounts.controller.ts`(9-2), `config/env.ts`(11절), `test/support/fake-prisma.ts`(S2 모델), `apps/web/src/components/settings/game-accounts-section.tsx`(팝업), `apps/web/src/middleware.ts`(matcher), `apps/web/src/lib/routes.ts`, `apps/web/src/lib/api/mock/**`, `apps/web/src/app/(main)/scrims/page.tsx`(자리 → 목록).

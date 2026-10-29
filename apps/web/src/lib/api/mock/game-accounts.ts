@@ -15,6 +15,7 @@ import {
   RecentLolMatch,
   RiotLinkVerificationView,
   STEAM_ACCOUNTS_MAX,
+  STEAM_LINK_COMPLETE_PATH,
   SYNC_DAILY_LIMIT_DEFAULT,
   Uuid,
   formatRiotId,
@@ -42,7 +43,7 @@ import { z } from 'zod';
  *   이미 내 목록에 있는 라이엇 ID(대소문자 무시) → GAME_ACCOUNT_ALREADY_LINKED_TO_ME
  * - 소유 확인: 첫 「확인」은 OWNERSHIP_CHECK_FAILED(아이콘을 아직 안 바꾼 상황), 두 번째부터 성공. 확인 간격 5초
  * - 동기화 「작업자」: queued → (1.5초) → running → (1.5초) → idle. 요청이 올 때마다 시간을 보고 진행시킨다
- * - 스팀: 시작하면 바로 연동되고 authorize_url은 /settings?steam=linked. 첫 동기화는 STEAM_PROFILE_PRIVATE, 다음부터 성공
+ * - 스팀: 시작하면 바로 연동되고 authorize_url은 /settings?steam=linked(팝업이면 /steam-link/complete?steam=linked). 첫 동기화는 STEAM_PROFILE_PRIVATE, 다음부터 성공
  * - 다른 멤버 프로필 하나(MOCK_OTHER_MEMBER_ID)를 고정으로 둔다. 그 밖의 id는 NOT_FOUND
  */
 
@@ -383,7 +384,9 @@ export function handleS1(ctx: MockS1Context): Response | null {
       });
       ctx.save(state);
       const origin = ctx.opts.origin?.() ?? 'http://localhost:3000';
-      const res: LinkGameAccountResponse = { provider: 'steam', authorize_url: `${origin}/settings?steam=linked` };
+      // 팝업(S2 9-2)이면 콜백 도착지가 완료 페이지, 아니면 S1 그대로 /settings
+      const landing = parsed.data.display === 'popup' ? STEAM_LINK_COMPLETE_PATH : '/settings';
+      const res: LinkGameAccountResponse = { provider: 'steam', authorize_url: `${origin}${landing}?steam=linked` };
       return json(200, res);
     }
 

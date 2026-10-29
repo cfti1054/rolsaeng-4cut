@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { GAME_SEED } from '@gcd/shared';
 import {
@@ -9,10 +10,12 @@ import {
   type RecentMatch,
   type RefreshToken,
   type RiotLinkVerification,
+  type Scrim,
+  type ScrimPlayer,
   type SteamPlaytime,
   type User,
 } from '@prisma/client';
-import { FakeTable, type Row } from './fake-table';
+import { FakeTable, type Row, matchWhere } from './fake-table';
 
 /**
  * DB 없이 auth·users 흐름을 검증하기 위한 인메모리 Prisma 대체.
@@ -21,6 +24,10 @@ import { FakeTable, type Row } from './fake-table';
  * S1: games·game_accounts·riot_link_verifications·game_account_sync_requests·rank_snapshots·recent_matches·
  * steam_playtime은 FakeTable(일반 구현, fake-table.ts). games는 GAME_SEED로 미리 채운다.
  * $executeRaw(advisory lock)는 호출만 기록한다(트랜잭션이 이미 직렬화돼 있음).
+ * S2: scrims·scrim_players FakeTable(고유 (scrim_id, user_id)), games 정원 컬럼, user.findMany.
+ * $queryRaw는 두 문장만 흉내 낸다: 내전 행 잠금(SELECT … FROM scrims WHERE id = ? FOR UPDATE → 행 또는 [])과
+ * pg_try_advisory_xact_lock(→ [{ ok: advisoryAvailable }]). 호출은 rawCalls에 기록(잠금 순서 검사용).
+ * 트랜잭션 안에서 다시 $transaction을 부르면(자동 마감처럼 바깥 잠금 트랜잭션 + 건별 트랜잭션) 같은 흐름으로 바로 실행한다.
  * 고유 제약: game_accounts (game_id, external_id), 부분 고유 인덱스 (user_id, game_id) WHERE is_primary(문 단위 검사).
  * FK: game_accounts 삭제 시 rank_snapshots·recent_matches·steam_playtime Cascade, sync_requests SetNull.
  *
@@ -63,8 +70,11 @@ export class FakePrisma {
   users: User[] = [];
   refreshTokens: RefreshToken[] = [];
   private txQueue: Promise<unknown> = Promise.resolve();
-  /** $executeRaw 호출 기록(advisory lock 키 확인용) */
+  /** $executeRaw·$queryRaw 호출 기록(advisory lock 키·내전 행 잠금 확인용) */
   rawCalls: { sql: string; values: unknown[] }[] = [];
+  /** pg_try_advisory_xact_lock 결과(다른 인스턴스가 잠금을 쥔 상황 흉내) */
+  advisoryAvailable = true;
+  private readonly txContext = new AsyncLocalStorage<boolean>();
 
   // ---- S1 테이블 ----
   game = new FakeTable<Game & Row>(() => ({
@@ -74,7 +84,49 @@ export class FakePrisma {
     hasTeams: true,
     positions: [],
     sortOrder: 0,
+    capacityMin: 2,
+    capacityMax: 16,
+    capacityDefault: 8,
+    capacityStep: 1,
+    startRequiresFull: false,
+    requiresSteamApp: false,
   }));
+
+  // ---- S2 테이블 ----
+  scrim = new FakeTable<Scrim & Row>(() => ({
+    gameId: undefined,
+    hostId: undefined,
+    title: undefined,
+    scheduledAt: undefined,
+    capacity: undefined,
+    status: 'recruiting',
+    rules: null,
+    rated: true,
+    autoBalance: true,
+    usePositions: true,
+    steamAppId: null,
+    steamAppName: null,
+    startedAt: null,
+    cancelledAt: null,
+    cancelReason: null,
+    updatedAt: undefined,
+  }));
+
+  scrimPlayer = new FakeTable<ScrimPlayer & Row>(
+    () => ({
+      scrimId: undefined,
+      userId: undefined,
+      status: 'joined',
+      position: null,
+      preferredPositions: [],
+      team: null,
+      joinedAt: new Date(),
+      noShowMarkedAt: null,
+      noShowMarkedById: null,
+      updatedAt: undefined,
+    }),
+    [{ target: ['scrim_id', 'user_id'], fields: ['scrimId', 'userId'] }],
+  );
 
   rankSnapshot = new FakeTable<RankSnapshot & Row>(() => ({
     gameAccountId: undefined,
@@ -171,6 +223,8 @@ export class FakePrisma {
       this.rankSnapshot,
       this.recentMatch,
       this.steamPlaytime,
+      this.scrim,
+      this.scrimPlayer,
     ] as unknown as FakeTable[];
   }
 
@@ -183,6 +237,12 @@ export class FakePrisma {
         hasTeams: g.has_teams,
         positions: [...g.positions],
         sortOrder: g.sort_order,
+        capacityMin: g.capacity_min,
+        capacityMax: g.capacity_max,
+        capacityDefault: g.capacity_default,
+        capacityStep: g.capacity_step,
+        startRequiresFull: g.start_requires_full,
+        requiresSteamApp: g.requires_steam_app,
       });
     }
   }
@@ -200,12 +260,39 @@ export class FakePrisma {
     return 1;
   }
 
+  async $queryRaw<T = unknown>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T> {
+    await this.tick();
+    const sql = strings.join('?');
+    this.rawCalls.push({ sql, values });
+    if (/pg_try_advisory_xact_lock/.test(sql)) return [{ ok: this.advisoryAvailable }] as T;
+    if (/FROM\s+scrims\s+WHERE\s+id\s*=.*FOR\s+UPDATE/s.test(sql)) {
+      const r = this.scrim.rows.find((x) => x.id === values[0]);
+      if (!r) return [] as T;
+      return [
+        {
+          id: r.id,
+          status: r.status,
+          capacity: r.capacity,
+          scheduled_at: new Date(r.scheduledAt.getTime()),
+          host_id: r.hostId,
+          use_positions: r.usePositions,
+          game_id: r.gameId,
+        },
+      ] as T;
+    }
+    throw new Error(`fake-prisma: 지원하지 않는 $queryRaw ${sql}`);
+  }
+
   /** 테스트에서 호출 순서를 섞기 위한 지연(마이크로태스크 양보) */
   private async tick(): Promise<void> {
     await new Promise((r) => setImmediate(r));
   }
 
   user = {
+    findMany: async (args: { where?: Where } = {}): Promise<User[]> => {
+      await this.tick();
+      return this.users.filter((u) => matchWhere(u as unknown as Row, args.where)).map((u) => ({ ...u }));
+    },
     findUnique: async (args: { where: Where }): Promise<User | null> => {
       await this.tick();
       const row = this.users.find((u) => matches(u as unknown as Record<string, unknown>, args.where));
@@ -303,6 +390,8 @@ export class FakePrisma {
 
   async $transaction<T>(fn: ((tx: this) => Promise<T>) | Promise<unknown>[]): Promise<T> {
     if (Array.isArray(fn)) return (await Promise.all(fn)) as T;
+    // 바깥 트랜잭션 안의 트랜잭션: 같은 직렬화 흐름에서 바로 실행(대기열에 넣으면 교착)
+    if (this.txContext.getStore()) return fn(this);
     const run = async (): Promise<T> => {
       const snapshot = {
         users: clone(this.users),
@@ -310,7 +399,7 @@ export class FakePrisma {
         s1: this.s1Tables.map((t) => t.snapshot()),
       };
       try {
-        return await fn(this);
+        return await this.txContext.run(true, () => fn(this));
       } catch (err) {
         this.users = snapshot.users;
         this.refreshTokens = snapshot.tokens;

@@ -42,6 +42,14 @@ export const ERROR_MESSAGES: Record<AppErrorCode, string> = {
   STEAM_LINK_CANCELLED: '스팀 로그인을 취소해서 연동하지 않았어요.',
   STEAM_OPENID_INVALID: '스팀 로그인 결과를 확인하지 못했어요. 「Steam으로 로그인」을 다시 눌러 주세요.',
   SYNC_LIMIT_EXCEEDED: '오늘 새로고침 횟수를 모두 썼어요. 자정(한국 시간)에 다시 채워져요.',
+  // S2 내전
+  SCRIM_NOT_RECRUITING: '이미 시작했거나 취소된 내전이에요. 화면을 새로 고쳤어요.',
+  SCRIM_JOIN_CLOSED: '시작 시각이 지나 참가·취소·포지션 변경을 할 수 없어요. 사정이 생겼다면 방장에게 직접 알려 주세요.',
+  SCRIM_HOST_CANNOT_LEAVE: '방장은 참가를 취소할 수 없어요. 내전을 열지 않으려면 「모집 취소」를 눌러 주세요.',
+  SCRIM_BANNED: '노쇼가 쌓여 지금은 새 내전 참가·대기 등록·모집글 작성이 제한돼 있어요.',
+  SCRIM_CAPACITY_BELOW_JOINED: '정원을 지금 참가 확정된 인원보다 적게 줄일 수 없어요.',
+  SCRIM_CANNOT_START: '아직 시작할 수 없어요. 시작에 필요한 인원이 모였는지 확인해 주세요.',
+  SCRIM_NO_SHOW_NOT_ALLOWED: '지금은 노쇼를 표시할 수 없어요. 진행 중·종료된 내전의 참가자에게만, 시작 후 7일 안에 표시할 수 있어요.',
   NETWORK_ERROR: '서버에 연결하지 못했어요. 네트워크를 확인하고 다시 시도해 주세요.',
   INVALID_RESPONSE: '서버 응답 형식이 예상과 달라요. 운영진에게 알려 주세요.',
 };
@@ -88,7 +96,8 @@ export const SYNC_ERROR_MESSAGES: Record<GameAccountSyncError, { title: string; 
 /** RATE_LIMITED 등 Retry-After가 있으면 「N초 뒤」를 덧붙인다 */
 export function errorMessageWithRetry(code: AppErrorCode, retryAfterSec: number | undefined): string {
   const base = ERROR_MESSAGES[code];
-  if (retryAfterSec === undefined || code === 'SYNC_LIMIT_EXCEEDED') return base;
+  // 하루 이상 걸리는 대기(새로고침 한도, 노쇼 제한)는 「N분 뒤」 대신 화면이 해제 시각을 따로 보여 준다
+  if (retryAfterSec === undefined || code === 'SYNC_LIMIT_EXCEEDED' || code === 'SCRIM_BANNED') return base;
   if (retryAfterSec <= 0) return base;
   const wait = retryAfterSec < 60 ? `${retryAfterSec}초` : `${Math.ceil(retryAfterSec / 60)}분`;
   return `${base} (${wait} 뒤 가능)`;
