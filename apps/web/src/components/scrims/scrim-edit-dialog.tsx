@@ -1,0 +1,153 @@
+'use client';
+
+import {
+  SCRIM_RULES_MAX_LENGTH,
+  SCRIM_TITLE_MAX_LENGTH,
+  ScrimTitle,
+  UpdateScrimRequest,
+  type GameView,
+  type ScrimDetail,
+} from '@gcd/shared';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { Button, InlineError } from '@/components/ui/controls';
+import { isApiError } from '@/lib/api/client';
+import { useUpdateScrim } from '@/lib/hooks/scrims';
+import { buildScrimPatch, isoToKstInputs, kstInputsToIso } from '@/lib/scrims';
+import { scrimErrorText } from './scrim-bits';
+import { CapacityStepper, Toggle } from './scrim-new-form';
+
+/** 방장 「수정」 대화상자(계약 8절: 제목·날짜·시간·정원·규칙·ELO 반영·자동 밸런스) */
+export function ScrimEditDialog({
+  s,
+  game,
+  onClose,
+  onSaved,
+}: {
+  s: ScrimDetail;
+  game: GameView;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const update = useUpdateScrim(s.id);
+  const start = isoToKstInputs(s.scheduled_at);
+  const [title, setTitle] = useState(s.title);
+  const [date, setDate] = useState(start.date);
+  const [time, setTime] = useState(start.time);
+  const [capacity, setCapacity] = useState(s.capacity);
+  const [rules, setRules] = useState(s.rules ?? '');
+  const [rated, setRated] = useState(s.options.rated);
+  const [autoBalance, setAutoBalance] = useState(s.options.auto_balance);
+  const [error, setError] = useState<string | null>(null);
+  const ids = { title: useId(), date: useId(), time: useId(), cap: useId(), rules: useId(), head: useId() };
+
+  useEffect(() => {
+    const d = ref.current;
+    if (d && !d.open) d.showModal();
+  }, []);
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!ScrimTitle.safeParse(title).success) return setError(`제목은 2–${SCRIM_TITLE_MAX_LENGTH}자로 써 주세요.`);
+    const iso = kstInputsToIso(date, time);
+    if (!iso) return setError('날짜와 시작 시간을 골라 주세요.');
+    if (Date.parse(iso) <= Date.now() && Date.parse(iso) !== Date.parse(s.scheduled_at)) return setError('시작 시각은 지금보다 뒤여야 해요.');
+    if (capacity < s.joined_count) return setError(`지금 참가 확정이 ${s.joined_count}명이라 정원을 그보다 줄일 수 없어요.`);
+    const patch = buildScrimPatch(s, { title, scheduledIso: iso, capacity, rules, rated, autoBalance: game.has_teams && autoBalance });
+    if (!patch) return onClose();
+    const parsed = UpdateScrimRequest.safeParse(patch);
+    if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? '입력값을 확인해 주세요.');
+    setError(null);
+    update.mutateAsync(patch).then(
+      () => {
+        onSaved();
+        onClose();
+      },
+      () => {},
+    );
+  };
+
+  const serverError = update.isError
+    ? isApiError(update.error) && update.error.code === 'VALIDATION_FAILED' && update.error.details?.length
+      ? update.error.details.map((d) => d.message).join(' · ')
+      : scrimErrorText(update.error)
+    : null;
+  const input = 'h-11 w-full min-w-0 rounded-xl border border-line-3 bg-bg px-3.5 text-sm text-text outline-none focus:border-accent';
+
+  return (
+    <dialog
+      ref={ref}
+      aria-labelledby={ids.head}
+      onClose={onClose}
+      className="m-auto max-h-[calc(100dvh-32px)] w-[min(560px,calc(100vw-32px))] overflow-y-auto rounded-[20px] border border-line-2 bg-surface-3 p-0 text-text shadow-[0_12px_30px_var(--shadow)] backdrop:bg-shadow"
+    >
+      <form onSubmit={submit} noValidate className="flex flex-col gap-4 p-6">
+        <h2 id={ids.head} className="m-0 text-lg font-bold">
+          모집글 수정
+        </h2>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor={ids.title} className="text-[13px] text-muted">
+            제목
+          </label>
+          <input id={ids.title} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={SCRIM_TITLE_MAX_LENGTH + 10} className={input} />
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <div className="flex flex-[1_1_150px] flex-col gap-1.5">
+            <label htmlFor={ids.date} className="text-[13px] text-muted">
+              날짜 <span className="text-faint">(한국 시간)</span>
+            </label>
+            <input id={ids.date} type="date" value={date} onChange={(e) => setDate(e.target.value)} className={input} />
+          </div>
+          <div className="flex flex-[1_1_120px] flex-col gap-1.5">
+            <label htmlFor={ids.time} className="text-[13px] text-muted">
+              시작 시간
+            </label>
+            <input id={ids.time} type="time" step={300} value={time} onChange={(e) => setTime(e.target.value)} className={input} />
+          </div>
+          <div className="flex flex-[1_1_150px] flex-col gap-1.5">
+            <span id={ids.cap} className="text-[13px] text-muted">
+              정원
+            </span>
+            <CapacityStepper labelledBy={ids.cap} value={capacity} min={Math.max(game.capacity.min, s.joined_count)} max={game.capacity.max} onChange={setCapacity} />
+          </div>
+        </div>
+        {s.join_closed && <p className="m-0 text-xs text-faint">시작 시각을 지금보다 뒤로 미루면 다시 참가·취소를 받아요.</p>}
+        {capacity > s.capacity && s.waitlist_count > 0 && (
+          <p className="m-0 text-xs text-faint">정원을 늘리면 대기 1번부터 순서대로 참가 확정돼요.</p>
+        )}
+        <div className="flex flex-col gap-2">
+          <Toggle
+            label="팀 자동 밸런스"
+            desc={game.has_teams ? '티어와 내전 레이팅으로 두 팀 전력을 맞춥니다' : '개인전이라 사용하지 않습니다'}
+            checked={game.has_teams && autoBalance}
+            disabled={!game.has_teams}
+            onChange={() => setAutoBalance((v) => !v)}
+          />
+          <Toggle label="시즌 ELO에 반영" desc="운영진 승인 후 레이팅이 바뀝니다" checked={rated} onChange={() => setRated((v) => !v)} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor={ids.rules} className="text-[13px] text-muted">
+            규칙
+          </label>
+          <textarea
+            id={ids.rules}
+            rows={4}
+            value={rules}
+            maxLength={SCRIM_RULES_MAX_LENGTH}
+            onChange={(e) => setRules(e.target.value)}
+            className="resize-y rounded-xl border border-line-3 bg-bg px-3.5 py-3 text-sm leading-[1.7] text-text outline-none focus:border-accent"
+          />
+        </div>
+        {(error ?? serverError) && <InlineError>{error ?? serverError}</InlineError>}
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose} disabled={update.isPending}>
+            닫기
+          </Button>
+          <Button type="submit" variant="primary" disabled={update.isPending}>
+            {update.isPending ? '저장하는 중…' : '저장'}
+          </Button>
+        </div>
+      </form>
+    </dialog>
+  );
+}

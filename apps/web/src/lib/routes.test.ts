@@ -26,6 +26,14 @@ describe('routes', () => {
     expect(routes.welcome('/rankings?tab=elo')).toBe('/welcome?redirect=%2Frankings%3Ftab%3Delo');
     expect(routes.member('a b')).toBe('/members/a%20b');
   });
+  it('내전 라우트(S2): status=open은 생략, game·status 쿼리 조립', () => {
+    expect(routes.scrims()).toBe('/scrims');
+    expect(routes.scrims({ status: 'open' })).toBe('/scrims');
+    expect(routes.scrims({ game: 'lol', status: 'ended' })).toBe('/scrims?game=lol&status=ended');
+    expect(routes.scrimNew()).toBe('/scrims/new');
+    expect(routes.scrim('a/b')).toBe('/scrims/a%2Fb');
+    expect(routes.steamLinkComplete({ steam: 'linked' })).toBe('/steam-link/complete?steam=linked');
+  });
   it('디스코드 시작 주소는 웹 오리진의 /api/v1 경로', () => {
     expect(apiRoutes.discordStart()).toBe('/api/v1/auth/discord');
     expect(apiRoutes.discordStart('/scrims')).toBe('/api/v1/auth/discord?redirect=%2Fscrims');

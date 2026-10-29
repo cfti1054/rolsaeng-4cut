@@ -363,9 +363,12 @@ describe('GET /auth/discord/callback', () => {
   });
 });
 
-describe('POST /auth/refresh', () => {
+/** S0·S1 회전 동작 검증(REFRESH_ROTATE_AFTER_HOURS=0 = 매번 회전, S2 9-1). 하루 1회 회전은 아래 D73 describe */
+const ROTATE_EVERY_TIME = { REFRESH_ROTATE_AFTER_HOURS: '0' };
+
+describe('POST /auth/refresh (회전 주기 0)', () => {
   it('정상 회전: 200 RefreshTokenResponse + 새 쿠키, 같은 family·같은 expires_at, 이전 토큰 폐기', async () => {
-    t = await createTestApp();
+    t = await createTestApp({ env: ROTATE_EVERY_TIME });
     const { rt } = await fullLogin(t);
     const res = await postRefresh(t, rt, { Origin: TEST_WEB_ORIGIN });
     expect(res.status).toBe(200);
@@ -388,7 +391,7 @@ describe('POST /auth/refresh', () => {
   });
 
   it('role은 DB 최신값', async () => {
-    t = await createTestApp();
+    t = await createTestApp({ env: ROTATE_EVERY_TIME });
     const { rt } = await fullLogin(t);
     (t.prisma.users[0] as { role: string }).role = 'admin';
     const body = RefreshTokenResponse.parse(await (await postRefresh(t, rt)).json());
@@ -396,14 +399,14 @@ describe('POST /auth/refresh', () => {
   });
 
   it('쿠키 없음 → 401 REFRESH_TOKEN_INVALID', async () => {
-    t = await createTestApp();
+    t = await createTestApp({ env: ROTATE_EVERY_TIME });
     const res = await postRefresh(t);
     expect(res.status).toBe(401);
     expect(ErrorBody.parse(await res.json()).code).toBe('REFRESH_TOKEN_INVALID');
   });
 
   it('모르는 토큰 → 401 REFRESH_TOKEN_INVALID + 쿠키 삭제', async () => {
-    t = await createTestApp();
+    t = await createTestApp({ env: ROTATE_EVERY_TIME });
     const res = await postRefresh(t, 'unknown');
     expect(res.status).toBe(401);
     expect(ErrorBody.parse(await res.json()).code).toBe('REFRESH_TOKEN_INVALID');
@@ -411,7 +414,7 @@ describe('POST /auth/refresh', () => {
   });
 
   it('만료된 토큰 → REFRESH_TOKEN_INVALID', async () => {
-    t = await createTestApp();
+    t = await createTestApp({ env: ROTATE_EVERY_TIME });
     const { rt } = await fullLogin(t);
     (t.prisma.refreshTokens[0] as { expiresAt: Date }).expiresAt = new Date(Date.now() - 1);
     const res = await postRefresh(t, rt);
@@ -419,7 +422,7 @@ describe('POST /auth/refresh', () => {
   });
 
   it('Origin 불일치 → 403 FORBIDDEN(회전하지 않음)', async () => {
-    t = await createTestApp();
+    t = await createTestApp({ env: ROTATE_EVERY_TIME });
     const { rt } = await fullLogin(t);
     const res = await postRefresh(t, rt, { Origin: 'https://evil.example.com' });
     expect(res.status).toBe(403);
@@ -428,7 +431,7 @@ describe('POST /auth/refresh', () => {
   });
 
   it('회전된 토큰을 10초 안에 다시 쓰면 회전 없이 액세스 토큰만(Set-Cookie 없음)', async () => {
-    t = await createTestApp();
+    t = await createTestApp({ env: ROTATE_EVERY_TIME });
     const { rt } = await fullLogin(t);
     expect((await postRefresh(t, rt)).status).toBe(200);
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 9_000 });
@@ -440,7 +443,7 @@ describe('POST /auth/refresh', () => {
   });
 
   it('10초 지난 재사용 → 401 REFRESH_TOKEN_REUSED + family 전체 폐기 + 쿠키 삭제', async () => {
-    t = await createTestApp();
+    t = await createTestApp({ env: ROTATE_EVERY_TIME });
     const { rt } = await fullLogin(t);
     const r1 = await postRefresh(t, rt);
     const rt2 = cookieValue(findSetCookie(r1, AUTH_COOKIE.refresh));
@@ -456,7 +459,7 @@ describe('POST /auth/refresh', () => {
   });
 
   it('동시 refresh(Promise.all): 둘 다 200, 회전은 1번(새 쿠키 1개), 재사용으로 오탐하지 않음', async () => {
-    t = await createTestApp();
+    t = await createTestApp({ env: ROTATE_EVERY_TIME });
     const { rt } = await fullLogin(t);
     const results = await Promise.all([postRefresh(t, rt), postRefresh(t, rt), postRefresh(t, rt)]);
     expect(results.map((r) => r.status)).toEqual([200, 200, 200]);
@@ -467,13 +470,95 @@ describe('POST /auth/refresh', () => {
   });
 
   it('로그아웃 뒤에는 유예 중인 이전 토큰도 거절', async () => {
-    t = await createTestApp();
+    t = await createTestApp({ env: ROTATE_EVERY_TIME });
     const { rt } = await fullLogin(t);
     const r1 = await postRefresh(t, rt);
     const rt2 = cookieValue(findSetCookie(r1, AUTH_COOKIE.refresh)) as string;
     await fetch(`${t.base}/auth/logout`, { method: 'POST', headers: { Cookie: `${AUTH_COOKIE.refresh}=${encodeURIComponent(rt2)}` } });
     const res = await postRefresh(t, rt);
     expect(ErrorBody.parse(await res.json()).code).toBe('REFRESH_TOKEN_INVALID');
+  });
+});
+
+describe('POST /auth/refresh 하루 1회 회전 (S2 9-1, D73, 기본 24시간)', () => {
+  const HOUR = 3_600_000;
+
+  it('24시간 미만: 200 + 새 액세스 토큰, Set-Cookie 없음, DB 행·폐기 상태 변화 없음(여러 번 써도 정상)', async () => {
+    t = await createTestApp();
+    const base = Date.now();
+    const { rt } = await fullLogin(t);
+    const before = t.prisma.refreshTokens.map((x) => ({ ...x }));
+    for (const offset of [0, HOUR, 24 * HOUR - 1_000]) {
+      vi.useFakeTimers({ toFake: ['Date'], now: base + offset });
+      const res = await postRefresh(t, rt, { Origin: TEST_WEB_ORIGIN });
+      expect(res.status).toBe(200);
+      RefreshTokenResponse.parse(await res.json());
+      expect(res.headers.getSetCookie().filter((c) => c.startsWith(`${AUTH_COOKIE.refresh}=`))).toEqual([]);
+    }
+    expect(t.prisma.refreshTokens).toEqual(before);
+  });
+
+  it('정확히 24시간: 회전(같은 family·같은 expires_at, Max-Age = 남은 수명), 새 토큰은 다시 24시간 유지', async () => {
+    t = await createTestApp();
+    const { rt } = await fullLogin(t);
+    const created = (t.prisma.refreshTokens[0] as { createdAt: Date }).createdAt.getTime();
+    vi.useFakeTimers({ toFake: ['Date'], now: created + 24 * HOUR });
+    const res = await postRefresh(t, rt);
+    expect(res.status).toBe(200);
+    const set = findSetCookie(res, AUTH_COOKIE.refresh) as string;
+    const next = cookieValue(set) as string;
+    expect(next).toBeTruthy();
+    const [old, fresh] = t.prisma.refreshTokens;
+    expect(old?.replacedById).toBe(fresh?.id);
+    expect(fresh?.familyId).toBe(old?.familyId);
+    expect(fresh?.expiresAt.getTime()).toBe(old?.expiresAt.getTime());
+    const remainingSec = Math.floor(((old?.expiresAt.getTime() as number) - (created + 24 * HOUR)) / 1000);
+    const maxAge = Number(/Max-Age=(\d+)/.exec(set)?.[1]);
+    expect(Math.abs(maxAge - remainingSec)).toBeLessThanOrEqual(1);
+    // 새 토큰은 발급 직후라 회전하지 않는다
+    vi.setSystemTime(created + 24 * HOUR + 30_000);
+    const kept = await postRefresh(t, next);
+    expect(kept.status).toBe(200);
+    expect(findSetCookie(kept, AUTH_COOKIE.refresh)).toBeUndefined();
+    expect(t.prisma.refreshTokens).toHaveLength(2);
+  });
+
+  it('회전 후 옛 토큰: 10초 안 → 유예(Set-Cookie 없음), 10초 후 → REUSED + 계열 전체 폐기', async () => {
+    t = await createTestApp();
+    const { rt } = await fullLogin(t);
+    const created = (t.prisma.refreshTokens[0] as { createdAt: Date }).createdAt.getTime();
+    vi.useFakeTimers({ toFake: ['Date'], now: created + 25 * HOUR });
+    expect(findSetCookie(await postRefresh(t, rt), AUTH_COOKIE.refresh)).toBeTruthy();
+    vi.setSystemTime(created + 25 * HOUR + 10_000);
+    const grace = await postRefresh(t, rt);
+    expect(grace.status).toBe(200);
+    expect(findSetCookie(grace, AUTH_COOKIE.refresh)).toBeUndefined();
+    vi.setSystemTime(created + 25 * HOUR + 10_001);
+    const reuse = await postRefresh(t, rt);
+    expect(ErrorBody.parse(await reuse.json()).code).toBe('REFRESH_TOKEN_REUSED');
+    expect(t.prisma.refreshTokens.every((x) => x.revokedAt !== null)).toBe(true);
+  });
+
+  it('미회전 상태에서 로그아웃 → 같은 토큰 INVALID(D26)', async () => {
+    t = await createTestApp();
+    const { rt } = await fullLogin(t);
+    expect((await postRefresh(t, rt)).status).toBe(200);
+    await fetch(`${t.base}/auth/logout`, { method: 'POST', headers: { Cookie: `${AUTH_COOKIE.refresh}=${encodeURIComponent(rt as string)}` } });
+    expect(ErrorBody.parse(await (await postRefresh(t, rt)).json()).code).toBe('REFRESH_TOKEN_INVALID');
+  });
+
+  it('미회전 토큰도 절대 만료(로그인 + 30일)가 지나면 INVALID — 사용해도 연장되지 않음', async () => {
+    t = await createTestApp();
+    const { rt } = await fullLogin(t);
+    const expiresAt = (t.prisma.refreshTokens[0] as { expiresAt: Date }).expiresAt.getTime();
+    vi.useFakeTimers({ toFake: ['Date'], now: expiresAt - 1_000 });
+    // 만료 직전(마지막 회전 후 24시간 경과) → 회전하지만 expires_at은 그대로
+    const last = await postRefresh(t, rt);
+    expect(last.status).toBe(200);
+    const next = cookieValue(findSetCookie(last, AUTH_COOKIE.refresh)) as string;
+    expect(t.prisma.refreshTokens[1]?.expiresAt.getTime()).toBe(expiresAt);
+    vi.setSystemTime(expiresAt);
+    expect(ErrorBody.parse(await (await postRefresh(t, next)).json()).code).toBe('REFRESH_TOKEN_INVALID');
   });
 });
 

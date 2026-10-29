@@ -41,6 +41,15 @@ export const ErrorCode = z.enum([
   'STEAM_LINK_CANCELLED', // 400 스팀 로그인 화면에서 취소(openid.mode=cancel)
   'STEAM_OPENID_INVALID', // 400 OpenID 응답 검증 실패(check_authentication is_valid:false, 형식·return_to 불일치)
   'SYNC_LIMIT_EXCEEDED', // 429 수동 새로고침 하루(KST) 한도 소진. Retry-After 헤더 = 다음 KST 자정까지 초
+
+  // ---- S2 내전 모집·참가·노쇼 ----
+  'SCRIM_NOT_RECRUITING', // 409 모집 중(recruiting·full)이 아닌 내전에 참가·취소·수정·시작·취소 시도(이미 시작·종료·취소됨)
+  'SCRIM_JOIN_CLOSED', // 409 시작 시각(scheduled_at)이 지나 참가·대기 등록·참가 취소를 받지 않음
+  'SCRIM_HOST_CANNOT_LEAVE', // 409 방장은 참가 취소 불가 → 모집글 취소(POST /scrims/{id}/cancel)로만
+  'SCRIM_BANNED', // 403 노쇼 누적으로 참가·대기 등록·모집글 작성 제한 중. Retry-After 헤더 = 해제까지 초
+  'SCRIM_CAPACITY_BELOW_JOINED', // 409 정원을 현재 참가 확정 인원보다 적게 바꾸려 함
+  'SCRIM_CANNOT_START', // 409 시작 조건 미충족(포지션 게임은 정원을 채워야, 그 외는 2명 이상)
+  'SCRIM_NO_SHOW_NOT_ALLOWED', // 409 노쇼 표시 불가: 시작 전 내전, 표시 기한 경과, 대상이 참가 확정·노쇼 상태가 아님
 ]);
 export type ErrorCode = z.infer<typeof ErrorCode>;
 
@@ -75,6 +84,13 @@ export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
   STEAM_LINK_CANCELLED: 400,
   STEAM_OPENID_INVALID: 400,
   SYNC_LIMIT_EXCEEDED: 429,
+  SCRIM_NOT_RECRUITING: 409,
+  SCRIM_JOIN_CLOSED: 409,
+  SCRIM_HOST_CANNOT_LEAVE: 409,
+  SCRIM_BANNED: 403,
+  SCRIM_CAPACITY_BELOW_JOINED: 409,
+  SCRIM_CANNOT_START: 409,
+  SCRIM_NO_SHOW_NOT_ALLOWED: 409,
 };
 
 /** VALIDATION_FAILED일 때만 채우는 필드별 상세. path는 snake_case 필드 경로(`nickname`, `events.0.type`). */

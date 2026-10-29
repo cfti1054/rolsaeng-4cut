@@ -1,7 +1,8 @@
 // =============================================================================
 // 게임 커뮤니티 대시보드 — 전체 스키마 (S0에서 일괄 생성)
 // 명세: 게임 커뮤니티 대시보드 개발 문서.md 5장 + _workspace/00_input/slice.md 결정 사항
-// 계약: _workspace/S0/01_architect_contract.md 6절(S0 전체), _workspace/01_architect_contract.md 3절(S1 변경)
+// 계약: _workspace/S0/01_architect_contract.md 6절(S0 전체), _workspace/S1/01_architect_contract.md 3절(S1 변경),
+//       _workspace/01_architect_contract.md 3절(S2 변경)
 //
 // 규칙
 // - 모든 테이블: id uuid(@default(uuid())), created_at.
@@ -48,6 +49,15 @@ enum ScrimPlayerStatus {
   no_show
 
   @@map("scrim_player_status")
+}
+
+/// S2. 모집글 취소 이유. shared ScrimCancelReason
+enum ScrimCancelReason {
+  host
+  admin
+  not_started
+
+  @@map("scrim_cancel_reason")
 }
 
 enum ScrimTeam {
@@ -183,16 +193,20 @@ model RefreshToken {
 
 /// 게임 종류. 새 게임은 행만 추가(설계 원칙 3). 시드: packages/shared GAME_SEED
 model Game {
-  id           String   @id @default(uuid()) @db.Uuid
-  code         String   @unique
-  name         String
-  hasPositions Boolean  @default(false) @map("has_positions")
+  id              String   @id @default(uuid()) @db.Uuid
+  code            String   @unique
+  name            String
+  hasPositions    Boolean  @default(false) @map("has_positions")
   /// 두 팀 대결 여부. false면 개인 순위(롤체)
-  hasTeams     Boolean  @default(true) @map("has_teams")
+  hasTeams        Boolean  @default(true) @map("has_teams")
   /// 선택 가능한 포지션 코드, 표시 순서대로
-  positions    String[] @default([])
-  sortOrder    Int      @default(0) @map("sort_order")
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  positions       String[] @default([])
+  sortOrder       Int      @default(0) @map("sort_order")
+  /// S2. 내전 정원 범위(방장 포함). min = max면 고정(롤 10). 시드: shared GAME_SEED
+  capacityMin     Int      @default(2) @map("capacity_min")
+  capacityMax     Int      @default(16) @map("capacity_max")
+  capacityDefault Int      @default(8) @map("capacity_default")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   gameAccounts    GameAccount[]
   scrims          Scrim[]
@@ -444,16 +458,25 @@ model SeasonStanding {
 
 /// 내전 모집글. 문서 5장
 model Scrim {
-  id          String      @id @default(uuid()) @db.Uuid
-  gameId      String      @map("game_id") @db.Uuid
-  hostId      String      @map("host_id") @db.Uuid
-  title       String
-  scheduledAt DateTime    @map("scheduled_at") @db.Timestamptz(3)
-  capacity    Int
-  status      ScrimStatus @default(recruiting)
-  rules       String?
-  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id           String             @id @default(uuid()) @db.Uuid
+  gameId       String             @map("game_id") @db.Uuid
+  hostId       String             @map("host_id") @db.Uuid
+  title        String
+  scheduledAt  DateTime           @map("scheduled_at") @db.Timestamptz(3)
+  capacity     Int
+  status       ScrimStatus        @default(recruiting)
+  rules        String?
+  /// S2. 진행 방식(목업 ScrimNew 03). 저장값은 적용값: autoBalance = 입력 && games.has_teams, usePositions = 입력 && games.has_positions
+  rated        Boolean            @default(true)
+  autoBalance  Boolean            @default(true) @map("auto_balance")
+  usePositions Boolean            @default(true) @map("use_positions")
+  /// S2. playing으로 바뀐 시각(방장·운영진 시작 또는 자동 시작)
+  startedAt    DateTime?          @map("started_at") @db.Timestamptz(3)
+  /// S2. cancelled로 바뀐 시각과 이유
+  cancelledAt  DateTime?          @map("cancelled_at") @db.Timestamptz(3)
+  cancelReason ScrimCancelReason? @map("cancel_reason")
+  createdAt    DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   game          Game            @relation(fields: [gameId], references: [id])
   host          User            @relation("ScrimHost", fields: [hostId], references: [id])
@@ -468,6 +491,8 @@ model Scrim {
 }
 
 /// 내전 참가자. 문서 5장 + 희망 포지션, 참가 시각, 노쇼 표시 기록
+/// S2 의미 확정: preferred_positions = [1지망, 2지망?], 대기 순번 = waitlist 행의 (joined_at, id) 오름차순,
+/// 노쇼 30일 집계 기준 = no_show_marked_at(정정하면 null). 변경 컬럼 없음
 model ScrimPlayer {
   id                 String            @id @default(uuid()) @db.Uuid
   scrimId            String            @map("scrim_id") @db.Uuid

@@ -10,3 +10,5 @@ export * from './me';
 export * from './auth';
 export * from './game-accounts';
 export * from './profile';
+export * from './game-catalog';
+export * from './scrims';

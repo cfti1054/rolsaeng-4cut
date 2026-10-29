@@ -1,51 +1,82 @@
-# QA: core (S1 packages/core 함수 7개) — 판정: pass
+# QA: S2 packages/core (no-show.ts, scrim.ts) — 판정: pass
 
-작성: qa-verifier, 2026-10-28
-대상: `packages/core/src/{config,time,profile,riot,index}.ts` + 테스트 3개. 구현자 보고서: `_workspace/02_domain-logic-dev_report.md`
-기준: 계약 10절, 13절 logic, 체크리스트 `_workspace/03_qa-verifier_plan.md` B절.
+대상: `packages/core/src/no-show.ts`, `packages/core/src/scrim.ts`, 두 테스트 파일, `src/index.ts` export
+기준: 계약 `_workspace/01_architect_contract.md` 5-2~5-7, 7절(13개 함수), 12절 logic 경계 목록, D78·D79·D83·D85·D92, 문서 7-4
+구현 보고서: `_workspace/02_domain-logic-dev_report.md`
 
 ## 실행한 명령과 결과
 
 | 명령 | 결과 |
 | --- | --- |
-| `corepack pnpm --filter @gcd/core test` | 3 files, **79 passed** (time 20, profile 15, riot 44) — 보고서 수치와 같음 |
-| `TZ=America/New_York corepack pnpm --filter @gcd/core test` | 79 passed |
-| `TZ=Pacific/Kiritimati corepack pnpm --filter @gcd/core test` | 79 passed (UTC+14 — 서버 시간대와 무관) |
-| `corepack pnpm --filter @gcd/core typecheck` | exit 0 |
-| `corepack pnpm --filter @gcd/core build` | 성공(dist CJS) |
-| `grep -rn "Date.now\|new Date()\|Math.random\|getTimezoneOffset\|setHours\|getHours\|getDate()\|toLocale" packages/core/src`(테스트 제외) | 코드 0건(riot.ts:14 주석 1건뿐) — 시계·난수·로컬 시간대 의존 없음 |
-| QA 독립 검사 스크립트(scratchpad `core_check.cjs`, 빌드된 dist 대상) | 실패 0: ① ratio를 1≤k≤s≤20 전 조합에서 정확한 유리수 반올림(half-up)과 비교 + `MainPosition.parse` ② 2020–2029 무작위 20,000개 시각에서 `kstDayWindow`가 KST 달력 날짜 기준 start·24h end, `buildSyncQuota.resets_at` 시각 = end, `SyncQuota.parse` 통과 ③ 모든 RiotTier×RiotDivision의 `toRankValue` 결과 `RankValue.parse` 통과 ④ `pickVerificationIcon` 현재 아이콘 −1–30 × random 100단계에서 현재와 다르고 0–28 안 |
+| `corepack pnpm --filter @gcd/core typecheck` | `tsc -p tsconfig.json --noEmit` 출력 없음(오류 0) |
+| `corepack pnpm --filter @gcd/core test` | time 20, scrim 45, profile 15, no-show 24, riot 44 → **Test Files 5 passed (5), Tests 148 passed (148)** |
+| `corepack pnpm --filter @gcd/shared typecheck` / `test` | 오류 0 / Test Files 3 passed, Tests 53 passed |
+| dist 신선도 | `dist/no-show.js`·`dist/scrim.js`(13:44:45)가 `src/*.ts`(13:41~13:44)보다 새것. api 런타임이 읽는 dist에 S2 export 존재 |
+| 무작위 대조(스크래치 스크립트, dist 대상) | 아래 참조. **불일치 0건** |
 
-## 계약 10절 대조
+무작위 대조 내용(코드 미수정, 스크래치 디렉터리에서 실행):
+- `computeScrimRestriction` 20,000건: 정책(threshold 1–4, window 1–30일, restriction 1–10일) 무작위, 노쇼 시각을 반나절 단위로 양자화해 동률·정확한 경계·미래 시각을 일부러 많이 만듦. 계약 규칙을 그대로 옮긴 O(n²) 참조 구현과 restricted·until·recentCount·lastNoShowAt 전부 일치.
+- 같은 20,000건에서 `noShowLookbackStart` 하한 **초과**만 남긴 입력의 restricted·until·recentCount가 전체 입력과 일치(기본 정책뿐 아니라 임의 정책에서도).
+- `planRosterAfterChange` 20,000건: 불변식 「승격 후 joined ≤ capacity」, 「남은 대기 > 0 이면 joined = capacity」, 「nextStatus = joined ≥ capacity ? full : recruiting」 위반 0. `orderWaitlist` 결과가 (joinedAt, id) 오름차순 위반 0.
+- 단건: `validateScrimSchedule(now+30일)` = ok, `decideOverdueScrim(full, 정확히 60분, canStart false)` = cancel.
 
-| 함수 | 시그니처 | 규칙 | 근거 |
-| --- | --- | --- | --- |
-| kstDayWindow | 일치 | KST 23:59:59.999 / 00:00:00.000, UTC 14:59:59.999Z / 15:00Z 경계 테스트 있음(time.test.ts:14-31), 음수 epoch 내림 | time.ts:15-21 |
-| buildSyncQuota | 일치 | remaining=max(0,…)(used>limit 테스트), resets_at `YYYY-MM-DDT00:00:00.000+09:00`, 계약 예시값 그대로(time.test.ts:84-87) | time.ts:51-61 |
-| computeMainPosition | 일치 | 앞 20개(null 포함) 자른 뒤 null 제외 = sample_size, 0이면 null, 내림차순·동률 LolPosition 순서, 최대 2개, 둘째 자리 반올림, source 고정 | profile.ts:14-40 |
-| pickVerificationIcon | 일치 | 후보 = `RIOT_VERIFICATION_ICON_IDS` − 현재, `floor(random()*n)` | riot.ts:18-30 |
-| toRankValue | 일치 | undefined→UNRANKED 0/0/0, apex division null, 모르는 tier·(비 apex) rank → 예외 | riot.ts:54-80 |
-| isSameRank | 일치 | 5개 필드, 필드별 1개만 다른 경우 테스트(riot.test.ts:129-137) | riot.ts:83-91 |
-| isMatchesCacheStale | 일치 | null→true, 정확히 6h→true, 6h−1ms→false, 기본값 `RECENT_MATCHES_TTL_HOURS` | riot.ts:99-113 |
+## 계약 대조
 
-shared 상수 재사용(`RIOT_VERIFICATION_ICON_IDS`, `RECENT_MATCHES_MAX`, `RECENT_MATCHES_TTL_HOURS`, `RIOT_APEX_TIERS`, `LolPosition`, `RiotTier`, `RiotDivision`) — 값 복제 없음. `@gcd/shared` 외 의존 없음(package.json).
+| 항목 | 결과 | 근거 |
+| --- | --- | --- |
+| 타입 4개(NoShowPolicy, ScrimRestrictionState, WaitlistRow, OpenScrimStatus) | 일치 | no-show.ts:12-22, scrim.ts:8-9 |
+| 함수 13개 시그니처 | 13개 모두 7절과 동일(인자 이름·순서·반환 유니온) | no-show.ts:46,99,108 / scrim.ts:27,36,41,50,76,97,112,120,129,151,172 |
+| index export | 13개 함수 + 4개 타입 export, S1 export 유지 | index.ts:22-42 |
+| 30일 3회 → 7일 | 발동 m마다 (m − 30일, m] 개수 ≥ 3, until = 최대 발동 m + 7일, now = until 해제 | no-show.ts:66-80 |
+| 「일」 = 24시간 이동 구간 | `DAY_MS` 곱, KST 경계 미사용 | no-show.ts:56-57 |
+| 미래 시각 무시 | `t <= nowMs` 필터 후 판정·recentCount·last 모두 계산 | no-show.ts:61 |
+| 대기열 순서 (joined_at, id) | joinedAt ASC, 같으면 id 코드 유닛 비교. 입력 불변(복사 후 정렬) | scrim.ts:27-33 |
+| 승격 | 빈 자리 = max(0, cap − joined), orderWaitlist 앞에서, joined > cap RangeError(D79) | scrim.ts:58-68 |
+| 정원 검증 | 정수 && min ≤ c ≤ max | scrim.ts:112-114 |
+| 포지션 검증 | use_positions: 1–2개, gamePositions 안, 중복 없음 / 아니면 [] 만 | scrim.ts:76-94 |
+| 시작 시각 | ≤ now → not_future, > now+30일 → too_far, 정확히 30일 ok | scrim.ts:97-109 |
+| 시작 조건(D78) | 고정 정원 → joined = capacity, 그 외 ≥ `SCRIM_MIN_PLAYERS_TO_START`(shared, 2) | scrim.ts:120-123, shared scrims.ts:30 |
+| 자동 마감 60분 | recruiting·full이고 now ≥ scheduledAt + 60분일 때만, canStart → start / cancel, 그 외 null | scrim.ts:129-142 |
+| 참가 마감(D92) | now ≥ scheduledAt | scrim.ts:172-176 |
+| 노쇼 표시 기한(D83) | now ≤ scheduledAt + 7일 | no-show.ts:108-112 |
+| core 순수성 | 시계·env·I/O 없음, 의존은 @gcd/shared만 | scrim.ts:5, package.json dependencies |
+| 정책값 상수 위치 | core 상수 없음, shared `NO_SHOW_*_DEFAULT`(3/30/7/7), `SCRIM_*_DEFAULT`(30/60) | config.ts 주석, shared scrims.ts:26-37 |
 
-## 「해석」 1–6 판단 (계약 위반 여부)
+## 12절 경계 목록 대 테스트
 
-| # | 해석 | 판단 | 이유 |
-| --- | --- | --- | --- |
-| 1 | apex 티어는 rank 문자열 검사 안 함 | **위반 아님**(문구 보완 권고) | 계약 10절 「모르는 tier·rank 문자열 → 예외」를 글자 그대로 읽으면 apex의 이상한 rank도 예외여야 하지만, 같은 행이 「apex면 division null」이고 shared `riot.ts:424`가 「라이엇은 apex에도 rank='I'를 주지만 저장·응답은 null」로 rank를 의미 없는 값으로 정의한다. 버려지는 값 때문에 동기화를 INTERNAL_ERROR로 실패시킬 이유가 없다. architect가 10절에 「apex는 rank 무시」 한 줄을 넣으면 해석 여지가 사라진다 |
-| 2 | 입력 검증 실패는 전부 `RangeError` | **위반 아님** | 계약이 정한 예외는 toRankValue 모르는 값뿐이고 나머지는 정상 입력에서 발생할 수 없는 경우(음수 횟수, Invalid Date, 비정수 LP, 타입 밖 포지션)다. 정상 경로 동작은 계약과 같다. backend·integration은 `toRankValue` 예외를 잡아 INTERNAL_ERROR로 기록해야 함(integration 검증 때 확인) |
-| 3 | random ≥1 → 마지막, 음수 → 처음, NaN → 예외 | **위반 아님** | random이 [0,1)이면 `floor(random()*n)`과 결과가 같다(riot.ts:28). 범위 밖 처리는 추가 방어일 뿐 |
-| 4 | 20개 자른 뒤 null 제외, `round(count*100/sample)/100` | **계약 그대로** | 10절 「앞 20개만, null 제외한 수 = sample_size」. 반올림은 독립 검사로 전 조합 확인 |
-| 5 | synced_at이 미래면 false, ttl 0이면 항상 true | **위반 아님** | 계약식 `now − synced ≥ ttl`과 같은 결과(미래면 음수라 false). 단 보고서 문구 「ttl 0이면 항상 true」는 부정확: 미래 시각 + ttl 0은 false(QA 실행 `isMatchesCacheStale(new Date(2000), new Date(1000), 0)` → false). 코드는 계약대로라 결함 아님, 보고서 문구만 틀림 |
-| 6 | 추가 export(`formatKstMidnight`, `MAIN_POSITION_MAX`, `RiotLeagueEntryLike`, config 상수) | **위반 아님** | 계약 함수 7개를 바꾸지 않는 추가. `RiotLeagueEntryLike`는 계약 9절 `RiotLeagueEntry`와 구조 호환(같은 5필드 + 추가 필드 허용 테스트 riot.test.ts:116) |
+| 계약 12절 경계 | 테스트 위치 |
+| --- | --- |
+| 정확히 3회 | no-show.test.ts:47 |
+| 30일 경계(시작 배제·끝 포함) | :55, :61, :67, :74 |
+| until 경계(now = until 해제) | :79 |
+| 발동 후 4번째로 연장 | :92 |
+| 오래된 발동 + 최근 1회 | :99 (+ 반대 사례 :108) |
+| 미래 시각 무시 | :118 |
+| lookback 자른 입력 = 전체 입력 | :173(200건), :191, :202 |
+| 대기열 동률 → id | scrim.test.ts:37, :111 |
+| 승격 수 > 대기 수 | :90 |
+| joinedCount > capacity 예외 | :116 |
+| 포지션 중복·범위 밖·포지션 없는 게임에 값 | :146, :151, :161 |
+| 시작 시각 = now·정확히 30일 | :172, :177 |
+| 고정 정원 9/10 | :205 |
+| open_positions 쏠림·나누어떨어지지 않는 정원 | :266, :281 |
+| 자동 마감 정확히 60분 | :224 |
+
+12절 목록의 경계는 모두 테스트에 있다.
 
 ## 결함
 
-없음 (blocker 0, major 0, minor 0).
+blocker 0, major 0, minor 4.
 
-참고(결함 아님):
-- 보고서 해석 5의 문구 부정확(위 표).
-- 보고서는 리더가 옮겨 적은 것이라 수치를 직접 재실행으로 확인함(79 passed 일치).
-- backend가 `SYNC_LIMIT_EXCEEDED`의 `Retry-After`를 `kstDayWindow(now).end − now` 올림으로 계산하는지, integration이 `RangeError`를 INTERNAL_ERROR로 기록하는지는 각 대상 검증(D7, C5)에서 본다.
+| # | 심각도 | 위치(파일:줄) | 기대 | 실제 | 재현 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | minor | packages/core/src/scrim.ts:156-167 | 목록 카드 「서폿 1 · 정글 1 구함」은 실제로 남은 자리 수를 넘지 않아야 사용자에게 맞는 안내가 된다 | 1지망이 한 포지션에 몰리면 「구함」 합계가 빈 자리보다 커진다. 계약 7절 식을 그대로 따른 결과라 계약 위반은 아니다(구현 보고서 해석 4에서도 밝힘) | `computeOpenPositions(['top','jungle','mid','bot','support'], 10, Array(9).fill('mid'))` → top·jungle·bot·support 각 2(합계 8), 실제 빈 자리 1. 계약에서 합계를 빈 자리로 자를지 architect가 정해야 한다 |
+| 2 | minor | packages/core/src/no-show.ts:83, :97 / no-show.test.ts:185 | 계약 7절: lastNoShowAt = now 이하 최대값 | backend가 5-6대로 `noShowLookbackStart` 초과만 조회하면 노쇼가 모두 37일보다 오래된 사용자는 `lastNoShowAt = null`. 전체 입력이면 그 옛 시각. 테스트는 이 경우를 `if`로 건너뛴다(:185) | `computeScrimRestriction([ago(40)], NOW, policy).lastNoShowAt` = ago(40), 하한으로 자르면 null. 응답 `last_no_show_at`이 안내용이라 영향은 표시뿐. backend가 MAX를 따로 조회할지 리더가 결정할 것 |
+| 3 | minor | packages/core/src/no-show.ts:108-112, scrim.ts:97-109, scrim.ts:129-142 | 다른 함수처럼 잘못된 숫자 인자는 RangeError(보고서 해석 5의 방침) | `windowDays`·`maxDaysAhead`·`autoCloseAfterMin`은 검사하지 않는다. NaN이면 조용히 false/결과 반환 | `isNoShowMarkWindowOpen(t, t+1일, NaN)` → false(예외 없음). env.ts가 양의 정수를 보장하면 정상 흐름엔 영향 없음 |
+| 4 | minor | packages/core/src/no-show.test.ts:173 | lookback 동등성 테스트가 정책 값이 바뀌어도 성립함을 보인다 | 200건 대조가 기본 정책(3/30/7)만 쓴다. 정책은 env로 바뀌는 값이다 | QA 무작위 대조(임의 정책 20,000건)에서 불일치 0이므로 구현은 맞다. 테스트 보강만 권장 |
+
+## 참고 (core 범위 밖, 다른 대상 검증 때 확인할 것)
+
+- `apps/web/src/lib/api/mock/scrims.ts:159, :171`이 `orderWaitlist`·`computeOpenPositions`를 core에서 가져오지 않고 다시 구현했다(snake_case `joined_at` 행 대상). 목 백엔드라 계약 위반은 아니지만 core와 달라질 수 있다. 1지망은 `preferred_positions[0]`로 core 입력과 같다. frontend QA 때 함께 본다.
+- 아직 `apps/api`에서 S2 core 함수를 import하는 곳이 없다(backend 미완료). backend QA에서 「계산식 재구현 없이 core 호출」, 5-6 조회 조건이 `>`(초과)인지, `canStartScrim`의 `fixedCapacity = capacity_min === capacity_max`인지 확인할 것.
+- 구현 보고서 경로가 계약 12절(`02_logic-dev_s2.md`)과 다르다. 리더 지시라고 보고서에 적혀 있다.

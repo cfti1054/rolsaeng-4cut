@@ -21,6 +21,7 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // /login, /api 프록시, Next 내부 파일, 확장자가 있는 정적 파일은 제외
-  matcher: ['/((?!login|api/|_next/|favicon\\.ico|.*\\.[a-zA-Z0-9]+$).*)'],
+  // /login, /api 프록시, Next 내부 파일, 확장자가 있는 정적 파일, 스팀 팝업 완료 페이지(S2 9-2: 인증 부팅 없음)는 제외.
+  // Next가 정적으로 읽으므로 문자열 리터럴로 둔다(middleware.test.ts가 같은 값을 정규식으로 검사)
+  matcher: ['/((?!login|api/|_next/|steam-link/|favicon\\.ico|.*\\.[a-zA-Z0-9]+$).*)'],
 };

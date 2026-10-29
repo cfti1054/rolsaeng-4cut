@@ -13,6 +13,7 @@ import {
 } from '@gcd/shared';
 import type { FetchLike } from '../client';
 import { emptyS1State, handleS1, MockS1State, type MockS1Options } from './game-accounts';
+import { emptyS2State, handleS2, MockS2State, type MockS2Options } from './scrims';
 
 /**
  * [목] 계약(_workspace/01_architect_contract.md 4·5절)을 흉내 내는 가짜 API.
@@ -35,6 +36,8 @@ export interface MockDb {
   user: Me | null;
   /** S1 게임 계정·소유 확인·새로고침 기록(lib/api/mock/game-accounts.ts) */
   s1?: MockS1State;
+  /** S2 내전·참가자(lib/api/mock/scrims.ts) */
+  s2?: MockS2State;
 }
 
 export interface MockBackendOptions {
@@ -47,6 +50,8 @@ export interface MockBackendOptions {
   latencyMs?: number;
   /** S1 목 설정(제공자 키 없음 흉내, 스팀 authorize_url 오리진) */
   s1?: MockS1Options;
+  /** S2 목 설정(노쇼 정책) */
+  s2?: MockS2Options;
 }
 
 /** 다른 멤버가 이미 쓰는 것으로 치는 닉네임(NICKNAME_TAKEN 확인용) */
@@ -109,7 +114,8 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
 
   async function handle(input: string, init?: RequestInit): Promise<Response> {
     const method = (init?.method ?? 'GET').toUpperCase();
-    const path = new URL(input, 'http://mock.local').pathname.replace(API_PREFIX, '');
+    const url = new URL(input, 'http://mock.local');
+    const path = url.pathname.replace(API_PREFIX, '');
     const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : undefined;
 
     if (method === 'POST' && path === ApiPath.authRefresh) {
@@ -193,6 +199,26 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
       if (res) return res;
     }
 
+    // S2 내전·게임·노쇼 제한
+    if (path === ApiPath.games || path === ApiPath.scrims || path.startsWith('/scrims/') || path === ApiPath.myScrimRestriction) {
+      const r = authorize(init);
+      if (r instanceof Response) return r;
+      const res = handleS2({
+        method,
+        path,
+        search: url.searchParams,
+        body,
+        me: r,
+        now: now(),
+        state: load().s2 ?? emptyS2State(),
+        save: (s2) => save({ ...load(), s2 }),
+        json,
+        error: (code, message, o) => error(code, message, o?.details, o?.retryAfterSec),
+        opts: opts.s2,
+      });
+      if (res) return res;
+    }
+
     return error('NOT_FOUND', `목에 없는 경로: ${method} ${path}`);
   }
 
@@ -231,12 +257,17 @@ export function browserMockBackend() {
         try {
           const raw = window.localStorage.getItem(KEY);
           if (!raw) return null;
-          const db = JSON.parse(raw) as { user: unknown; s1?: unknown };
+          const db = JSON.parse(raw) as { user: unknown; s1?: unknown; s2?: unknown };
           const user = Me.nullable().safeParse(db.user);
           if (!user.success) return null;
-          // 저장 형식이 바뀌어 맞지 않으면 S1 상태만 버린다
+          // 저장 형식이 바뀌어 맞지 않으면 그 슬라이스 상태만 버린다
           const s1 = MockS1State.safeParse(db.s1);
-          return s1.success ? { user: user.data, s1: s1.data } : { user: user.data };
+          const s2 = MockS2State.safeParse(db.s2);
+          return {
+            user: user.data,
+            ...(s1.success ? { s1: s1.data } : {}),
+            ...(s2.success ? { s2: s2.data } : {}),
+          };
         } catch {
           return null;
         }

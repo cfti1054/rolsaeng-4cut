@@ -25,7 +25,9 @@ export type RotateResult =
   /** 정상 회전: 새 쿠키를 내려야 한다 */
   | { kind: 'rotated'; userId: string; next: IssuedRefreshToken }
   /** 유예 기간 내 재사용: 새 액세스 토큰만, Set-Cookie 없음 */
-  | { kind: 'grace'; userId: string };
+  | { kind: 'grace'; userId: string }
+  /** (S2 D73) 발급 후 REFRESH_ROTATE_AFTER_HOURS 미만: 같은 토큰 유지, DB 쓰기·Set-Cookie 없음 */
+  | { kind: 'kept'; userId: string };
 
 /** 회전 경쟁에서 진 경우(조건부 update 영향 행 0) 트랜잭션을 되돌리기 위한 신호 */
 class LostRotationRace extends Error {}
@@ -34,6 +36,7 @@ class LostRotationRace extends Error {}
  * 리프레시 토큰 저장·회전·폐기(계약 5-2~5-4).
  * - 원문은 저장하지 않고 SHA-256(hex)만 저장한다.
  * - 수명은 로그인 시점부터 절대 만료(회전해도 같은 expires_at).
+ * - (S2 D73) 회전은 현재 토큰 발급 후 REFRESH_ROTATE_AFTER_HOURS가 지났을 때만. 그 전에는 'kept'.
  * 실패는 AppError(REFRESH_TOKEN_INVALID | REFRESH_TOKEN_REUSED). 쿠키 삭제는 컨트롤러가 한다.
  */
 @Injectable()
@@ -69,6 +72,12 @@ export class RefreshTokenService {
       throw new AppError('REFRESH_TOKEN_INVALID');
     }
     if (token.revokedAt) return this.handleRevoked(token, now);
+
+    // S2 9-1(D73): 현재 토큰 발급(created_at) 후 회전 주기 미만이면 회전하지 않는다. 0이면 매번 회전
+    const rotateAfterMs = this.config.refreshRotateAfterHours * 3_600_000;
+    if (rotateAfterMs > 0 && now.getTime() - token.createdAt.getTime() < rotateAfterMs) {
+      return { kind: 'kept', userId: token.userId };
+    }
 
     const nextRaw = newRawToken();
     const nextId = randomUUID();

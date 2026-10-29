@@ -36,6 +36,23 @@ export const STEAM_OPENID_ENDPOINT = 'https://steamcommunity.com/openid/login';
 /** OpenID claimed_id 형식. 캡처 그룹 1 = 스팀 64비트 ID */
 export const STEAM_CLAIMED_ID_PATTERN = /^https:\/\/steamcommunity\.com\/openid\/id\/(7656119\d{10})$/;
 
+// ---- S2 인증 보완 2: 스팀 연동 팝업(S2 계약 9-2, D74) ----
+
+/**
+ * 스팀 연동 진행 방식. redirect = 현재 창 이동(S1 방식, 기본값), popup = 새 창에서 진행 후 결과를 원래 창에 알리고 닫힘.
+ * 웹은 팝업을 열지 못하면(차단) redirect로 요청한다.
+ */
+export const SteamLinkDisplay = z.enum(['redirect', 'popup']);
+export type SteamLinkDisplay = z.infer<typeof SteamLinkDisplay>;
+
+/** 팝업 모드에서 API 콜백이 302로 보내는 웹 경로. 쿼리는 SettingsPageQuery와 같다(steam=linked | steam_error=코드) */
+export const STEAM_LINK_COMPLETE_PATH = '/steam-link/complete';
+
+/** 팝업 → 원래 창 결과 전달 채널(같은 오리진 BroadcastChannel 이름) */
+export const STEAM_LINK_BROADCAST_CHANNEL = 'gcd-steam-link';
+/** 팝업 → 원래 창 메시지 type 값(postMessage·BroadcastChannel 공통) */
+export const STEAM_LINK_MESSAGE_TYPE = 'gcd:steam-link' as const;
+
 // -----------------------------------------------------------------------------
 // 공통 응답 조각
 // -----------------------------------------------------------------------------
@@ -145,11 +162,12 @@ export type GetMyGameAccountsResponse = z.infer<typeof GetMyGameAccountsResponse
 
 /**
  * - riot: 라이엇 ID 조회 → 소유 확인(아이콘) 시작. 이미 RIOT_ACCOUNTS_MAX개면 GAME_ACCOUNT_LIMIT_REACHED. 첫 라이엇 ID는 대표가 된다. 이미 pending인 확인은 cancelled로 바꾸고 새로 만든다.
- * - steam: Steam OpenID 시작 URL 발급 + state 쿠키(gcd_steam) 설정. 웹은 authorize_url로 location 이동.
+ * - steam: Steam OpenID 시작 URL 발급 + state 쿠키(gcd_steam) 설정. display(S2): redirect면 웹은 현재 창을
+ *   authorize_url로 이동, popup이면 미리 연 팝업 창을 authorize_url로 이동. 콜백 도착지가 display에 따라 달라진다.
  */
 export const LinkGameAccountRequest = z.discriminatedUnion('provider', [
   z.object({ provider: z.literal('riot'), riot_id: RiotIdInput }).strict(),
-  z.object({ provider: z.literal('steam') }).strict(),
+  z.object({ provider: z.literal('steam'), display: SteamLinkDisplay.default('redirect') }).strict(),
 ]);
 export type LinkGameAccountRequest = z.infer<typeof LinkGameAccountRequest>;
 /** 웹이 보내는 형태(riot_id는 `게임이름#태그` 문자열) */
@@ -201,6 +219,11 @@ export type SetPrimaryGameAccountResponse = z.infer<typeof SetPrimaryGameAccount
 export const SteamLinkCallbackQuery = z
   .object({
     state: z.string().min(1).max(128).optional(),
+    /**
+     * (S2) 팝업 모드면 return_to에 `display=popup`이 붙어 돌아온다. 검증에는 쿠키의 display를 쓰고,
+     * 이 값은 쿠키가 없거나 깨졌을 때 오류를 어느 웹 경로로 보낼지 정하는 데만 쓴다('popup'만 인정, 그 밖은 redirect).
+     */
+    display: z.string().optional(),
     'openid.mode': z.string().optional(),
   })
   .passthrough();
@@ -227,6 +250,21 @@ export const SettingsPageQuery = z.object({
   steam_error: SteamLinkErrorCode.optional(),
 });
 export type SettingsPageQuery = z.infer<typeof SettingsPageQuery>;
+
+/** (S2) 팝업 완료 페이지(STEAM_LINK_COMPLETE_PATH) 쿼리. /settings와 같은 키를 쓴다 */
+export const SteamLinkCompletePageQuery = SettingsPageQuery;
+export type SteamLinkCompletePageQuery = SettingsPageQuery;
+
+/**
+ * (S2) 팝업 → 원래 창 결과 메시지. 완료 페이지가 BroadcastChannel(STEAM_LINK_BROADCAST_CHANNEL)과
+ * window.opener.postMessage(targetOrigin = 자기 origin) 두 경로로 같은 메시지를 보낸다.
+ * 받는 쪽은 origin = 자기 origin(postMessage), 이 스키마 parse 성공인 것만 처리하고, 같은 시도에서 첫 메시지만 쓴다.
+ */
+export const SteamLinkPopupMessage = z.discriminatedUnion('status', [
+  z.object({ type: z.literal(STEAM_LINK_MESSAGE_TYPE), status: z.literal('linked') }).strict(),
+  z.object({ type: z.literal(STEAM_LINK_MESSAGE_TYPE), status: z.literal('error'), code: SteamLinkErrorCode }).strict(),
+]);
+export type SteamLinkPopupMessage = z.infer<typeof SteamLinkPopupMessage>;
 
 // -----------------------------------------------------------------------------
 // POST /me/game-accounts/{id}/sync — 수동 새로고침(문서 6장, 9장 하루 5회)

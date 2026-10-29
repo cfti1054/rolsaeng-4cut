@@ -12,6 +12,14 @@ export type ScrimStatus = z.infer<typeof ScrimStatus>;
 export const ScrimPlayerStatus = z.enum(['joined', 'waitlist', 'cancelled', 'no_show']);
 export type ScrimPlayerStatus = z.infer<typeof ScrimPlayerStatus>;
 
+/**
+ * scrims.cancel_reason (S2, 계약 S2 D80) — 모집글이 cancelled가 된 이유.
+ * host: 방장 취소, admin: 운영진 취소, not_started: 시작 시각 + SCRIM_AUTO_CLOSE_AFTER_MIN 이 지나도
+ * 시작 조건을 채우지 못해 자동 취소.
+ */
+export const ScrimCancelReason = z.enum(['host', 'admin', 'not_started']);
+export type ScrimCancelReason = z.infer<typeof ScrimCancelReason>;
+
 /** scrim_players.team, scrim_results.winner_team — 목업의 블루팀/오렌지팀 */
 export const ScrimTeam = z.enum(['blue', 'orange']);
 export type ScrimTeam = z.infer<typeof ScrimTeam>;

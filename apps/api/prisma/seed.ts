@@ -16,6 +16,9 @@ async function main(): Promise<void> {
       hasTeams: g.has_teams,
       positions: g.positions,
       sortOrder: g.sort_order,
+      capacityMin: g.capacity_min,
+      capacityMax: g.capacity_max,
+      capacityDefault: g.capacity_default,
     };
     await prisma.game.upsert({
       where: { code: g.code },

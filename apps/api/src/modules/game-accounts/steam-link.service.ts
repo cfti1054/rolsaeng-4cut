@@ -1,7 +1,9 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   LinkGameAccountResponse,
+  STEAM_LINK_COMPLETE_PATH,
   STEAM_OPENID_ENDPOINT,
+  type SteamLinkDisplay,
   SteamLinkErrorCode,
 } from '@gcd/shared';
 import { advisoryXactLock, userGameAccountsLockKey } from '../../common/advisory-lock';
@@ -13,7 +15,13 @@ import { APP_CONFIG, type AppConfig } from '../../config/env';
 import { ExternalApiError, STEAM_API, type SteamApi } from '../../integrations/contracts';
 import { PrismaService } from '../../prisma/prisma.service';
 import { GameCatalog } from './game-catalog.service';
-import { newSteamState, signSteamCookie, steamReturnTo, verifySteamCookie } from './steam-link-cookie';
+import {
+  type SteamCookiePayload,
+  newSteamState,
+  signSteamCookie,
+  steamReturnTo,
+  verifySteamCookie,
+} from './steam-link-cookie';
 import { SyncEnqueuer } from './sync-enqueuer.service';
 
 const OPENID_NS = 'http://specs.openid.net/auth/2.0';
@@ -43,7 +51,7 @@ export class SteamLinkService {
   ) {}
 
   /** 시작 `POST /me/game-accounts {provider:'steam'}` (5-2 시작 1–4) */
-  async start(userId: string): Promise<SteamStartResult> {
+  async start(userId: string, display: SteamLinkDisplay = 'redirect'): Promise<SteamStartResult> {
     if (!this.config.steam.apiKey) throw new AppError('GAME_PROVIDER_NOT_CONFIGURED');
     const { steam } = await this.catalog.ids();
     if ((await this.prisma.gameAccount.count({ where: { userId, gameId: steam } })) > 0) {
@@ -51,11 +59,11 @@ export class SteamLinkService {
     }
     const state = newSteamState();
     const iat = Math.floor(this.clock.now().getTime() / 1000);
-    const cookie = signSteamCookie({ state, user_id: userId, iat }, this.config.cookieSecret);
+    const cookie = signSteamCookie({ state, user_id: userId, iat, display }, this.config.cookieSecret);
     const params = new URLSearchParams({
       'openid.ns': OPENID_NS,
       'openid.mode': 'checkid_setup',
-      'openid.return_to': steamReturnTo(this.config, state),
+      'openid.return_to': steamReturnTo(this.config, state, display),
       'openid.realm': this.config.webOrigin,
       'openid.identity': OPENID_IDENTIFIER_SELECT,
       'openid.claimed_id': OPENID_IDENTIFIER_SELECT,
@@ -67,18 +75,26 @@ export class SteamLinkService {
     return { body, cookie };
   }
 
-  private settingsUrl(query: string): string {
-    return `${this.config.webOrigin}/settings?${query}`;
+  /** 도착지: redirect = 웹 /settings(S1), popup = 웹 /steam-link/complete(S2 9-2). 쿼리 키는 같다 */
+  private resultUrl(display: SteamLinkDisplay, query: string): string {
+    const path = display === 'popup' ? STEAM_LINK_COMPLETE_PATH : '/settings';
+    return `${this.config.webOrigin}${path}?${query}`;
   }
 
   /**
    * 콜백 `GET /me/game-accounts/steam/callback` (5-2 콜백 2–10). 쿠키 삭제(1단계)는 컨트롤러가 한다.
-   * 성공 → /settings?steam=linked, 실패 → /settings?steam_error={SteamLinkErrorCode}
+   * 성공 → {도착지}?steam=linked, 실패 → {도착지}?steam_error={SteamLinkErrorCode}.
+   * 도착지(S2 9-2): 쿠키가 유효하면 쿠키의 display, 쿠키가 없거나 깨졌으면 쿼리 display === 'popup'일 때만 popup.
+   * 쿼리 display는 오류 페이지 선택에만 쓰고 검증에는 쓰지 않는다.
    */
   async callback(rawQuery: unknown, cookie: string | undefined): Promise<SteamCallbackResult> {
+    const payload = verifySteamCookie(cookie, this.config.cookieSecret, this.clock.now().getTime());
+    const queryDisplay =
+      rawQuery && typeof rawQuery === 'object' ? (rawQuery as Record<string, unknown>).display : undefined;
+    const display: SteamLinkDisplay = payload ? payload.display : queryDisplay === 'popup' ? 'popup' : 'redirect';
     try {
-      await this.handleCallback(rawQuery, cookie);
-      return { location: this.settingsUrl('steam=linked') };
+      await this.handleCallback(rawQuery, payload);
+      return { location: this.resultUrl(display, 'steam=linked') };
     } catch (err) {
       let code: SteamLinkErrorCode = 'INTERNAL_ERROR';
       if (err instanceof AppError) {
@@ -88,11 +104,11 @@ export class SteamLinkService {
       if (code === 'INTERNAL_ERROR') {
         this.log.error(`스팀 콜백 처리 실패: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);
       }
-      return { location: this.settingsUrl(`steam_error=${encodeURIComponent(code)}`) };
+      return { location: this.resultUrl(display, `steam_error=${encodeURIComponent(code)}`) };
     }
   }
 
-  private async handleCallback(rawQuery: unknown, cookie: string | undefined): Promise<void> {
+  private async handleCallback(rawQuery: unknown, payload: SteamCookiePayload | null): Promise<void> {
     // 쿼리 값은 모두 문자열 1개여야 한다(같은 키 반복·중첩은 변조로 본다)
     const query: Record<string, string> = {};
     let malformed = false;
@@ -107,7 +123,6 @@ export class SteamLinkService {
     if (mode === 'cancel' && !malformed) throw new AppError('STEAM_LINK_CANCELLED');
     if (mode !== 'id_res') throw new AppError('STEAM_OPENID_INVALID');
     // 3
-    const payload = verifySteamCookie(cookie, this.config.cookieSecret, this.clock.now().getTime());
     if (!payload || !constantTimeEquals(payload.state, query.state)) {
       throw new AppError('STEAM_LINK_STATE_INVALID');
     }
@@ -118,7 +133,7 @@ export class SteamLinkService {
     for (const [k, v] of Object.entries(query)) if (k.startsWith('openid.')) openid[k] = v;
     let verified: Awaited<ReturnType<SteamApi['verifyOpenIdAssertion']>>;
     try {
-      verified = await this.steam.verifyOpenIdAssertion(openid, steamReturnTo(this.config, payload.state));
+      verified = await this.steam.verifyOpenIdAssertion(openid, steamReturnTo(this.config, payload.state, payload.display));
     } catch (err) {
       if (err instanceof ExternalApiError) {
         if (err.kind === 'rate_limited') {

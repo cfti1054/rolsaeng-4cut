@@ -5,9 +5,10 @@ import type { PrismaService } from '../src/prisma/prisma.service';
 import { FakePrisma } from './support/fake-prisma';
 import { testConfig } from './support/test-app';
 
-function setup() {
+/** 기본은 S0·S1 동작(매번 회전, REFRESH_ROTATE_AFTER_HOURS=0). 하루 1회 회전 테스트는 hours를 넘긴다 */
+function setup(hours = '0') {
   const prisma = new FakePrisma();
-  const svc = new RefreshTokenService(prisma as unknown as PrismaService, testConfig());
+  const svc = new RefreshTokenService(prisma as unknown as PrismaService, testConfig({ REFRESH_ROTATE_AFTER_HOURS: hours }));
   return { prisma, svc };
 }
 
@@ -66,5 +67,36 @@ describe('RefreshTokenService', () => {
     await svc.revokeByRaw(raw);
     const err = await svc.rotate(raw).catch((e: unknown) => e);
     expect((err as AppError).code).toBe('REFRESH_TOKEN_INVALID');
+  });
+
+  it('(D73) 24시간 미만은 kept(DB 쓰기 없음), 24시간 정각부터 rotated', async () => {
+    const { prisma, svc } = setup('24');
+    const start = Date.now();
+    vi.useFakeTimers({ toFake: ['Date'], now: start });
+    const { raw } = await svc.issueNewFamily(USER);
+    vi.setSystemTime(start + 24 * 3_600_000 - 1);
+    expect(await svc.rotate(raw)).toEqual({ kind: 'kept', userId: USER });
+    expect(prisma.refreshTokens).toHaveLength(1);
+    expect(prisma.refreshTokens[0]?.revokedAt).toBeNull();
+    vi.setSystemTime(start + 24 * 3_600_000);
+    expect((await svc.rotate(raw)).kind).toBe('rotated');
+    expect(prisma.refreshTokens).toHaveLength(2);
+  });
+
+  it('(D73) 동시 refresh 24시간 경계: 한쪽 회전, 나머지는 유예(재사용 오탐 없음)', async () => {
+    const { prisma, svc } = setup('24');
+    const start = Date.now();
+    vi.useFakeTimers({ toFake: ['Date'], now: start });
+    const { raw } = await svc.issueNewFamily(USER);
+    vi.setSystemTime(start + 24 * 3_600_000);
+    const kinds = (await Promise.all([svc.rotate(raw), svc.rotate(raw), svc.rotate(raw)])).map((r) => r.kind).sort();
+    expect(kinds).toEqual(['grace', 'grace', 'rotated']);
+    expect(prisma.refreshTokens.filter((t) => t.revokedAt === null)).toHaveLength(1);
+  });
+
+  it('(D73) 0이면 발급 직후에도 회전', async () => {
+    const { svc } = setup('0');
+    const { raw } = await svc.issueNewFamily(USER);
+    expect((await svc.rotate(raw)).kind).toBe('rotated');
   });
 });

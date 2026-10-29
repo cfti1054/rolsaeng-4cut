@@ -19,6 +19,13 @@ export type GameSeed = {
   positions: string[];
   /** 필터·탭 표시 순서 */
   sort_order: number;
+  /**
+   * 내전 정원 범위(S2, D76). 방장 포함 인원. capacity_min = capacity_max면 정원 고정(롤 10).
+   * 작성 폼 기본값은 capacity_default. 서버는 min ≤ capacity ≤ max를 검사한다.
+   */
+  capacity_min: number;
+  capacity_max: number;
+  capacity_default: number;
 };
 
 /** games 테이블 시드. apps/api/prisma/seed.ts가 이 값으로 upsert(code 기준)한다. */
@@ -30,6 +37,10 @@ export const GAME_SEED: readonly GameSeed[] = [
     has_teams: true,
     positions: ['top', 'jungle', 'mid', 'bot', 'support'],
     sort_order: 1,
+    // 5:5 고정. 팀 밸런스(7-2)가 포지션 5개 × 2팀을 전제로 한다(D76)
+    capacity_min: 10,
+    capacity_max: 10,
+    capacity_default: 10,
   },
   {
     code: 'tft',
@@ -38,6 +49,10 @@ export const GAME_SEED: readonly GameSeed[] = [
     has_teams: false,
     positions: [],
     sort_order: 2,
+    // 롤체 로비 최대 8인
+    capacity_min: 2,
+    capacity_max: 8,
+    capacity_default: 8,
   },
   {
     code: 'steam',
@@ -46,6 +61,10 @@ export const GAME_SEED: readonly GameSeed[] = [
     has_teams: true,
     positions: [],
     sort_order: 3,
+    // 스팀 게임은 게임마다 인원이 달라 범위를 넓게(목업 기본 8)
+    capacity_min: 2,
+    capacity_max: 16,
+    capacity_default: 8,
   },
 ];
 

@@ -1,18 +1,45 @@
 import {
+  NO_SHOW_MARK_WINDOW_DAYS_DEFAULT,
+  NO_SHOW_RESTRICTION_DAYS_DEFAULT,
+  NO_SHOW_THRESHOLD_DEFAULT,
+  NO_SHOW_WINDOW_DAYS_DEFAULT,
+  REFRESH_ROTATE_AFTER_HOURS_DEFAULT,
   RIOT_ACCOUNTS_MAX_DEFAULT,
   RIOT_VERIFICATION_TTL_SEC_DEFAULT,
+  SCRIM_AUTO_CLOSE_AFTER_MIN_DEFAULT,
+  SCRIM_SCHEDULE_MAX_DAYS_AHEAD_DEFAULT,
   SYNC_DAILY_LIMIT_DEFAULT,
 } from '@gcd/shared';
 import { z } from 'zod';
 
 /**
- * API 환경 변수(S0 계약 10절 + S1 계약 11절). 기동 시 한 번 검증하고, 필수값이 없으면 시작하지 않는다.
+ * API 환경 변수(S0 계약 10절 + S1 계약 11절 + S2 계약 11절). 기동 시 한 번 검증하고, 필수값이 없으면 시작하지 않는다.
  * 빈 문자열은 "설정 안 함"으로 본다(.env.example의 `KEY=` 형태).
  */
 const emptyToUndefined = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v);
 const optionalString = z.preprocess(emptyToUndefined, z.string().trim().min(1).optional());
 const posInt = (def: number) =>
   z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(def));
+const nonNegInt = (def: number) =>
+  z.preprocess(emptyToUndefined, z.coerce.number().int().min(0).default(def));
+/** `true`/`false`만(대소문자·앞뒤 공백 무시), 그 밖의 값은 검증 실패(D72) */
+const strictBool = (def: boolean) =>
+  z.preprocess(
+    (v) => (typeof v === 'string' ? (v.trim() === '' ? undefined : v.trim().toLowerCase()) : v),
+    z
+      .enum(['true', 'false'], { errorMap: () => ({ message: 'true 또는 false' }) })
+      .default(def ? 'true' : 'false')
+      .transform((v) => v === 'true'),
+  );
+
+/**
+ * SCRIM_JOBS_ENABLED만 따로 읽는다(ScrimsModule.forRoot가 모듈 구성 시점에 cron 등록 여부를 정할 때).
+ * 잘못된 값이면 true로 보고, 실제 기동은 loadConfig 검증에서 멈춘다.
+ */
+export function scrimJobsEnabledFromEnv(env: Record<string, string | undefined> = process.env): boolean {
+  const r = strictBool(true).safeParse(env.SCRIM_JOBS_ENABLED);
+  return r.success ? r.data : true;
+}
 /** 라이엇 라우팅 값: 소문자 영문·숫자 */
 const routing = (def: string) =>
   z.preprocess(
@@ -71,13 +98,16 @@ const EnvSchema = z.object({
   RIOT_ACCOUNTS_MAX: posInt(RIOT_ACCOUNTS_MAX_DEFAULT),
   RIOT_DDRAGON_VERSION: optionalString,
   SYNC_DAILY_LIMIT: posInt(SYNC_DAILY_LIMIT_DEFAULT),
-  SYNC_JOBS_ENABLED: z.preprocess(
-    (v) => (typeof v === 'string' ? (v.trim() === '' ? undefined : v.trim().toLowerCase()) : v),
-    z
-      .enum(['true', 'false'], { errorMap: () => ({ message: 'true 또는 false' }) })
-      .default('true')
-      .transform((v) => v === 'true'),
-  ),
+  SYNC_JOBS_ENABLED: strictBool(true),
+  // ---- S2 (계약 S2 11절) ----
+  REFRESH_ROTATE_AFTER_HOURS: nonNegInt(REFRESH_ROTATE_AFTER_HOURS_DEFAULT),
+  SCRIM_SCHEDULE_MAX_DAYS_AHEAD: posInt(SCRIM_SCHEDULE_MAX_DAYS_AHEAD_DEFAULT),
+  SCRIM_AUTO_CLOSE_AFTER_MIN: posInt(SCRIM_AUTO_CLOSE_AFTER_MIN_DEFAULT),
+  SCRIM_JOBS_ENABLED: strictBool(true),
+  SCRIM_NO_SHOW_THRESHOLD: posInt(NO_SHOW_THRESHOLD_DEFAULT),
+  SCRIM_NO_SHOW_WINDOW_DAYS: posInt(NO_SHOW_WINDOW_DAYS_DEFAULT),
+  SCRIM_NO_SHOW_RESTRICTION_DAYS: posInt(NO_SHOW_RESTRICTION_DAYS_DEFAULT),
+  SCRIM_NO_SHOW_MARK_WINDOW_DAYS: posInt(NO_SHOW_MARK_WINDOW_DAYS_DEFAULT),
 });
 
 export interface AppConfig {
@@ -117,6 +147,18 @@ export interface AppConfig {
   /** 수동 새로고침 하루 한도(라이엇·스팀 합산, D41) */
   syncDailyLimit: number;
   syncJobsEnabled: boolean;
+  /** S2 9-1(D73): 현재 리프레시 토큰 발급 후 이 시간이 지나야 회전. 0이면 매번 회전 */
+  refreshRotateAfterHours: number;
+  /** S2 내전(계약 S2 11절) */
+  scrim: {
+    scheduleMaxDaysAhead: number;
+    autoCloseAfterMin: number;
+    /** false면 자동 마감 cron 미등록(D96) */
+    jobsEnabled: boolean;
+    noShow: { threshold: number; windowDays: number; restrictionDays: number };
+    /** 노쇼 표시 기한(시작 시각부터 일수, D83) */
+    noShowMarkWindowDays: number;
+  };
 }
 
 export const APP_CONFIG = Symbol('APP_CONFIG');
@@ -165,6 +207,18 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     externalApiTimeoutMs: e.EXTERNAL_API_TIMEOUT_MS,
     syncDailyLimit: e.SYNC_DAILY_LIMIT,
     syncJobsEnabled: e.SYNC_JOBS_ENABLED,
+    refreshRotateAfterHours: e.REFRESH_ROTATE_AFTER_HOURS,
+    scrim: {
+      scheduleMaxDaysAhead: e.SCRIM_SCHEDULE_MAX_DAYS_AHEAD,
+      autoCloseAfterMin: e.SCRIM_AUTO_CLOSE_AFTER_MIN,
+      jobsEnabled: e.SCRIM_JOBS_ENABLED,
+      noShow: {
+        threshold: e.SCRIM_NO_SHOW_THRESHOLD,
+        windowDays: e.SCRIM_NO_SHOW_WINDOW_DAYS,
+        restrictionDays: e.SCRIM_NO_SHOW_RESTRICTION_DAYS,
+      },
+      noShowMarkWindowDays: e.SCRIM_NO_SHOW_MARK_WINDOW_DAYS,
+    },
   };
 }
 
