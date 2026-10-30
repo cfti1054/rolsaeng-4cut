@@ -294,7 +294,7 @@ function seed(me: Me, now: number): MockS2State {
   const h = (hours: number) => iso(Math.ceil((now + hours * 3_600_000) / (30 * MIN_MS)) * 30 * MIN_MS);
 
   add(
-    { game: 'lol', title: '화요일 저녁 5:5 내전', scheduled_at: h(3), capacity: 10, host_id: U['미드고정']!, rules: '토너먼트 드래프트, 피어리스 없음.\n시작 10분 전까지 음성 채널 입장.\n노쇼 3회(30일) 시 7일간 참가 제한.' },
+    { game: 'lol', title: '화요일 저녁 5:5 내전', scheduled_at: h(3), capacity: 10, host_id: U['미드고정']!, rules: '토너먼트 드래프트, 피어리스 없음.\n시작 10분 전까지 음성 채널 입장.\n노쇼 3회(30일) 시 1일간 참가 제한.' },
     [
       [U['미드고정']!, ['mid', 'top']],
       [U['한타각']!, ['top', 'jungle']],
@@ -404,11 +404,11 @@ function seed(me: Me, now: number): MockS2State {
     [[U['바론스틸']!, []]],
   ).status = 'cancelled';
 
-  // 노쇼 제한 흉내: 최근 30일 안에 노쇼 3회
+  // 노쇼 제한 흉내: 최근 30일 안에 노쇼 3회. 마지막 표시는 6시간 전이라 1일 제한이 아직 남아 있다.
   if (me.nickname.toLowerCase().startsWith('noshow')) {
-    for (const daysAgo of [20, 9, 2]) {
+    for (const hoursAgo of [20 * 24, 9 * 24, 6]) {
       const s = add(
-        { game: 'tft', title: `노쇼 기록용 로비 (${daysAgo}일 전)`, scheduled_at: iso(now - daysAgo * DAY_MS), capacity: 8, host_id: U['체스왕']!, status: 'finished', started_at: iso(now - daysAgo * DAY_MS) },
+        { game: 'tft', title: `노쇼 기록용 로비 (${hoursAgo}시간 전)`, scheduled_at: iso(now - hoursAgo * 3_600_000), capacity: 8, host_id: U['체스왕']!, status: 'finished', started_at: iso(now - hoursAgo * 3_600_000) },
         [
           [U['체스왕']!, []],
           [me.id, []],
@@ -417,7 +417,7 @@ function seed(me: Me, now: number): MockS2State {
       s.status = 'finished';
       const row = state.players.find((p) => p.scrim_id === s.id && p.user_id === me.id)!;
       row.status = 'no_show';
-      row.no_show_marked_at = iso(now - daysAgo * DAY_MS + 3 * 3_600_000);
+      row.no_show_marked_at = iso(now - hoursAgo * 3_600_000);
       row.no_show_marked_by = U['미드고정']!;
     }
   }

@@ -14,6 +14,6 @@ export const HOUR_MS = 60 * 60 * 1000;
 /** 1분(밀리초) */
 export const MINUTE_MS = 60 * 1000;
 
-// S2 내전·노쇼 값(정원 범위, 노쇼 3회/30일/7일, 자동 마감 60분 등)은 환경 변수로 조정하므로
+// S2 내전·노쇼 값(정원 범위, 노쇼 3회/30일/1일, 자동 마감 60분 등)은 환경 변수로 조정하므로
 // core 상수로 두지 않고 인자(NoShowPolicy, maxDaysAhead, autoCloseAfterMin …)로 받는다.
 // 기본값은 @gcd/shared(NO_SHOW_*_DEFAULT, SCRIM_*_DEFAULT)에 있다.

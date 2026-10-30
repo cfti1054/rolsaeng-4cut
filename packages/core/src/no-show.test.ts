@@ -23,8 +23,8 @@ const ago = (d: number) => new Date(NOW.getTime() - d * DAY);
 const plus = (base: Date, ms: number) => new Date(base.getTime() + ms);
 
 describe('computeScrimRestriction', () => {
-  it('정책 기본값은 문서 7-4(3회 / 30일 / 7일)', () => {
-    expect(policy).toEqual({ threshold: 3, windowDays: 30, restrictionDays: 7 });
+  it('정책 기본값은 3회 / 30일 / 1일', () => {
+    expect(policy).toEqual({ threshold: 3, windowDays: 30, restrictionDays: 1 });
   });
 
   it('빈 입력 → 제한 없음, 0회, last null', () => {
@@ -44,18 +44,18 @@ describe('computeScrimRestriction', () => {
     expect(r.lastNoShowAt).toEqual(ago(1));
   });
 
-  it('정확히 3회째 노쇼 → 제한, until = 3회째 + 7일', () => {
-    const third = ago(1);
+  it('정확히 3회째 노쇼 → 제한, until = 3회째 + 제한 일수', () => {
+    const third = ago(0.5);
     const r = computeScrimRestriction([ago(20), ago(10), third], NOW, policy);
     expect(r.restricted).toBe(true);
-    expect(r.until).toEqual(plus(third, 7 * DAY));
+    expect(r.until).toEqual(plus(third, policy.restrictionDays * DAY));
     expect(r.recentCount).toBe(3);
   });
 
   it('3회째가 now와 같은 시각이어도 포함(구간 끝 포함)', () => {
     const r = computeScrimRestriction([ago(5), ago(2), NOW], NOW, policy);
     expect(r.restricted).toBe(true);
-    expect(r.until).toEqual(plus(NOW, 7 * DAY));
+    expect(r.until).toEqual(plus(NOW, policy.restrictionDays * DAY));
   });
 
   it('30일 창 경계: 첫 노쇼가 정확히 30일 전이면 구간 시작 배제 → 발동 안 함', () => {
@@ -68,7 +68,7 @@ describe('computeScrimRestriction', () => {
     const m = ago(0.5);
     const r = computeScrimRestriction([plus(m, -30 * DAY + 1), ago(10), m], NOW, policy);
     expect(r.restricted).toBe(true);
-    expect(r.until).toEqual(plus(m, 7 * DAY));
+    expect(r.until).toEqual(plus(m, policy.restrictionDays * DAY));
   });
 
   it('recentCount 경계: (now − 30일, now] — 정확히 30일 전은 제외, 1ms 뒤는 포함', () => {
@@ -76,10 +76,10 @@ describe('computeScrimRestriction', () => {
     expect(computeScrimRestriction([plus(ago(30), 1)], NOW, policy).recentCount).toBe(1);
   });
 
-  it('7일 해제 시각: now = until이면 해제, until − 1ms면 제한', () => {
+  it('제한 해제 시각: now = until이면 해제, until − 1ms면 제한', () => {
     const third = new Date('2026-10-20T10:00:00.000Z');
     const marks = [plus(third, -2 * DAY), plus(third, -DAY), third];
-    const until = plus(third, 7 * DAY);
+    const until = plus(third, policy.restrictionDays * DAY);
     const before = computeScrimRestriction(marks, plus(until, -1), policy);
     expect(before.restricted).toBe(true);
     expect(before.until).toEqual(until);
@@ -89,10 +89,10 @@ describe('computeScrimRestriction', () => {
     expect(at.recentCount).toBe(3);
   });
 
-  it('발동 후 4번째 노쇼 → 해제 시각이 4번째 + 7일로 연장', () => {
-    const fourth = ago(1);
+  it('발동 후 4번째 노쇼 → 해제 시각이 4번째 + 제한 일수로 연장', () => {
+    const fourth = ago(0.25);
     const r = computeScrimRestriction([ago(6), ago(5), ago(4), fourth], NOW, policy);
-    expect(r.until).toEqual(plus(fourth, 7 * DAY));
+    expect(r.until).toEqual(plus(fourth, policy.restrictionDays * DAY));
     expect(r.recentCount).toBe(4);
   });
 
@@ -105,13 +105,13 @@ describe('computeScrimRestriction', () => {
     expect(r.lastNoShowAt).toEqual(ago(1));
   });
 
-  it('now 기준 30일 개수(2회)만 보면 놓치는 경우: 2일 전 표시 시점에는 30일 안 3회였으므로 제한 중', () => {
-    // 2일 전 m의 구간 (m − 30일, m] = (32일 전, 2일 전]에 31.5·2.5·2일 전 3회 → 발동, 해제 = 5일 뒤
-    const marks = [ago(31.5), ago(2.5), ago(2)];
+  it('now 기준 30일 개수(2회)만 보면 놓치는 경우: 12시간 전 표시 시점에는 30일 안 3회였으므로 제한 중', () => {
+    // 12시간 전 m의 구간 (m − 30일, m]에 30.4일·1일·12시간 전 3회 → 발동.
+    // now 기준 30일 창에는 30.4일 전이 빠져 2회지만, 1일 제한은 아직 남아 있다.
+    const marks = [ago(30.4), ago(1), ago(0.5)];
     const r = computeScrimRestriction(marks, NOW, policy);
     expect(r.restricted).toBe(true);
-    expect(r.until).toEqual(plus(ago(2), 7 * DAY));
-    // now 기준 30일 안에는 2회뿐이지만 제한 중이다(recentCount는 안내용)
+    expect(r.until).toEqual(plus(ago(0.5), policy.restrictionDays * DAY));
     expect(r.recentCount).toBe(2);
   });
 
@@ -136,10 +136,10 @@ describe('computeScrimRestriction', () => {
   });
 
   it('같은 시각 노쇼 3건(한 번에 표시)도 3회로 센다', () => {
-    const m = ago(1);
+    const m = ago(0.5);
     const r = computeScrimRestriction([m, new Date(m), new Date(m)], NOW, policy);
     expect(r.restricted).toBe(true);
-    expect(r.until).toEqual(plus(m, 7 * DAY));
+    expect(r.until).toEqual(plus(m, policy.restrictionDays * DAY));
   });
 
   it('정책 값 변경(threshold 2, window 10, restriction 3)', () => {
@@ -157,8 +157,8 @@ describe('computeScrimRestriction', () => {
 });
 
 describe('noShowLookbackStart', () => {
-  it('now − (30 + 7)일', () => {
-    expect(noShowLookbackStart(NOW, policy)).toEqual(ago(37));
+  it('now − (windowDays + restrictionDays)일', () => {
+    expect(noShowLookbackStart(NOW, policy)).toEqual(ago(policy.windowDays + policy.restrictionDays));
   });
 
   // 결정적 의사 난수(LCG)로 여러 노쇼 이력을 만들어 하한으로 자른 입력과 전체 입력의 판정을 비교
@@ -188,9 +188,10 @@ describe('noShowLookbackStart', () => {
     }
   });
 
-  it('하한 경계 사례: 정확히 37일 전 노쇼를 빼도 판정 같음', () => {
-    // 37·36.5·30.5일 전 → 30.5일 전 발동 시 해제 23.5일 전 → 어차피 만료
-    const marks = [ago(37), ago(36.5), ago(30.5)];
+  it('하한 경계 사례: 정확히 하한 시각의 노쇼를 빼도 판정 같음', () => {
+    // 하한·하한−0.5일·하한−6.5일. 발동은 이미 만료되어 빼기 전후 모두 제한 없음
+    const lookbackDays = policy.windowDays + policy.restrictionDays;
+    const marks = [ago(lookbackDays), ago(lookbackDays - 0.5), ago(lookbackDays - 6.5)];
     const lb = noShowLookbackStart(NOW, policy).getTime();
     const cut = marks.filter((d) => d.getTime() > lb);
     expect(cut).toHaveLength(2);
@@ -199,14 +200,13 @@ describe('noShowLookbackStart', () => {
     );
   });
 
-  it('하한 근처 이력: 36.99·36.98·6.99일 전 → 6.99일 전 구간에 앞의 둘이 빠져 발동 아님', () => {
-    const marks = [ago(36.99), ago(36.98), ago(6.99)];
+  it('창 바로 밖 2건은 발동 아님, 창 안이면 발동하고 해제는 now 뒤', () => {
+    const marks = [ago(30.4), ago(30.39), ago(0.4)];
     expect(computeScrimRestriction(marks, NOW, policy).restricted).toBe(false);
-    // 반대로 30일 안에 모이면 발동, 해제는 now 뒤
-    const marks2 = [ago(36.5), ago(36), ago(6.9)];
+    const marks2 = [ago(30.3), ago(30), ago(0.4)];
     const r = computeScrimRestriction(marks2, NOW, policy);
     expect(r.restricted).toBe(true);
-    expect(r.until).toEqual(plus(ago(6.9), 7 * DAY));
+    expect(r.until).toEqual(plus(ago(0.4), policy.restrictionDays * DAY));
   });
 });
 

@@ -1,6 +1,15 @@
 'use client';
 
-import { Uuid, type GameView, type ScrimDetail, type ScrimPlayerView, type ScrimRestriction } from '@gcd/shared';
+import {
+  NO_SHOW_RESTRICTION_DAYS_DEFAULT,
+  NO_SHOW_THRESHOLD_DEFAULT,
+  NO_SHOW_WINDOW_DAYS_DEFAULT,
+  Uuid,
+  type GameView,
+  type ScrimDetail,
+  type ScrimPlayerView,
+  type ScrimRestriction,
+} from '@gcd/shared';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { Badge, Button, ConfirmDialog, InlineError, Notice, Toast } from '@/components/ui/controls';
@@ -413,6 +422,10 @@ function HostMenu({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => 
 
 function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => void }) {
   const me = useMe();
+  const { restriction } = useRestriction();
+  const windowDays = restriction?.policy.window_days ?? NO_SHOW_WINDOW_DAYS_DEFAULT;
+  const threshold = restriction?.policy.threshold ?? NO_SHOW_THRESHOLD_DEFAULT;
+  const restrictionDays = restriction?.policy.restriction_days ?? NO_SHOW_RESTRICTION_DAYS_DEFAULT;
   const isAdmin = me.data?.role === 'admin';
   const showNoShow = isAdmin && (s.status === 'playing' || s.status === 'finished');
   const noShow = useSetScrimNoShow(s.id);
@@ -513,8 +526,8 @@ function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => vo
         description={
           markTarget && (
             <>
-              <strong className="text-text">{markTarget.user.nickname}</strong>님을 이 내전의 노쇼로 표시해요. 최근 30일 노쇼가 3회가
-              되면 7일 동안 내전 참가·모집이 제한돼요. 잘못 표시했다면 「노쇼 정정」으로 되돌릴 수 있어요.
+              <strong className="text-text">{markTarget.user.nickname}</strong>님을 이 내전의 노쇼로 표시해요. 최근 {windowDays}일 노쇼가 {threshold}회가
+              되면 {restrictionDays}일 동안 내전 참가·모집이 제한돼요. 잘못 표시했다면 「노쇼 정정」으로 되돌릴 수 있어요.
             </>
           )
         }

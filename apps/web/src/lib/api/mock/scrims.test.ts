@@ -333,9 +333,9 @@ describe('S2 목: 노쇼 제한·노쇼 표시', () => {
     const t = setup({ username: 'noshow_kim' });
     await t.ready;
     const r = await t.api.request(ApiPath.myScrimRestriction, GetMyScrimRestrictionResponse);
-    expect(r).toMatchObject({ restricted: true, recent_no_show_count: 3, policy: { threshold: 3, window_days: 30, restriction_days: 7 } });
-    // 가장 늦은 발동 노쇼(2일 전 + 3시간) + 7일
-    expect(Date.parse(r.until!)).toBe(Date.parse('2026-10-28T03:00:00.000Z') + 5 * 86_400_000 + 3 * 3_600_000);
+    expect(r).toMatchObject({ restricted: true, recent_no_show_count: 3, policy: { threshold: 3, window_days: 30, restriction_days: 1 } });
+    // 가장 늦은 발동 노쇼(6시간 전) + 1일
+    expect(Date.parse(r.until!)).toBe(Date.parse('2026-10-28T03:00:00.000Z') - 6 * 3_600_000 + 86_400_000);
 
     const tft = await t.findByTitle('open', '롤체 8인 친선 로비');
     const err = await t.join(tft.id).catch((e: unknown) => e);

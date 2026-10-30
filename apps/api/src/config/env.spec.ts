@@ -87,7 +87,7 @@ describe('환경 변수', () => {
       scheduleMaxDaysAhead: 30,
       autoCloseAfterMin: 60,
       jobsEnabled: true,
-      noShow: { threshold: 3, windowDays: 30, restrictionDays: 7 },
+      noShow: { threshold: 3, windowDays: 30, restrictionDays: 1 },
       noShowMarkWindowDays: 7,
     });
   });

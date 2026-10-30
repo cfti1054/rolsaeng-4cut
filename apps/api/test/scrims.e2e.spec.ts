@@ -184,16 +184,16 @@ describe('POST /scrims 작성', () => {
     t = await createTestApp({ fixedClock: true });
     const a = await login(t, 'alice');
     const now = t.clock.now().getTime();
-    seedNoShows(t, a.userId, [new Date(now - 3 * DAY), new Date(now - 2 * DAY), new Date(now - DAY - 500)]);
+    seedNoShows(t, a.userId, [new Date(now - 3 * HOUR), new Date(now - 2 * HOUR), new Date(now - HOUR - 500)]);
     const res = await call(t, 'POST', '/scrims', a.token, { ...LOL_BASE, scheduled_at: at(t, DAY) });
-    expect(res.headers.get('retry-after')).toBe(String(Math.ceil((6 * DAY - 500) / 1000)));
+    expect(res.headers.get('retry-after')).toBe(String(Math.ceil((DAY - HOUR - 500) / 1000)));
     const err = await expectError(res, 403, 'SCRIM_BANNED');
     expect(Object.keys(err).sort()).toEqual(['code', 'message']);
   });
 });
 
 describe('GET /me/scrim-restriction', () => {
-  it('제한 없음 / 30일 3회 → until = 마지막 발동 + 7일, policy', async () => {
+  it('제한 없음 / 30일 3회 → until = 마지막 발동 + 1일, policy', async () => {
     t = await createTestApp({ fixedClock: true });
     const a = await login(t, 'alice');
     const get = async () => GetMyScrimRestrictionResponse.parse(await (await call(t as TestApp, 'GET', '/me/scrim-restriction', a.token)).json());
@@ -202,21 +202,21 @@ describe('GET /me/scrim-restriction', () => {
       until: null,
       recent_no_show_count: 0,
       last_no_show_at: null,
-      policy: { threshold: 3, window_days: 30, restriction_days: 7 },
+      policy: { threshold: 3, window_days: 30, restriction_days: 1 },
     });
     const now = t.clock.now().getTime();
-    const last = new Date(now - DAY);
+    const last = new Date(now - HOUR);
     seedNoShows(t, a.userId, [new Date(now - 20 * DAY), new Date(now - 10 * DAY), last]);
     const r = await get();
     expect(r).toMatchObject({ restricted: true, recent_no_show_count: 3, last_no_show_at: last.toISOString() });
-    expect(r.until).toBe(new Date(last.getTime() + 7 * DAY).toISOString());
+    expect(r.until).toBe(new Date(last.getTime() + DAY).toISOString());
   });
 
   it('환경 변수 정책(SCRIM_NO_SHOW_THRESHOLD=2)', async () => {
     t = await createTestApp({ fixedClock: true, env: { SCRIM_NO_SHOW_THRESHOLD: '2' } });
     const a = await login(t, 'alice');
     const now = t.clock.now().getTime();
-    seedNoShows(t, a.userId, [new Date(now - 2 * DAY), new Date(now - DAY)]);
+    seedNoShows(t, a.userId, [new Date(now - 2 * HOUR), new Date(now - HOUR)]);
     const r = GetMyScrimRestrictionResponse.parse(await (await call(t, 'GET', '/me/scrim-restriction', a.token)).json());
     expect(r.restricted).toBe(true);
     expect(r.policy.threshold).toBe(2);
@@ -397,11 +397,11 @@ describe('POST /scrims/:id/join 참가·대기·포지션 변경', () => {
     const now = t.clock.now().getTime();
     seedNoShows(t, a.userId, [new Date(now - 3 * HOUR), new Date(now - 2 * HOUR), new Date(now - HOUR)]);
     const banned = await join(t, a, s2.id, ['top']);
-    expect(banned.headers.get('retry-after')).toBe(String((7 * DAY - HOUR) / 1000));
+    expect(banned.headers.get('retry-after')).toBe(String((DAY - HOUR) / 1000));
     await expectError(banned, 403, 'SCRIM_BANNED');
     const viewS2 = await getScrim(t, a, s2.id);
     expect(viewS2.viewer.can_join).toBe(false);
-    expect(viewS2.viewer.restricted_until).toBe(new Date(now - HOUR + 7 * DAY).toISOString());
+    expect(viewS2.viewer.restricted_until).toBe(new Date(now - HOUR + DAY).toISOString());
     expect((await join(t, a, s1.id, ['bot'])).status).toBe(200);
     expect((await leave(t, a, s1.id)).status).toBe(200);
     // 취소 후 재참가는 새 신청 → 막힘(제한 우회 불가)

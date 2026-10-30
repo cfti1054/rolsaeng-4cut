@@ -30,10 +30,10 @@ export const SCRIM_AUTO_CLOSE_AFTER_MIN_DEFAULT = 60;
 /** 포지션이 없는 게임의 최소 시작 인원(방장 포함) */
 export const SCRIM_MIN_PLAYERS_TO_START = 2;
 
-/** 노쇼 제한 규칙(문서 7-4): 최근 30일 3회 → 마지막 노쇼 표시 시각부터 7일 제한. 환경 변수로 조정 */
+/** 노쇼 제한 규칙: 최근 30일 3회 → 마지막 노쇼 표시 시각부터 1일 제한. 환경 변수로 조정 */
 export const NO_SHOW_THRESHOLD_DEFAULT = 3;
 export const NO_SHOW_WINDOW_DAYS_DEFAULT = 30;
-export const NO_SHOW_RESTRICTION_DAYS_DEFAULT = 7;
+export const NO_SHOW_RESTRICTION_DAYS_DEFAULT = 1;
 /** 운영진이 노쇼를 표시할 수 있는 기한: 시작 시각(scheduled_at)부터 이 일수까지(D83). 정정(해제)은 기한 없음 */
 export const NO_SHOW_MARK_WINDOW_DAYS_DEFAULT = 7;
 

@@ -10,6 +10,7 @@
 | --- | --- | --- |
 | 2026-10-29 | S2 최초 작성: 내전 엔드포인트 11개(게임 목록·노쇼 제한 조회 포함), 스키마 증분(마이그레이션 `20261029120000_s2`), 오류 코드 7개(전체 36개), 상태 전이 맵 보강, core 함수 13개, 인증 보완 2건(리프레시 하루 1회 회전, 스팀 팝업), 환경 변수 8개 | architect |
 | 2026-10-29 | 구현 반영(리더 승인): 목록 집계는 페이지 내전 id로 참가자 행 1회 조회해 개수·1지망·my_status 계산 / `last_no_show_at`은 조회 범위(37일) 안의 마지막 노쇼, 없으면 null / `POST /scrims/{id}/join` 본문 필수(포지션 없는 게임도 `{}`) / `viewer.preferred_positions`는 참가·대기 중일 때만, no_show면 `[]` / ScrimsModule이 ScheduleModule을 직접 import(중복 등록 방지 테스트 유지) / 잠금 경로 수 7개로 정정. 사용자 확인 Q1~Q3은 계약 기본값(D76·D78·D83) 확정 | 리더 |
+| 2026-10-30 | 사용자 결정: `SCRIM_NO_SHOW_RESTRICTION_DAYS` 기본값 7 → 1. 표시 기한(`SCRIM_NO_SHOW_MARK_WINDOW_DAYS` 7)은 그대로. 조회 하한은 window+restriction = 31일. 노쇼 확인 대화상자는 `GET /me/scrim-restriction`의 policy를 쓴다 | 리더 |
 
 ---
 
@@ -21,7 +22,7 @@
 | --- | --- |
 | 내전 · 모집글 (P0) | 작성(게임·제목·시작 시각·정원·규칙·진행 방식 3개), 수정(방장), 모집 취소(방장·운영진), 시작(방장·운영진), 시작 시각 + 60분 자동 마감 |
 | 내전 · 참가 관리 (P0) | 참가·대기 등록·취소, 1지망·2지망 포지션(포지션 게임), 정원 초과 시 대기열, 취소·정원 확대 시 대기 1번 자동 확정, `recruiting ↔ full` |
-| (7-4) 노쇼 패널티 | 운영진 노쇼 표시·정정 API, 최근 30일 3회 → 7일 참가·대기 등록·작성 제한, 제한 상태 조회 |
+| (7-4) 노쇼 패널티 | 운영진 노쇼 표시·정정 API, 최근 30일 3회 → 1일 참가·대기 등록·작성 제한, 제한 상태 조회 |
 | (8장) 화면 | `/scrims` 목록, `/scrims/new` 작성, `/scrims/[id]` 상세(슬롯·포지션 선택·대기열·참가/취소·방장 메뉴·진행 단계·운영진 노쇼 버튼) |
 | 인증 보완 (사용자 결정) | 리프레시 토큰 하루 1회 회전(9-1), 스팀 연동 팝업(9-2) |
 
@@ -217,12 +218,12 @@ FROM scrims WHERE id = $1 FOR UPDATE
 판정: computeScrimRestriction(marks, now, policy)
 ```
 
-- 규칙: 노쇼 표시 시각 m마다, 구간 (m − 30일, m]의 노쇼가 3회 이상이면 m이 「제한 발동」. 제한 해제 시각 `until` = 가장 늦은 발동 m + 7일. `now < until`이면 제한 중.
+- 규칙: 노쇼 표시 시각 m마다, 구간 (m − 30일, m]의 노쇼가 3회 이상이면 m이 「제한 발동」. 제한 해제 시각 `until` = 가장 늦은 발동 m + 1일. `now < until`이면 제한 중.
 - 「일」은 24시간 단위 이동 구간(**KST 날짜 경계 아님**). 화면 표시는 KST.
 - 노쇼 표시 시각이 now보다 뒤인 행은 무시(시계 오차).
-- policy = 환경 변수 `SCRIM_NO_SHOW_THRESHOLD`(3), `SCRIM_NO_SHOW_WINDOW_DAYS`(30), `SCRIM_NO_SHOW_RESTRICTION_DAYS`(7).
+- policy = 환경 변수 `SCRIM_NO_SHOW_THRESHOLD`(3), `SCRIM_NO_SHOW_WINDOW_DAYS`(30), `SCRIM_NO_SHOW_RESTRICTION_DAYS`(1).
 - 제한 대상: **새 참가·새 대기 등록·모집글 작성**. 이미 참가·대기 중인 내전은 그대로 두고, 그 내전의 희망 포지션 변경과 참가 취소도 허용한다.
-- 캐시 컬럼을 두지 않고 요청마다 계산한다(사용자당 최근 37일 노쇼 행 몇 개).
+- 캐시 컬럼을 두지 않고 요청마다 계산한다(사용자당 최근 31일 노쇼 행 몇 개).
 - `SCRIM_BANNED`의 `Retry-After` = `ceil((until − now) / 1000)`.
 - `GET /me/scrim-restriction` = 같은 판정 결과 + `policy`(웹 안내 문구용).
 
@@ -431,7 +432,7 @@ export type OpenScrimStatus = 'recruiting' | 'full';
 | SCRIM_JOBS_ENABLED | api | true | `true`/`false`만(D72와 같은 엄격 파싱). false면 자동 마감 cron 미등록 |
 | SCRIM_NO_SHOW_THRESHOLD | api | 3 | 양의 정수(메인 기본값 1) |
 | SCRIM_NO_SHOW_WINDOW_DAYS | api | 30 | 양의 정수 |
-| SCRIM_NO_SHOW_RESTRICTION_DAYS | api | 7 | 양의 정수 |
+| SCRIM_NO_SHOW_RESTRICTION_DAYS | api | 1 | 양의 정수 |
 | SCRIM_NO_SHOW_MARK_WINDOW_DAYS | api | 7 | 양의 정수. 노쇼 표시 기한(D83) |
 
 기본값 상수는 shared(`REFRESH_ROTATE_AFTER_HOURS_DEFAULT`, `SCRIM_*_DEFAULT`, `NO_SHOW_*_DEFAULT`)에 있다. Railway 배포에서 값을 안 넣어도 기본값으로 동작한다.
@@ -498,7 +499,7 @@ architect(완료)
 | D80 | 모집 취소는 `POST /scrims/:id/cancel`(삭제 아님), 방장·운영진. `cancelled_at`·`cancel_reason` 기록, 참가자 행은 그대로 | 문서 6장에 경로 없음. 취소 이력·이유 표시(목업 「종료」 탭). 운영진 정리 권한 필요 |
 | D81 | `POST /join`은 이미 참가·대기 중이면 희망 포지션만 바꾸는 멱등 요청. `DELETE /join`은 참가 기록 없으면 200. 둘 다 200 + ScrimDetail. `SCRIM_ALREADY_JOINED` 없음 | 상세 화면 「포지션 변경」을 별도 경로 없이 처리, 더블 클릭·재시도에 안전 |
 | D82 | 희망 포지션 1–2개(1지망 필수, 2지망 선택, 중복 금지), 값 검증은 games.positions 기준(서버). 실패는 `VALIDATION_FAILED` + details. 방장도 작성 시 고른다(`host_preferred_positions`) | 「미드 고정」처럼 1지망만 있는 사람 허용. 게임은 데이터라 enum 대신 DB 값. 방장 = 참가자 1번(메인 기본값 4) |
-| D83 | 노쇼: 운영진만, 대상 joined·no_show 행, 내전 playing·finished, 표시는 시작 시각부터 7일 안(정정은 기한 없음). 집계 기준 = `no_show_marked_at`, 24시간 단위 이동 구간(KST 아님), 발동한 노쇼마다 7일(가장 늦은 것 기준). 제한은 새 참가·대기 등록·작성만 막고 기존 참가와 포지션 변경·취소는 허용. 캐시 컬럼 없이 요청마다 계산 | 문서 7-4. S0 인덱스 `(user_id, status, no_show_marked_at)` 그대로 사용. 표시 기한으로 「한 달 지난 노쇼를 몰아서 표시」해 바로 제한이 걸리는 것 방지. 기간은 시간 길이라 KST 경계가 필요 없다 |
+| D83 | 노쇼: 운영진만, 대상 joined·no_show 행, 내전 playing·finished, 표시는 시작 시각부터 7일 안(정정은 기한 없음). 집계 기준 = `no_show_marked_at`, 24시간 단위 이동 구간(KST 아님), 발동한 노쇼마다 1일(가장 늦은 것 기준, 사용자 결정 2026-10-30). 제한은 새 참가·대기 등록·작성만 막고 기존 참가와 포지션 변경·취소는 허용. 캐시 컬럼 없이 요청마다 계산 | 문서 7-4. S0 인덱스 `(user_id, status, no_show_marked_at)` 그대로 사용. 표시 기한으로 「한 달 지난 노쇼를 몰아서 표시」해 바로 제한이 걸리는 것 방지. 기간은 시간 길이라 KST 경계가 필요 없다. 제한 일수는 7일에서 1일로 줄임 |
 | D84 | SCRIM_BANNED(403)는 `Retry-After`(해제까지 초) 헤더로 해제 시각을 전하고, 본문은 S0 형식 유지. 상세 안내는 `GET /me/scrim-restriction`. 상세 응답 `viewer.restricted_until`에도 포함 | 오류 본문에 필드를 늘리지 않는다는 S0·S1 규칙 유지 |
 | D85 | 동시성: 명단을 바꾸는 모든 경로가 트랜잭션 첫 문장에서 `SELECT … FROM scrims WHERE id=? FOR UPDATE`. 대기 순번 = (joined_at, id) | 메인 기본값 6. 조건부 update보다 승격·상태 변경을 한 번에 다루기 쉽고, 잠금 범위가 내전 1행이라 경합이 작다 |
 | D86 | 목록 `status`는 탭 값(open·playing·ended, 기본 open)이고 raw 상태값이 아니다. 탭별 개수는 내려주지 않는다. 커서에 탭을 넣어 다른 탭 커서를 거부 | 목업 탭이 상태 묶음(모집 중 = recruiting+full). 목업 필터 숫자는 별도 count 쿼리가 필요해 S2에서 뺌 |

@@ -91,4 +91,6 @@
 
 **추가 변경(사용자 요청):** 내전 상세 「링크 복사」(제목·시각·인원 + URL을 메신저용 텍스트로, clipboard 실패 시 textarea 대체). 배너 태그 롤 `LEAGUE · {정원/2}V{정원/2}`. **D98** 스팀 내전 게임 선택 필수: `GET /steam-apps`(멤버 보유 게임 + 스팀 상점 검색), games `requires_steam_app`, scrims `steam_app_id`·`steam_app_name`(마이그레이션 `20261029170000_s2_steam_app`, prisma migrate diff와 일치 확인), 작성·수정 화면 「스팀 게임」 선택, 카드 배너·상세에 게임 이미지·이름. 리더 직접 수정·실행: typecheck 4개 Done, test shared 57·core 150·web 131·api 343 passed / 27 skipped(DB e2e, Docker 없음), web build 성공, 목 모드 브라우저 확인(검색·선택·작성·상세·수정 창). QA 재검증 없음
 
+**추가 변경(사용자 요청, 2026-10-30):** 노쇼 제한 기간 기본값 7일 → 1일(`NO_SHOW_RESTRICTION_DAYS_DEFAULT`, `SCRIM_NO_SHOW_RESTRICTION_DAYS`). 최근 30일 3회와 표시 기한(시작 후 7일)은 그대로. 노쇼 확인 대화상자는 `GET /me/scrim-restriction`의 policy 숫자를 쓴다. 리더 직접 수정·실행: core 150, web scrims 40, api env+scrims e2e 49 passed. 목 모드 브라우저에서 제한 배너·상세 「내 참가」 안내가 「1일」로 보이는 것 확인. QA 재검증 없음
+
 **다음:** 남은 결함 s2-1~3 계약 결정 후 S3 팀 자동 밸런스, 결과 입력·승인, ELO 반영, 레이팅 그래프
