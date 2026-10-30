@@ -10,6 +10,7 @@
 | --- | --- | --- |
 | 2026-10-29 | S2 최초 작성: 내전 엔드포인트 11개(게임 목록·노쇼 제한 조회 포함), 스키마 증분(마이그레이션 `20261029120000_s2`), 오류 코드 7개(전체 36개), 상태 전이 맵 보강, core 함수 13개, 인증 보완 2건(리프레시 하루 1회 회전, 스팀 팝업), 환경 변수 8개 | architect |
 | 2026-10-29 | 구현 반영(리더 승인): 목록 집계는 페이지 내전 id로 참가자 행 1회 조회해 개수·1지망·my_status 계산 / `last_no_show_at`은 조회 범위(37일) 안의 마지막 노쇼, 없으면 null / `POST /scrims/{id}/join` 본문 필수(포지션 없는 게임도 `{}`) / `viewer.preferred_positions`는 참가·대기 중일 때만, no_show면 `[]` / ScrimsModule이 ScheduleModule을 직접 import(중복 등록 방지 테스트 유지) / 잠금 경로 수 7개로 정정. 사용자 확인 Q1~Q3은 계약 기본값(D76·D78·D83) 확정 | 리더 |
+| 2026-10-30 | S2 남은 결함 3건(QA s2-1~3) 계약 결정: (1) 제한 배너·상세 안내에서 「노쇼 N회」 제거, 문구 「노쇼가 누적되어 {until}까지 내전을 만들거나 참가할 수 없어요」(8절, D99) (2) `computeOpenPositions` 불변식 「count 합계 ≤ 빈 자리」, 포지션별 남은 수 합계가 빈 자리를 넘으면 `[]` → 카드 「N자리 남음」(7절·4-2, D100) (3) `GET /me/scrim-restriction`에 `policy.mark_window_days`, `scrim_policy {schedule_max_days_ahead, auto_close_after_min}` 추가 — 웹은 env 기본값 상수를 화면 문구·사전 검사에 쓰지 않는다(4절·5-6·8절·11절, D101·D102). 부수: 5-6·7절 `lastNoShowAt` 설명, 4절 `POST /join` 본문 필수, 12절 보고서 파일명 정정. 영향 파일은 15-1절 | architect |
 | 2026-10-30 | 사용자 결정: `SCRIM_NO_SHOW_RESTRICTION_DAYS` 기본값 7 → 1. 표시 기한(`SCRIM_NO_SHOW_MARK_WINDOW_DAYS` 7)은 그대로. 조회 하한은 window+restriction = 31일. 노쇼 확인 대화상자는 `GET /me/scrim-restriction`의 policy를 쓴다 | 리더 |
 
 ---
@@ -90,12 +91,12 @@ S0 15개 + S1 14개는 그대로. 아래 7개 추가(전체 36개).
 | POST | /scrims (`scrims`) | 멤버 | `CreateScrimRequest` | **201** `CreateScrimResponse` | VALIDATION_FAILED, SCRIM_BANNED |
 | GET | /scrims/:id (`scrim`) | 멤버 | `IdParam` | 200 `GetScrimResponse` | VALIDATION_FAILED, NOT_FOUND |
 | PATCH | /scrims/:id (`scrim`) | 방장 | `UpdateScrimRequest` | 200 `UpdateScrimResponse` | VALIDATION_FAILED, NOT_FOUND, FORBIDDEN, SCRIM_NOT_RECRUITING, SCRIM_CAPACITY_BELOW_JOINED |
-| POST | /scrims/:id/join (`scrimJoin`) | 멤버 | `JoinScrimRequest` | 200 `JoinScrimResponse` | VALIDATION_FAILED, NOT_FOUND, SCRIM_NOT_RECRUITING, SCRIM_JOIN_CLOSED, SCRIM_BANNED |
+| POST | /scrims/:id/join (`scrimJoin`) | 멤버 | `JoinScrimRequest` — **본문 필수**(포지션 없는 게임도 `{}`, 본문 없음 → VALIDATION_FAILED) | 200 `JoinScrimResponse` | VALIDATION_FAILED, NOT_FOUND, SCRIM_NOT_RECRUITING, SCRIM_JOIN_CLOSED, SCRIM_BANNED |
 | DELETE | /scrims/:id/join (`scrimJoin`) | 멤버 | 본문 없음 | 200 `LeaveScrimResponse` | VALIDATION_FAILED, NOT_FOUND, SCRIM_NOT_RECRUITING, SCRIM_JOIN_CLOSED, SCRIM_HOST_CANNOT_LEAVE |
 | POST | /scrims/:id/start (`scrimStart`) | 방장·운영진 | 본문 없음 | 200 `StartScrimResponse` | VALIDATION_FAILED, NOT_FOUND, FORBIDDEN, SCRIM_NOT_RECRUITING, SCRIM_CANNOT_START |
 | POST | /scrims/:id/cancel (`scrimCancel`) | 방장·운영진 | 본문 없음 | 200 `CancelScrimResponse` | VALIDATION_FAILED, NOT_FOUND, FORBIDDEN, SCRIM_NOT_RECRUITING |
 | PUT | /scrims/:id/players/:userId/no-show (`scrimPlayerNoShow`) | **운영진(admin)** | `SetScrimNoShowParams` + `SetScrimNoShowRequest` | 200 `SetScrimNoShowResponse` | VALIDATION_FAILED, FORBIDDEN, NOT_FOUND, SCRIM_NO_SHOW_NOT_ALLOWED |
-| GET | /me/scrim-restriction (`myScrimRestriction`) | 멤버 | - | 200 `GetMyScrimRestrictionResponse` | - |
+| GET | /me/scrim-restriction (`myScrimRestriction`) | 멤버 | - | 200 `GetMyScrimRestrictionResponse`(제한 판정 + `policy` 노쇼 정책 4개 + `scrim_policy` 모집 정책 2개, D101) | - |
 
 - 문서 6장에 없는 경로: `/games`(D75), `PATCH /scrims/:id`·`/start`·`/cancel`(D78, D80), `PUT …/no-show`(D83), `/me/scrim-restriction`(D84). 문서 6장 `POST /scrims/{id}/balance`·`/result*`는 S3.
 - **상태를 바꾸는 엔드포인트 응답은 전부 갱신 후 `ScrimDetail`**(D87). 직렬화는 반드시 shared 스키마 parse를 거친다(S1 D38 규칙 — users의 email·discord_id 미포함, `ScrimUserRef`는 id·nickname·avatar_url만).
@@ -124,7 +125,7 @@ S0 15개 + S1 14개는 그대로. 아래 7개 추가(전체 36개).
 | joined_count | 모집 중: joined 수. 시작 후: joined + no_show 수 |
 | waitlist_count | waitlist 수 |
 | options | `{rated, auto_balance, use_positions}` 저장된 적용값 |
-| open_positions | status가 recruiting·full이고 use_positions일 때만 계산, 그 외 `[]` |
+| open_positions | status가 recruiting·full이고 use_positions일 때만 계산, 그 외 `[]`. **불변식: count 합계 ≤ capacity − joined_count**(D100, 7절 `computeOpenPositions`) |
 | join_closed | `now ≥ scheduled_at`(core `isJoinClosed`) |
 | my_status | 요청자 행 status, cancelled·없음 → null |
 | players (상세) | joined + no_show 행. 순서: 방장 먼저, 그다음 joined_at ASC, 같으면 user id ASC |
@@ -225,7 +226,18 @@ FROM scrims WHERE id = $1 FOR UPDATE
 - 제한 대상: **새 참가·새 대기 등록·모집글 작성**. 이미 참가·대기 중인 내전은 그대로 두고, 그 내전의 희망 포지션 변경과 참가 취소도 허용한다.
 - 캐시 컬럼을 두지 않고 요청마다 계산한다(사용자당 최근 31일 노쇼 행 몇 개).
 - `SCRIM_BANNED`의 `Retry-After` = `ceil((until − now) / 1000)`.
-- `GET /me/scrim-restriction` = 같은 판정 결과 + `policy`(웹 안내 문구용).
+- `last_no_show_at`(core `lastNoShowAt`) = **조회 범위(now − (window + restriction)일 초과) 안의 마지막 노쇼 표시 시각, 없으면 null**. 범위 밖 옛 노쇼를 따로 조회하지 않는다(안내용 값, 화면 미사용).
+- `recent_no_show_count` = (now − window, now] 개수(참고값). 제한을 일으킨 횟수가 아니라 제한 중에도 threshold보다 작을 수 있다 → 화면 제한 문구에 쓰지 않는다(D99).
+- `GET /me/scrim-restriction` = 같은 판정 결과 + `policy` + `scrim_policy`(웹 안내 문구·사전 검사용, D101). 필드는 아래 표, 값은 모두 API `config`(env 검증을 거친 양의 정수)를 그대로 넣는다. 사용자별 값이 아니라 전역 값이고, 제한 여부와 관계없이 항상 채운다.
+
+| 응답 필드 (`ScrimRestriction`) | 타입·단위 | nullable | 출처(env, 기본값) | 웹 사용처 |
+| --- | --- | --- | --- | --- |
+| `policy.threshold` | int ≥ 1, 회 | 아니오 | SCRIM_NO_SHOW_THRESHOLD(3) | 제한 규칙 안내, 노쇼 표시 확인 대화상자 |
+| `policy.window_days` | int ≥ 1, 일(24시간 단위) | 아니오 | SCRIM_NO_SHOW_WINDOW_DAYS(30) | 같음 |
+| `policy.restriction_days` | int ≥ 1, 일 | 아니오 | SCRIM_NO_SHOW_RESTRICTION_DAYS(1) | 같음 |
+| `policy.mark_window_days` **(새로)** | int ≥ 1, 일(scheduled_at부터) | 아니오 | SCRIM_NO_SHOW_MARK_WINDOW_DAYS(7) | 운영진 노쇼 영역 안내, SCRIM_NO_SHOW_NOT_ALLOWED 보조 문구 |
+| `scrim_policy.schedule_max_days_ahead` **(새로)** | int ≥ 1, 일 | 아니오 | SCRIM_SCHEDULE_MAX_DAYS_AHEAD(30) | 작성·수정 폼 날짜 상한(`max`)·사전 검사 문구 |
+| `scrim_policy.auto_close_after_min` **(새로)** | int ≥ 1, 분 | 아니오 | SCRIM_AUTO_CLOSE_AFTER_MIN(60) | 방장 메뉴 「시작 시각 N분 뒤까지 …자동으로 정리」 |
 
 ### 5-7. 노쇼 표시·정정 `PUT /scrims/:id/players/:userId/no-show`
 
@@ -290,7 +302,7 @@ export type OpenScrimStatus = 'recruiting' | 'full';
 
 | 함수 | 시그니처 | 규칙 |
 | --- | --- | --- |
-| computeScrimRestriction | `(noShowMarkedAt: readonly Date[], now: Date, policy: NoShowPolicy) => ScrimRestrictionState` | 5-6. now보다 뒤인 값 무시. 발동 m: (m − window, m] 안 개수 ≥ threshold. until = 최대 발동 m + restriction(제한 아니면 null). recentCount = (now − window, now] 개수. lastNoShowAt = now 이하 최대값. 입력 순서 무관 |
+| computeScrimRestriction | `(noShowMarkedAt: readonly Date[], now: Date, policy: NoShowPolicy) => ScrimRestrictionState` | 5-6. now보다 뒤인 값 무시. 발동 m: (m − window, m] 안 개수 ≥ threshold. until = 최대 발동 m + restriction(제한 아니면 null). recentCount = (now − window, now] 개수. lastNoShowAt = 입력 중 now 이하 최대값, 없으면 null — backend는 5-6 조회 범위만 넘기므로 API 값은 「조회 범위 안의 마지막 노쇼, 없으면 null」. 입력 순서 무관 |
 | noShowLookbackStart | `(now: Date, policy: NoShowPolicy) => Date` | now − (windowDays + restrictionDays)일. 이 시각 **초과**만 조회하면 판정이 같음을 테스트로 보인다 |
 | orderWaitlist | `<T extends WaitlistRow>(rows: readonly T[]) => T[]` | joinedAt ASC, 같으면 id 문자열 ASC. 입력 불변 |
 | placeNewParticipant | `(joinedCount: number, capacity: number) => 'joined' \| 'waitlist'` | joinedCount < capacity → joined |
@@ -301,7 +313,7 @@ export type OpenScrimStatus = 'recruiting' | 'full';
 | isCapacityInRange | `(capacity: number, range: { min: number; max: number; step?: number }) => boolean` | 정수 && min ≤ capacity ≤ max && (capacity − min) % step = 0 (D97) |
 | canStartScrim | `(input: { requiresFull: boolean; capacity: number; joinedCount: number }) => boolean` | requiresFull → joinedCount = capacity, 아니면 joinedCount ≥ `SCRIM_MIN_PLAYERS_TO_START`(2) (D97) |
 | decideOverdueScrim | `(input: { status: ScrimStatus; scheduledAt: Date; now: Date; autoCloseAfterMin: number; canStart: boolean }) => 'start' \| 'cancel' \| null` | status가 recruiting·full이고 now ≥ scheduledAt + autoCloseAfterMin분일 때만: canStart → start, 아니면 cancel. 그 외 null |
-| computeOpenPositions | `(positions: readonly string[], capacity: number, firstChoices: readonly (string \| null)[]) => { position: string; count: number }[]` | 빈 자리(capacity − firstChoices.length) 0이면 `[]`. capacity가 positions.length로 나누어떨어지지 않으면 `[]`. 포지션당 정원 = capacity / positions.length, 남은 수 = 그 값 − 1지망이 그 포지션인 수, 1 이상만 positions 순서로 |
+| computeOpenPositions | `(positions: readonly string[], capacity: number, firstChoices: readonly (string \| null)[]) => { position: string; count: number }[]` | 시그니처 그대로, 규칙에 4번 추가(D100). 1) open = capacity − firstChoices.length ≤ 0 → `[]`. 2) positions 비었거나 capacity % positions.length ≠ 0 → `[]`. 3) per = capacity / positions.length, raw_p = max(0, per − 1지망이 p인 수)(null·positions 밖 값은 어느 포지션도 줄이지 않음). 4) **Σ raw_p > open → `[]`**. 5) 아니면 raw_p ≥ 1만 positions 순서로. **불변식: 결과 count 합계 ≤ open**(4번 때문에 각 count ≤ open도 성립 — min(raw, open) 자르기는 따로 필요 없다). 예: 롤 10명, 1지망 미드 9명 → raw 2·2·0·2·2 = 8 > 1 → `[]`(카드 「1자리 남음」). 1지망 탑2·정글2·미드2·원딜1·서폿1(8명) → raw 원딜1·서폿1 = 2 = open → 그대로 |
 | isJoinClosed | `(scheduledAt: Date, now: Date) => boolean` | now ≥ scheduledAt |
 | isNoShowMarkWindowOpen | `(scheduledAt: Date, now: Date, windowDays: number) => boolean` | now ≤ scheduledAt + windowDays일 |
 
@@ -316,10 +328,10 @@ export type OpenScrimStatus = 'recruiting' | 'full';
 | 영역 | 데이터 | 동작 |
 | --- | --- | --- |
 | 헤더 | - | 「모집글 작성」 → `/scrims/new`. 제한 중이면 비활성 + 해제 시각 툴팁 |
-| 노쇼 제한 배너 | `GET /me/scrim-restriction` restricted | 「노쇼 {recent_no_show_count}회로 {until KST MM.DD HH:mm}까지 내전 참가·모집이 제한돼요」 |
+| 노쇼 제한 배너 | `GET /me/scrim-restriction` restricted·until | 「노쇼가 누적되어 {until KST MM.DD HH:mm}까지 내전을 만들거나 참가할 수 없어요」. **횟수(`recent_no_show_count`)는 넣지 않는다**(D99). 규칙 보조 문구가 필요하면 policy 값으로(「최근 {window_days}일 안에 노쇼가 {threshold}회 쌓이면 {restriction_days}일 동안 …」) |
 | 게임 필터 | `GET /games`(sort_order) + 「전체」 | 쿼리 `game`. 숫자 배지 없음(D86) |
 | 상태 탭 | 모집 중 / 진행 중 / 종료 = open / playing / ended | 쿼리 `status`. URL 쿼리와 동기화 |
-| 카드 | `ScrimSummary` | 게임 태그(`GAME_META`), 상태 배지(my_status joined → 「참가 중」, waitlist → 「대기 중」, 그 외 status·join_closed로 「모집 중 / 정원 마감 / 시작 대기 / 진행 중 / 종료 / 취소됨」), 제목, KST 시각(「오늘 21:00」 「토요일 20:00」), 방장, 태그(options: 「자동 밸런스」 「포지션 선택」 「ELO 반영 / ELO 미반영」), 인원 `joined/capacity` + 점 표시, 보조 줄(open_positions → 「서폿 1 · 정글 1 구함」, 정원 마감·대기 있음 → 「대기 N명」, 그 외 「N자리 남음」) |
+| 카드 | `ScrimSummary` | 게임 태그(`GAME_META`), 상태 배지(my_status joined → 「참가 중」, waitlist → 「대기 중」, 그 외 status·join_closed로 「모집 중 / 정원 마감 / 시작 대기 / 진행 중 / 종료 / 취소됨」), 제목, KST 시각(「오늘 21:00」 「토요일 20:00」), 방장, 태그(options: 「자동 밸런스」 「포지션 선택」 「ELO 반영 / ELO 미반영」), 인원 `joined/capacity` + 점 표시, 보조 줄(open_positions가 비어 있지 않음 → 「서폿 1 · 정글 1 구함」, 정원 마감·대기 있음 → 「대기 N명」, 그 외 「N자리 남음」(N = capacity − joined_count). open_positions 합계는 빈 자리를 넘지 않으므로(D100) 웹은 따로 자르지 않는다) |
 | 카드 버튼 | - | 모두 상세로 이동(문구만 「참가하기」 / 「대기열 등록」 / 「참가 중 · 상세 보기」) — 포지션 선택이 상세에 있어서(D91) |
 | 페이징 | next_cursor | 「더 보기」(무한 스크롤 아님) |
 | 빈 상태 | items [] | 탭별 문구 + 「모집글 작성」 |
@@ -329,7 +341,7 @@ export type OpenScrimStatus = 'recruiting' | 'full';
 | 영역 | 데이터 | 동작 |
 | --- | --- | --- |
 | 01 게임 선택 | `GET /games` | 카드(이름, 설명 = has_teams·has_positions로 「팀전 · 포지션 있음」 「개인 순위전」 「팀전」). 고르면 정원 = capacity.default |
-| 02 기본 정보 | - | 제목(2–40자), 날짜 + 시작 시간(KST 입력 → `YYYY-MM-DDTHH:mm:00+09:00`), 정원 스테퍼(capacity.min–max, min = max면 고정 표시) |
+| 02 기본 정보 | `GET /me/scrim-restriction` scrim_policy | 제목(2–40자), 날짜 + 시작 시간(KST 입력 → `YYYY-MM-DDTHH:mm:00+09:00`), 정원 스테퍼(capacity.min–max, min = max면 고정 표시). 날짜 상한·사전 검사 = now + `scrim_policy.schedule_max_days_ahead`일, 문구 「{schedule_max_days_ahead}일 안의 시각만 고를 수 있어요」. **제한 조회가 아직 없거나 실패하면 상한 검사를 하지 않고 서버 VALIDATION_FAILED details에 맡긴다**(기본값 상수로 대신하지 않음, D101). 수정 대화상자도 같다 |
 | 내 희망 포지션 | game.positions | 포지션 받는 내전일 때만: 1지망(필수)·2지망(선택). 목업에 없지만 방장이 참가자 1번이라 필요(D82) |
 | 03 진행 방식 | - | 토글 3개: 팀 자동 밸런스(has_teams 아니면 비활성), 포지션 희망 받기(has_positions 아니면 비활성), 시즌 ELO에 반영 |
 | 04 규칙 | - | textarea 1000자 |
@@ -344,12 +356,13 @@ export type OpenScrimStatus = 'recruiting' | 'full';
 | 진행 단계 | status | 6절 표 |
 | ROSTER 참가자 | players, capacity | 슬롯 capacity개(빈 슬롯 포함). 닉네임(프로필 링크), 방장 표시, 1지망·2지망 칩, no_show 배지. 실력값·NEW 배지는 S3(표시 안 함) |
 | WAITLIST | waitlist | 순번·닉네임·희망 포지션. 모집 중일 때만 섹션 표시 |
-| 참가 영역 | viewer | 포지션 받는 내전: 1지망·2지망 선택(현재 값 = viewer.preferred_positions). 버튼: can_join → 「참가하기」(정원 마감이면 「대기열 등록」), 참가·대기 중 → 「포지션 변경」(같은 POST) + can_leave → 「참가 취소」. 결과 토스트: 「참가 확정」 / 「대기 {waitlist_order}번으로 등록」. join_closed → 「시작 시각이 지나 참가·취소할 수 없어요」. restricted_until → 제한 안내 |
-| 방장 메뉴 | viewer.can_edit / can_start / can_cancel | 「수정」(대화상자: 제목·날짜·시간·정원·규칙·ELO 반영·자동 밸런스), 「시작」(확인 대화상자, can_start false면 비활성 + 이유), 「모집 취소」(확인 대화상자). 운영진도 can_start·can_cancel이면 같은 메뉴 |
-| 운영진 노쇼 | role admin, status playing·finished | 참가자 슬롯마다 joined → 「노쇼 표시」(can_mark_no_show일 때), no_show → 「노쇼 정정」(항상). `PUT …/no-show` |
+| 참가 영역 | viewer | 포지션 받는 내전: 1지망·2지망 선택(현재 값 = viewer.preferred_positions). 버튼: can_join → 「참가하기」(정원 마감이면 「대기열 등록」), 참가·대기 중 → 「포지션 변경」(같은 POST) + can_leave → 「참가 취소」. 결과 토스트: 「참가 확정」 / 「대기 {waitlist_order}번으로 등록」. join_closed → 「시작 시각이 지나 참가·취소할 수 없어요」. restricted_until → 제한 안내 「노쇼가 누적되어 {restricted_until KST MM.DD HH:mm}까지 내전을 만들거나 참가할 수 없어요」(배너와 같은 문구, 횟수 없음, D99. 제한 조회 응답이 없을 때도 viewer.restricted_until로 같은 문구) |
+| 방장 메뉴 | viewer.can_edit / can_start / can_cancel, `scrim_policy.auto_close_after_min` | 「수정」(대화상자: 제목·날짜·시간·정원·규칙·ELO 반영·자동 밸런스), 「시작」(확인 대화상자, can_start false면 비활성 + 이유 + 「시작 시각 {auto_close_after_min}분 뒤까지 시작하지 않으면 자동으로 정리돼요」 — 제한 조회가 없으면 숫자 없이 「시작 시각이 한참 지나도 시작하지 않으면 자동으로 정리돼요」), 「모집 취소」(확인 대화상자). 운영진도 can_start·can_cancel이면 같은 메뉴 |
+| 운영진 노쇼 | role admin, status playing·finished, `policy` | 참가자 슬롯마다 joined → 「노쇼 표시」(can_mark_no_show일 때), no_show → 「노쇼 정정」(항상). `PUT …/no-show`. 확인 대화상자 숫자 = policy.window_days·threshold·restriction_days, 기한 안내 = 「시작 후 {policy.mark_window_days}일 안에만 표시할 수 있어요」. **제한 조회가 아직 없으면 숫자 없는 문구**(「노쇼가 누적되면 일정 기간 내전 참가·모집이 제한돼요」)를 쓰고 `NO_SHOW_*_DEFAULT`로 채우지 않는다(D101) |
 | AUTO BALANCE / RESULT | balance, result (null) | 빈 상태 카드(「팀 밸런스는 곧 열려요」 「결과 입력은 곧 열려요」). 목업 내용은 S3 |
 | 갱신 | - | 모집 중이면 20초 간격 재조회 + 창 포커스 시 재조회. 상태 변경 응답(ScrimDetail)으로 캐시를 바로 교체하고 목록 캐시 무효화 |
 
+- **env 값 표시 규칙(D101·D102)**: 웹 화면 코드(`components/**`, `lib/scrims.ts`, `lib/errors.ts`)는 `NO_SHOW_*_DEFAULT`·`SCRIM_SCHEDULE_MAX_DAYS_AHEAD_DEFAULT`·`SCRIM_AUTO_CLOSE_AFTER_MIN_DEFAULT`를 import하지 않고, 이 값들을 숫자 리터럴로 쓰지 않는다. 출처는 `useMyScrimRestriction()`의 `policy`·`scrim_policy`뿐. 예외: 목 백엔드(`lib/api/mock/**`)는 응답을 만들 때 기본값 상수를 쓴다. 전역 정적 맵 `ERROR_MESSAGES.SCRIM_NO_SHOW_NOT_ALLOWED`는 숫자를 빼고 「지금은 노쇼를 표시할 수 없어요. 진행 중·종료된 내전의 참가자에게만, 표시 기한 안에 표시할 수 있어요.」로 바꾼다(D102).
 - 훅: `useGames`, `useScrims`(useInfiniteQuery), `useScrim`, `useCreateScrim`, `useUpdateScrim`, `useJoinScrim`, `useLeaveScrim`, `useStartScrim`, `useCancelScrim`, `useSetScrimNoShow`, `useMyScrimRestriction`.
 - `lib/routes.ts`: `scrims(q?: {game?, status?})`, `scrimNew()`, `scrim(id)`, `steamLinkComplete()`. 포지션 표기는 기존 `POSITION_META`(lib/games.ts) 재사용, 게임 색은 `GAME_META`·토큰 클래스(hex 금지, D53).
 - 목 백엔드(`NEXT_PUBLIC_API_MOCK`)에 S2 엔드포인트 11개(대기열 승격·노쇼 제한 흉내 포함).
@@ -437,6 +450,8 @@ export type OpenScrimStatus = 'recruiting' | 'full';
 
 기본값 상수는 shared(`REFRESH_ROTATE_AFTER_HOURS_DEFAULT`, `SCRIM_*_DEFAULT`, `NO_SHOW_*_DEFAULT`)에 있다. Railway 배포에서 값을 안 넣어도 기본값으로 동작한다.
 
+화면에 보이는 값 노출(D101): SCRIM_SCHEDULE_MAX_DAYS_AHEAD → `scrim_policy.schedule_max_days_ahead`, SCRIM_AUTO_CLOSE_AFTER_MIN → `scrim_policy.auto_close_after_min`, SCRIM_NO_SHOW_THRESHOLD / WINDOW_DAYS / RESTRICTION_DAYS / MARK_WINDOW_DAYS → `policy.threshold / window_days / restriction_days / mark_window_days`(모두 `GET /me/scrim-restriction`). REFRESH_ROTATE_AFTER_HOURS·SCRIM_JOBS_ENABLED는 화면에 쓰지 않아 노출하지 않는다.
+
 ---
 
 ## 12. 담당 배정
@@ -456,7 +471,7 @@ architect(완료)
 ### logic (domain-logic-dev) — `packages/core/src/**`
 
 1. 7절 함수 13개 + vitest. 경계: 노쇼 정확히 3회·30일 경계(구간 시작 배제·끝 포함)·until 경계(now = until이면 해제)·발동 후 4번째 노쇼로 연장·오래된 발동 + 최근 1회(L 기준만 보면 틀리는 경우, 5-6 규칙)·미래 시각 무시·`noShowLookbackStart`로 자른 입력과 전체 입력의 판정 동일, 대기열 동률(joinedAt 같음 → id), 승격 수 > 대기 수, joinedCount > capacity 예외, 포지션 중복·범위 밖·포지션 없는 게임에 값, 시작 시각 = now·정확히 30일, 고정 정원 9/10, open_positions 1지망 쏠림·나누어떨어지지 않는 정원, 자동 마감 경계(정확히 60분).
-2. 보고서: `_workspace/02_logic-dev_s2.md`.
+2. 보고서: `_workspace/02_domain-logic-dev_report.md`(리더 지시로 정정, 처음 계약은 `02_logic-dev_s2.md`).
 
 ### backend (backend-dev) — `apps/api/src/**`, `apps/api/test/**`
 
@@ -466,7 +481,7 @@ architect(완료)
 4. `GET /games`, 내전 9개 + `GET /me/scrim-restriction`. 5절 흐름 전부, 5-0 잠금, `canTransition` 검사, 직렬화 parse, 커서, 자동 마감 cron(advisory xact lock, 시작 시 1회).
 5. `test/support/fake-prisma.ts`에 S2 모델(scrims·scrim_players·games capacity) 추가.
 6. 테스트(DB 없이): 작성(검증 details·노쇼 제한 Retry-After·방장 자동 참가), 목록(탭·정렬·커서·다른 탭 커서 거부·my_status·open_positions), 참가(joined/waitlist/재참가 맨 뒤/포지션 변경 멱등/포지션 없는 게임에 포지션 → 400/join_closed/제한 중 새 신청 403·포지션 변경은 허용), 취소(대기 1번 승격·포지션 유지·full→recruiting·방장 409·멱등), 수정(정원 축소 409·확대 승격·미루기로 join_closed 해제·비방장 403), 시작(고정 정원 미달 409·2명·운영진 가능), 모집 취소(이유 host/admin), 노쇼(비운영진 403·시작 전 409·기한 경과 409·정정은 기한 없음·대기자 409·멱등), 자동 마감 분기, 응답에 email·discord_id 없음. **DB 필요(작성만)**: 마지막 자리 동시 참가 `Promise.all` 10건 → joined = capacity·나머지 waitlist, 동시 취소+참가에서 불변식 유지, 동시 refresh 24시간 경계.
-7. 보고서: `_workspace/02_backend-dev_s2.md`.
+7. 보고서: `_workspace/02_backend-dev_scrims.md`(정정, 처음 계약은 `02_backend-dev_s2.md`).
 
 ### frontend (frontend-dev) — `apps/web/**`
 
@@ -474,7 +489,7 @@ architect(완료)
 2. 9-2 스팀 팝업(설정 카드 수정, 완료 페이지, middleware matcher 제외, 목 동작).
 3. KST 표시·입력(날짜+시간 → `+09:00`), 카운트다운, 빈 상태(balance·result·목록).
 4. 검증: `corepack pnpm --filter web typecheck && test && build`, 목 모드로 데스크톱·모바일 × 라이트·다크. 팝업 차단 대체 경로는 수동 확인 절차를 보고서에 적는다.
-5. 보고서: `_workspace/02_frontend-dev_s2.md`.
+5. 보고서: `_workspace/02_frontend-dev_scrims.md`(정정, 처음 계약은 `02_frontend-dev_s2.md`).
 
 ### qa (qa-verifier)
 
@@ -515,6 +530,10 @@ architect(완료)
 | D96 | 자동 마감 cron은 `SCRIM_JOBS_ENABLED`로 따로 끈다(SYNC_JOBS_ENABLED와 분리), 5분 주기, `pg_try_advisory_xact_lock` | 동기화 작업과 성격이 달라 테스트에서 따로 끄고 싶다. D62 방식 재사용 |
 | D97 | (사용자 결정, D76·D78 수정) 롤 정원 10 고정 → 2–10명 2명 단위(1:1–5:5), 정한 정원이 꽉 차야 시작. games에 `capacity_step`(기본 1)·`start_requires_full`(기본 false) 추가(마이그레이션 `20261029160000_s2_capacity_step`), `GameCapacityRange`에 `step`·`start_requires_full`. core `isCapacityInRange(capacity, {min, max, step?})`는 (capacity − min)이 step의 배수인지도 검사, `canStartScrim({requiresFull, …})`. 롤체·스팀은 단위 1, 2명 이상 시작(변경 없음). 정원 6·8처럼 포지션 수(5)로 나누어떨어지지 않으면 open_positions는 [] | 소규모 내전 허용, 두 팀 인원 동일 유지 |
 | D98 | (사용자 결정) 스팀 내전은 어떤 스팀 게임인지 필수로 고른다. games에 `requires_steam_app`(기본 false, steam만 true), scrims에 `steam_app_id`·`steam_app_name`(nullable) 추가(마이그레이션 `20261029170000_s2_steam_app`). `GameView.requires_steam_app`, `ScrimSummary.steam_app: {app_id, name} \| null`, 작성 `steam_app_id`(requires_steam_app 게임만 필수, 다른 게임이면 400), 수정 `steam_app_id`(바꿀 때만). `GET /steam-apps?q=`(로그인 필요): q가 비면 멤버 보유 게임(steam_playtime 보유 계정 수 많은 순, 최대 20), q가 있으면 보유 게임 이름 일치(최대 10) 다음 스팀 상점 검색(키 불필요 `storesearch`, 검색어별 10분 캐시) — 합쳐 최대 20, 상점 실패는 `store_unavailable: true`로 보유 결과만. 이름은 보유 기록 → 최근 상점 검색 결과 → 상점 `appdetails` 순으로 서버가 정해 저장(상점에 없으면 400, 상점 오류면 502). 외부 호출은 잠금 트랜잭션 밖에서. 배너 이미지는 `steamAppHeaderImageUrl`(CDN header.jpg). 웹 배너 태그: 롤은 정원/2로 `LEAGUE · 2V2`처럼 표시 | 같은 "스팀" 내전이라도 게임이 달라 고르는 기준이 필요. 이름을 저장해 상점 장애에도 목록이 깨지지 않게 |
+| D99 | **(사용자 결정, QA s2-1)** 제한 배너·상세 제한 안내에서 횟수를 뺀다: 「노쇼가 누적되어 {until KST MM.DD HH:mm}까지 내전을 만들거나 참가할 수 없어요」. 판정 규칙·API 필드 의미(`recent_no_show_count` = 최근 window일 개수)는 그대로 두고, 이 값을 제한 이유로 표시하지 않는다 | 발동 구간은 (m − window, m]이라 제한 중에도 최근 window일 개수가 threshold보다 작을 수 있어(「노쇼 1회로 제한」) 사용자를 오도한다. 발동 횟수 필드를 새로 내리는 것보다 문구에서 숫자를 빼는 쪽이 계약 변경이 작다 |
+| D100 | **(사용자 결정, QA s2-2·core 1)** `computeOpenPositions`: 포지션별 남은 수 합계가 빈 자리(capacity − joined)를 넘으면 `[]`를 돌려주고 카드는 「N자리 남음」으로 표시. 불변식 「결과 count 합계 ≤ 빈 자리」. 시그니처·응답 스키마 변경 없음 | 1지망이 한 포지션에 몰리면 「탑 2 · 정글 2 · 원딜 2 · 서폿 2 구함」(합계 8)인데 실제 1자리인 문제. 포지션별로 min(값, 빈 자리)만 자르면 합계가 여전히 넘고(4 × 1 > 1), 일부 포지션만 고르면 기준이 임의적이다. 「N자리 남음」은 항상 맞는 정보다 |
+| D101 | **(사용자 결정, QA s2-3)** 화면에 보이는 env 값 6개를 `GET /me/scrim-restriction`으로 내린다: 기존 `policy`에 `mark_window_days` 추가, 새 객체 `scrim_policy {schedule_max_days_ahead, auto_close_after_min}`(모두 필수 int ≥ 1, 단위 일·분). 웹 화면은 `*_DEFAULT` 상수·숫자 리터럴 대신 이 값만 쓰고, 응답 전이면 숫자 없는 문구·사전 검사 생략(서버 검사에 맡김). 새 엔드포인트 없음 | 내전 화면 3개(`/scrims`·`/scrims/new`·`/scrims/[id]`)는 모두 `(main)` 그룹이라 로그인 필수이고(middleware), 세 화면이 이미 이 엔드포인트를 부른다 → 추가 왕복 없음. `GET /games`는 목록 모양(`paginated`)이라 옆에 전역 값을 붙이면 S0 목록 형식 규칙이 깨지고, `/scrims/policy`는 `/scrims/:id`(UUID 검사)와 경로가 겹친다. 사용자별 엔드포인트에 전역 값이 섞이는 것은 감수(이름을 `scrim_policy`로 분리해 구분) |
+| D102 | 전역 정적 오류 문구 `ERROR_MESSAGES.SCRIM_NO_SHOW_NOT_ALLOWED`에서 「7일」을 빼고 「표시 기한 안에」로. 기한 숫자는 운영진 노쇼 영역 안내에서 `policy.mark_window_days`로 보여 준다 | 오류 문구 맵은 정적이라 응답값을 넣을 수 없고, 고정 숫자는 env 변경 시 틀린다 |
 ---
 
 ## 14. 확인 필요 (사용자 판단)
@@ -552,3 +571,27 @@ architect가 이번에 바꾼 것:
 | `.env.example` | 11절 8개 |
 
 구현자가 바꿔야 하는 기존 파일(계약 변경 영향): `apps/api/src/modules/auth/refresh-token.service.ts`·`auth.service.ts`·`auth.controller.ts`(9-1), `modules/game-accounts/steam-link.service.ts`·`steam-link-cookie.ts`·`game-accounts.controller.ts`(9-2), `config/env.ts`(11절), `test/support/fake-prisma.ts`(S2 모델), `apps/web/src/components/settings/game-accounts-section.tsx`(팝업), `apps/web/src/middleware.ts`(matcher), `apps/web/src/lib/routes.ts`, `apps/web/src/lib/api/mock/**`, `apps/web/src/app/(main)/scrims/page.tsx`(자리 → 목록).
+
+### 15-1. 2026-10-30 결함 s2-1~3 반영 (D99–D102)
+
+architect가 바꾼 것: `packages/shared/src/scrims.ts`(`NoShowPolicyView.mark_window_days`, 새 `ScrimPolicyView`, `ScrimRestriction.scrim_policy`, `recent_no_show_count`·`last_no_show_at`·`OpenPosition`·`open_positions` 주석, `*_DEFAULT` 사용 범위 주석), `packages/shared/src/contract.s2.test.ts`(ScrimRestriction 새 필드 필수·양의 정수 검사). 새 필드는 필수라 **backend가 채우기 전까지 `GET /me/scrim-restriction`은 parse 실패(500)**다 — typecheck로는 잡히지 않는다(서비스가 객체를 만든 뒤 parse).
+
+웹 하드코딩 조사 결과(apps/web/src, 테스트 제외, grep `_DEFAULT|\d+(일|분|회)`):
+
+| 위치 | 하드코딩 | 바꿀 값 |
+| --- | --- | --- |
+| `lib/scrims.ts` `restrictionText` | 「노쇼 {recent_no_show_count}회로 …」 | D99 문구(횟수 없음) |
+| `components/scrims/scrim-detail.tsx` 제한 Notice 대체 문구 | 「노쇼 누적으로 …까지 참가·모집이 제한돼요」 | D99 문구로 통일 |
+| `components/scrims/scrim-detail.tsx` 방장 메뉴 | 「시작 시각 60분 뒤까지」 | `scrim_policy.auto_close_after_min` |
+| `components/scrims/scrim-detail.tsx` Roster | `NO_SHOW_WINDOW_DAYS/THRESHOLD/RESTRICTION_DAYS_DEFAULT` 대체값 | `policy` 값, 없으면 숫자 없는 문구 |
+| `components/scrims/scrim-new-form.tsx` | `SCRIM_SCHEDULE_MAX_DAYS_AHEAD_DEFAULT`(max 날짜·사전 검사·문구) | `scrim_policy.schedule_max_days_ahead`, 없으면 상한 검사 생략. 수정 대화상자에 같은 검사가 있으면 같이 |
+| `lib/errors.ts` `SCRIM_NO_SHOW_NOT_ALLOWED` | 「시작 후 7일 안에」 | D102 문구(숫자 없음) |
+| `lib/api/mock/scrims.ts` | `*_DEFAULT` 사용 | 그대로 둔다(목 전용). 단 `GET /me/scrim-restriction` 목 응답에 새 필드 3개 추가 |
+
+구현자 할 일:
+
+| 담당 | 할 일 |
+| --- | --- |
+| logic | `packages/core/src/scrim.ts` `computeOpenPositions`에 7절 4번 규칙(Σ raw > open → `[]`) + 주석. 테스트: 미드 9명 → `[]`, 합계 = open이면 그대로, null·positions 밖 값으로 합계가 넘는 경우 `[]`, 무작위 대조로 「합계 ≤ open」 불변식. dist 재빌드 |
+| backend | `scrim-restriction.service.ts`(또는 `GET /me/scrim-restriction` 직렬화)에 `policy.mark_window_days = config.scrim.noShowMarkWindowDays`, `scrim_policy = { schedule_max_days_ahead: config.scrim.scheduleMaxDaysAhead, auto_close_after_min: config.scrim.autoCloseAfterMin }`. 테스트: env를 바꾼 설정으로 응답 값이 따라가는지, 제한 아닐 때도 채워지는지. 목록·상세 open_positions는 core 결과를 그대로 쓰므로 코드 변경 없음(카드 표시 e2e 기대값만 확인) |
+| frontend | 위 조사 표 6곳 수정, 목 응답 새 필드, `restrictionText` 테스트 문구 갱신. 목 `computeOpenPositions` 복사본에도 D100 규칙 반영(또는 core import). 검사: 화면 코드에서 `grep -E "NO_SHOW_.*_DEFAULT|SCRIM_(SCHEDULE_MAX_DAYS_AHEAD|AUTO_CLOSE_AFTER_MIN)_DEFAULT"`가 `lib/api/mock/**` 밖에서 0건 |

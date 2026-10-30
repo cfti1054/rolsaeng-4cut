@@ -211,12 +211,18 @@ function validatePositions(input: readonly string[], positions: readonly string[
   return null;
 }
 
-function computeOpenPositions(positions: readonly string[], capacity: number, firstChoices: readonly (string | null)[]): OpenPosition[] {
-  if (capacity - firstChoices.length <= 0 || positions.length === 0 || capacity % positions.length !== 0) return [];
+/**
+ * core `computeOpenPositions` 복사본(web은 @gcd/core에 의존하지 않는다). 규칙을 바꾸면 core와 같이 바꾼다.
+ * D100: 포지션별 남은 수 합계가 빈 자리(capacity − 참가 수)를 넘으면 [](카드는 「N자리 남음」).
+ */
+export function computeOpenPositions(positions: readonly string[], capacity: number, firstChoices: readonly (string | null)[]): OpenPosition[] {
+  const open = capacity - firstChoices.length;
+  if (open <= 0 || positions.length === 0 || capacity % positions.length !== 0) return [];
   const per = capacity / positions.length;
-  return positions
+  const result = positions
     .map((position) => ({ position, count: per - firstChoices.filter((f) => f === position).length }))
     .filter((o) => o.count >= 1);
+  return result.reduce((sum, o) => sum + o.count, 0) > open ? [] : result;
 }
 
 function computeRestriction(marks: readonly number[], now: number, policy: Required<MockS2Options>['noShowPolicy']) {
@@ -669,7 +675,16 @@ export function handleS2(ctx: MockS2Context): Response | null {
         until: r.until !== null ? iso(r.until) : null,
         recent_no_show_count: r.recentCount,
         last_no_show_at: r.last !== null ? iso(r.last) : null,
-        policy: { threshold: policy.threshold, window_days: policy.windowDays, restriction_days: policy.restrictionDays },
+        policy: {
+          threshold: policy.threshold,
+          window_days: policy.windowDays,
+          restriction_days: policy.restrictionDays,
+          mark_window_days: NO_SHOW_MARK_WINDOW_DAYS_DEFAULT,
+        },
+        scrim_policy: {
+          schedule_max_days_ahead: SCRIM_SCHEDULE_MAX_DAYS_AHEAD_DEFAULT,
+          auto_close_after_min: SCRIM_AUTO_CLOSE_AFTER_MIN_DEFAULT,
+        },
       }),
     );
   }

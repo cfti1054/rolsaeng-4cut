@@ -54,3 +54,11 @@
 ## 사용 가능한 도구
 
 Read, Grep, Glob, Bash, Write, Edit.
+
+## 변경: computeOpenPositions D100 반영 (2026-10-30, QA s2-2·core 1)
+
+- 파일: `packages/core/src/scrim.ts`(규칙 4번 Σ raw_p > open → `[]` + 주석), `packages/core/src/scrim.test.ts`, `packages/core/dist/**` 재빌드(apps/api가 dist 사용). 시그니처 변경 없음.
+- 위 해석 4번은 D100으로 대체: 이제 결과 count 합계 ≤ 빈 자리(open)가 불변식이다. min(raw, open) 자르기는 하지 않는다.
+- 테스트(computeOpenPositions 13개): 미드 9명 → `[]`, 미드 3명(8 > 7) → `[]`, 합계 = open(탑2·정글2·미드2·원딜1·서폿1 → 원딜1·서폿1, 미드 2명 → 4포지션 2), 2포지션 경계(합계 = open 그대로 / open + 1 → `[]`), null·positions 밖 값으로 합계 초과 → `[]`, 결정적 시드 PRNG 2000회 무작위 대조(합계 ≤ open, 각 count ∈ [1, open], positions 순서, 빈 결과·비지 않은 결과 둘 다 발생 확인). 기존 「미드 3명 → 4포지션 2자리」「capacity 5 null·밖 값 → 4포지션 1」 기대값은 D100에 따라 `[]`로 바꿨다.
+- 결과: `corepack pnpm --filter core typecheck` 통과, `test` 5파일 155개 전부 통과.
+- 해석(관찰): Σ raw_p = open + (null·positions 밖 1지망 수) + (포지션 정원 초과분)이므로, 1지망에 null·밖 값이 하나라도 있으면 결과는 항상 `[]`(카드 「N자리 남음」)다. 정상 흐름에서는 use_positions 내전의 1지망이 검증(D82)으로 항상 positions 안이라 영향 없다.

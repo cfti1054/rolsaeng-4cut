@@ -13,8 +13,8 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Button, InlineError } from '@/components/ui/controls';
 import { isApiError } from '@/lib/api/client';
 import { useUpdateScrim } from '@/lib/hooks/scrims';
-import { buildScrimPatch, capacityFloor, isoToKstInputs, kstInputsToIso } from '@/lib/scrims';
-import { scrimErrorText } from './scrim-bits';
+import { buildScrimPatch, capacityFloor, isoToKstInputs, kstInputsToIso, scheduleMaxMs, scheduleMaxText } from '@/lib/scrims';
+import { scrimErrorText, useRestriction } from './scrim-bits';
 import { CapacityStepper, Toggle } from './scrim-new-form';
 import { SteamAppPicker } from './steam-app-picker';
 
@@ -32,6 +32,7 @@ export function ScrimEditDialog({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const update = useUpdateScrim(s.id);
+  const scrimPolicy = useRestriction().restriction?.scrim_policy;
   const start = isoToKstInputs(s.scheduled_at);
   const [title, setTitle] = useState(s.title);
   const [date, setDate] = useState(start.date);
@@ -49,12 +50,21 @@ export function ScrimEditDialog({
     if (d && !d.open) d.showModal();
   }, []);
 
+  // 원래 시작 시각이 상한을 넘는 모집글은 그대로 둘 수 있어야 하므로 max는 상한과 현재 값 중 큰 쪽
+  const limitMs = scheduleMaxMs(Date.now(), scrimPolicy);
+  const maxDate = limitMs !== null ? isoToKstInputs(new Date(Math.max(limitMs, Date.parse(s.scheduled_at))).toISOString()).date : undefined;
+
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!ScrimTitle.safeParse(title).success) return setError(`제목은 2–${SCRIM_TITLE_MAX_LENGTH}자로 써 주세요.`);
     const iso = kstInputsToIso(date, time);
     if (!iso) return setError('날짜와 시작 시간을 골라 주세요.');
     if (Date.parse(iso) <= Date.now() && Date.parse(iso) !== Date.parse(s.scheduled_at)) return setError('시작 시각은 지금보다 뒤여야 해요.');
+    // 상한은 scrim_policy가 있을 때만 사전 검사(D101). 없으면 서버 VALIDATION_FAILED에 맡긴다
+    const limit = scheduleMaxMs(Date.now(), scrimPolicy);
+    if (scrimPolicy && limit !== null && Date.parse(iso) !== Date.parse(s.scheduled_at) && Date.parse(iso) > limit) {
+      return setError(scheduleMaxText(scrimPolicy));
+    }
     if (capacity < s.joined_count) return setError(`지금 참가 확정이 ${s.joined_count}명이라 정원을 그보다 줄일 수 없어요.`);
     if (game.requires_steam_app && !steamApp) return setError('스팀 게임을 골라 주세요.');
     const patch = buildScrimPatch(s, {
@@ -109,7 +119,7 @@ export function ScrimEditDialog({
             <label htmlFor={ids.date} className="text-[13px] text-muted">
               날짜 <span className="text-faint">(한국 시간)</span>
             </label>
-            <input id={ids.date} type="date" value={date} onChange={(e) => setDate(e.target.value)} className={input} />
+            <input id={ids.date} type="date" value={date} max={maxDate} onChange={(e) => setDate(e.target.value)} className={input} />
           </div>
           <div className="flex flex-[1_1_120px] flex-col gap-1.5">
             <label htmlFor={ids.time} className="text-[13px] text-muted">

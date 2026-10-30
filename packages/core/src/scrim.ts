@@ -146,7 +146,11 @@ export function decideOverdueScrim(input: {
  * 포지션별 남은 자리(목업 「서폿 1 · 정글 1 구함」).
  * - 빈 자리(capacity − firstChoices.length) ≤ 0 → [].
  * - positions가 비었거나 capacity가 positions.length로 나누어떨어지지 않으면 [].
- * - 포지션당 정원 = capacity / positions.length, 남은 수 = 그 값 − 1지망이 그 포지션인 수. 1 이상만 positions 순서로.
+ * - 포지션당 정원 = capacity / positions.length, raw_p = max(0, 그 값 − 1지망이 그 포지션인 수).
+ * - Σ raw_p > 빈 자리 → [](D100: 1지망 쏠림으로 「탑 2 · 정글 2 …」가 실제 빈 자리보다 많아 보이는 것을 막는다.
+ *   포지션별 min(raw, 빈 자리) 자르기로는 합계가 여전히 넘으므로 쓰지 않는다. 카드는 「N자리 남음」으로 표시).
+ * - 그 외 raw_p ≥ 1만 positions 순서로.
+ * 불변식: 결과 count 합계 ≤ 빈 자리(따라서 각 count ≤ 빈 자리).
  * firstChoices의 null(1지망 없음)과 positions 밖 값은 자리 수에는 들어가지만 어느 포지션도 줄이지 않는다.
  */
 export function computeOpenPositions(
@@ -154,7 +158,8 @@ export function computeOpenPositions(
   capacity: number,
   firstChoices: readonly (string | null)[],
 ): { position: string; count: number }[] {
-  if (capacity - firstChoices.length <= 0) return [];
+  const open = capacity - firstChoices.length;
+  if (open <= 0) return [];
   if (positions.length === 0 || capacity % positions.length !== 0) return [];
   const perPosition = capacity / positions.length;
   const taken = new Map<string, number>();
@@ -162,11 +167,15 @@ export function computeOpenPositions(
     if (c !== null) taken.set(c, (taken.get(c) ?? 0) + 1);
   }
   const result: { position: string; count: number }[] = [];
+  let total = 0;
   for (const p of positions) {
     const count = perPosition - (taken.get(p) ?? 0);
-    if (count >= 1) result.push({ position: p, count });
+    if (count >= 1) {
+      result.push({ position: p, count });
+      total += count;
+    }
   }
-  return result;
+  return total > open ? [] : result;
 }
 
 /** 참가 마감(D92): now ≥ scheduledAt */

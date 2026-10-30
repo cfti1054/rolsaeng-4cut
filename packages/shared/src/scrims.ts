@@ -30,7 +30,11 @@ export const SCRIM_AUTO_CLOSE_AFTER_MIN_DEFAULT = 60;
 /** 포지션이 없는 게임의 최소 시작 인원(방장 포함) */
 export const SCRIM_MIN_PLAYERS_TO_START = 2;
 
-/** 노쇼 제한 규칙: 최근 30일 3회 → 마지막 노쇼 표시 시각부터 1일 제한. 환경 변수로 조정 */
+/**
+ * 노쇼 제한 규칙: 최근 30일 3회 → 마지막 노쇼 표시 시각부터 1일 제한. 환경 변수로 조정.
+ * 아래 `*_DEFAULT`는 API env 기본값·목 백엔드 전용이다. 웹 화면 문구·사전 검사는
+ * GET /me/scrim-restriction의 policy·scrim_policy를 쓴다(D101).
+ */
 export const NO_SHOW_THRESHOLD_DEFAULT = 3;
 export const NO_SHOW_WINDOW_DAYS_DEFAULT = 30;
 export const NO_SHOW_RESTRICTION_DAYS_DEFAULT = 1;
@@ -108,7 +112,11 @@ export const ScrimOptions = z.object({
 });
 export type ScrimOptions = z.infer<typeof ScrimOptions>;
 
-/** 포지션별 남은 자리(목업 「서폿 1 · 정글 1 구함」). core computeOpenPositions 결과 */
+/**
+ * 포지션별 남은 자리(목업 「서폿 1 · 정글 1 구함」). core computeOpenPositions 결과.
+ * 불변식(D100): 배열의 count 합계 ≤ 빈 자리(capacity − joined_count). 넘을 상황이면 서버가 []를 내려
+ * 카드는 「N자리 남음」으로 표시한다.
+ */
 export const OpenPosition = z.object({
   position: z.string(),
   count: z.number().int().min(1),
@@ -156,7 +164,10 @@ export const ScrimSummary = z.object({
   options: ScrimOptions,
   /** 스팀 내전에서 고른 게임(D98). 다른 게임과, 이 기능 전에 만든 스팀 내전은 null */
   steam_app: SteamAppRef.nullable(),
-  /** use_positions일 때만 값이 있고 그 외 []. 자리가 다 찼으면 [] */
+  /**
+   * 모집 중(recruiting·full) && use_positions일 때만 값이 있고 그 외 []. 자리가 다 찼으면 [].
+   * count 합계 ≤ capacity − joined_count(D100). 포지션별 남은 수 합계가 빈 자리를 넘으면 [](카드는 「N자리 남음」)
+   */
   open_positions: z.array(OpenPosition),
   /** 서버 시각 ≥ scheduled_at → 참가·대기 등록·참가 취소 마감(시작·자동 마감 전이어도) */
   join_closed: z.boolean(),
@@ -379,24 +390,51 @@ export type SetScrimNoShowResponse = z.infer<typeof SetScrimNoShowResponse>;
 // GET /me/scrim-restriction — 내 노쇼 제한 상태(목록·작성·상세 화면 안내)
 // -----------------------------------------------------------------------------
 
+/**
+ * 노쇼 정책(API 환경 변수 실제 값, 계약 11절). 웹은 안내 문구의 숫자를 이 값으로 채우고
+ * shared `NO_SHOW_*_DEFAULT` 상수를 화면 문구·검사에 쓰지 않는다(D101). 모두 양의 정수.
+ */
 export const NoShowPolicyView = z.object({
-  /** 이 횟수 이상이면 제한(기본 3) */
+  /** 이 횟수 이상이면 제한(SCRIM_NO_SHOW_THRESHOLD, 기본 3). 단위: 회 */
   threshold: z.number().int().min(1),
-  /** 집계 기간(일, 기본 30). 24시간 × 일수의 이동 구간(KST 날짜 경계 아님) */
+  /** 집계 기간(SCRIM_NO_SHOW_WINDOW_DAYS, 기본 30). 단위: 일 = 24시간 × 일수의 이동 구간(KST 날짜 경계 아님) */
   window_days: z.number().int().min(1),
-  /** 제한 기간(일, 기본 7). 제한을 일으킨 노쇼 표시 시각부터 */
+  /** 제한 기간(SCRIM_NO_SHOW_RESTRICTION_DAYS, 기본 1). 단위: 일. 제한을 일으킨 노쇼 표시 시각부터 */
   restriction_days: z.number().int().min(1),
+  /**
+   * 운영진 노쇼 표시 기한(SCRIM_NO_SHOW_MARK_WINDOW_DAYS, 기본 7, D83). 단위: 일.
+   * 내전 시작 시각(scheduled_at)부터 이 일수까지 표시 가능. 정정(해제)은 기한 없음
+   */
+  mark_window_days: z.number().int().min(1),
 });
 export type NoShowPolicyView = z.infer<typeof NoShowPolicyView>;
+
+/**
+ * 내전 모집 정책(API 환경 변수 실제 값, 계약 11절, D101). 사용자와 무관한 전역 값이다.
+ * 웹은 `SCRIM_SCHEDULE_MAX_DAYS_AHEAD_DEFAULT`·`SCRIM_AUTO_CLOSE_AFTER_MIN_DEFAULT`를 화면에 쓰지 않고 이 값을 쓴다.
+ */
+export const ScrimPolicyView = z.object({
+  /** 시작 시각 상한(SCRIM_SCHEDULE_MAX_DAYS_AHEAD, 기본 30). 단위: 일. now < scheduled_at ≤ now + 이 일수 */
+  schedule_max_days_ahead: z.number().int().min(1),
+  /** 자동 마감(SCRIM_AUTO_CLOSE_AFTER_MIN, 기본 60). 단위: 분. 시작 시각 + 이 분이 지나도 시작하지 않으면 cron이 처리(D78) */
+  auto_close_after_min: z.number().int().min(1),
+});
+export type ScrimPolicyView = z.infer<typeof ScrimPolicyView>;
 
 export const ScrimRestriction = z.object({
   restricted: z.boolean(),
   /** 해제 시각(제한 중일 때만). 화면은 KST로 표시 */
   until: IsoDateTime.nullable(),
-  /** 최근 window_days 안의 노쇼 횟수(제한 여부와 무관하게 안내용) */
+  /**
+   * (now − window_days, now] 안의 노쇼 횟수(제한 여부와 무관한 참고값).
+   * 제한을 일으킨 횟수가 아니다 — 제한 중에도 threshold보다 작을 수 있으므로 제한 배너·이유 문구에 쓰지 않는다(D99)
+   */
   recent_no_show_count: z.number().int().min(0),
+  /** 조회 범위(now − (window_days + restriction_days)일 초과) 안의 마지막 노쇼 표시 시각, 없으면 null */
   last_no_show_at: IsoDateTime.nullable(),
   policy: NoShowPolicyView,
+  /** 내전 모집 정책(작성 폼 시작 시각 상한, 방장 메뉴 자동 마감 안내). D101 */
+  scrim_policy: ScrimPolicyView,
 });
 export type ScrimRestriction = z.infer<typeof ScrimRestriction>;
 

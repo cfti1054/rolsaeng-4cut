@@ -94,3 +94,19 @@
 **추가 변경(사용자 요청, 2026-10-30):** 노쇼 제한 기간 기본값 7일 → 1일(`NO_SHOW_RESTRICTION_DAYS_DEFAULT`, `SCRIM_NO_SHOW_RESTRICTION_DAYS`). 최근 30일 3회와 표시 기한(시작 후 7일)은 그대로. 노쇼 확인 대화상자는 `GET /me/scrim-restriction`의 policy 숫자를 쓴다. 리더 직접 수정·실행: core 150, web scrims 40, api env+scrims e2e 49 passed. 목 모드 브라우저에서 제한 배너·상세 「내 참가」 안내가 「1일」로 보이는 것 확인. QA 재검증 없음
 
 **다음:** 남은 결함 s2-1~3 계약 결정 후 S3 팀 자동 밸런스, 결과 입력·승인, ELO 반영, 레이팅 그래프
+
+## S2 남은 결함 s2-1~3 처리 — 2026-10-30 — 판정: pass (DB e2e·브라우저 미확인)
+
+**계약:** D99~D102(`01_architect_contract.md` 13절, 15-1절). s2-1 제한 문구에서 「노쇼 N회」 제거(「노쇼가 누적되어 {until}까지 …」). s2-2 `computeOpenPositions` 합계가 빈 자리를 넘으면 `[]`(카드는 「N자리 남음」, min 절단은 합계가 여전히 넘을 수 있어 불채택). s2-3 `GET /me/scrim-restriction`에 `policy.mark_window_days`, `scrim_policy.{schedule_max_days_ahead, auto_close_after_min}` 추가, 웹 하드코딩 제거(응답 전엔 숫자 없는 문구, 상한 사전 검사 생략). D102 오류 문구에서 「7일」 제거.
+
+**구현:** core `scrim.ts`(+테스트 13개), api `scrim-restriction.service.ts`, web `lib/scrims.ts`·`scrim-detail.tsx`·`scrim-new-form.tsx`·`scrim-edit-dialog.tsx`(상한 검사 신규)·`lib/errors.ts`·목 백엔드.
+
+**리더 직접 실행:** typecheck 4개 Done / test shared 57·core 155·web 136·api 345 passed / 27 skipped(DB e2e) / `pnpm -r build` 4개 Done
+
+**QA:** `03_qa-verifier_s2_r2.md` pass(minor 4). 무작위 대조(core ↔ web 목 10만 회, 노쇼 조회 하한 5만 회) 불일치 0. 이전 QA 재검증 없던 리더 수정분(useJoinClosed, web minor 3·4·5, 노쇼 제한 1일)도 확인.
+
+**결함 처리:** minor 1(수정 대화상자 날짜 `max` 누락) → 리더 수정(상한과 기존 시작 시각 중 큰 쪽), QA 재검증 없음. minor 2(보조 문구 「마지막 노쇼부터 N일」 → 「N일 동안 … 제한 중 기준을 채우는 노쇼가 또 생기면 그만큼 늦게 풀려요」), minor 3(카운트다운이 0 이하면 「00:00:00」 대신 「곧 시작」), minor 4(목 테스트 난수를 시드 고정 mulberry32로) → 모두 리더 수정, QA 재검증 없음. web typecheck·test 136 passed·build 성공. 남은 결함 없음
+
+**미실행·미확인:** DB e2e 27건, 브라우저 렌더 — 이전과 동일
+
+**다음:** S3 팀 자동 밸런스, 결과 입력·승인, ELO 반영, 레이팅 그래프

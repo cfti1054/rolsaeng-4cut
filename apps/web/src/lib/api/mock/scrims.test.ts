@@ -22,6 +22,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import { createApiClient } from '../client';
 import { createMockBackend, type MockDb } from './backend';
+import { computeOpenPositions } from './scrims';
 
 /** S2 목이 계약을 지키는지: 실제 클라이언트(zod 파싱)로 호출한다 */
 function setup(login?: { username: string; role?: UserRole }) {
@@ -130,6 +131,34 @@ describe('S2 목: 게임·목록', () => {
     const raw = JSON.stringify(await t.get(s.id));
     expect(raw).not.toContain('discord_id');
     expect(raw).not.toContain('email');
+  });
+
+  it('computeOpenPositions(D100): 합계가 빈 자리를 넘으면 [], 같거나 작으면 그대로', () => {
+    const lol = ['top', 'jungle', 'mid', 'adc', 'support'];
+    // 미드 9명 → 빈 자리 1인데 탑·정글·원딜·서폿 2씩(합계 8) → []
+    expect(computeOpenPositions(lol, 10, Array(9).fill('mid'))).toEqual([]);
+    // 1지망 고르게 8명 → 정글 1·서폿 1(합계 2 = 빈 자리 2) 그대로
+    expect(computeOpenPositions(lol, 10, ['top', 'top', 'jungle', 'mid', 'mid', 'adc', 'adc', 'support'])).toEqual([
+      { position: 'jungle', count: 1 },
+      { position: 'support', count: 1 },
+    ]);
+    // null·positions 밖 값으로 합계가 넘는 경우 []
+    expect(computeOpenPositions(lol, 10, [null, null, 'x', 'top', 'top', 'jungle', 'jungle', 'mid'])).toEqual([]);
+    // 무작위 대조: 합계 ≤ 빈 자리. 실패해도 같은 입력을 다시 만들 수 있게 시드 고정(mulberry32)
+    let seed = 0x5eed2d100;
+    const rand = () => {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const choices = [...lol, null, 'x'];
+    for (let i = 0; i < 300; i++) {
+      const n = Math.floor(rand() * 11);
+      const picks = Array.from({ length: n }, () => choices[Math.floor(rand() * choices.length)] ?? null);
+      const sum = computeOpenPositions(lol, 10, picks).reduce((a, o) => a + o.count, 0);
+      expect(sum).toBeLessThanOrEqual(Math.max(0, 10 - n));
+    }
   });
 });
 
@@ -333,7 +362,12 @@ describe('S2 목: 노쇼 제한·노쇼 표시', () => {
     const t = setup({ username: 'noshow_kim' });
     await t.ready;
     const r = await t.api.request(ApiPath.myScrimRestriction, GetMyScrimRestrictionResponse);
-    expect(r).toMatchObject({ restricted: true, recent_no_show_count: 3, policy: { threshold: 3, window_days: 30, restriction_days: 1 } });
+    expect(r).toMatchObject({
+      restricted: true,
+      recent_no_show_count: 3,
+      policy: { threshold: 3, window_days: 30, restriction_days: 1, mark_window_days: 7 },
+      scrim_policy: { schedule_max_days_ahead: 30, auto_close_after_min: 60 },
+    });
     // 가장 늦은 발동 노쇼(6시간 전) + 1일
     expect(Date.parse(r.until!)).toBe(Date.parse('2026-10-28T03:00:00.000Z') - 6 * 3_600_000 + 86_400_000);
 
@@ -435,5 +469,8 @@ describe('S2 목: 백엔드 확정 사항 대조', () => {
     await t.ready;
     const r = await t.api.request(ApiPath.myScrimRestriction, GetMyScrimRestrictionResponse);
     expect(r).toMatchObject({ restricted: false, until: null, last_no_show_at: null, recent_no_show_count: 0 });
+    // 제한이 아니어도 정책 값은 채운다(D101)
+    expect(r.policy.mark_window_days).toBe(7);
+    expect(r.scrim_policy).toEqual({ schedule_max_days_ahead: 30, auto_close_after_min: 60 });
   });
 });

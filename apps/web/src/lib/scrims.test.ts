@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { ERROR_MESSAGES } from './errors';
 import { scrimGameTag } from './games';
 import {
+  autoCloseHintText,
   buildScrimPatch,
   capacityFloor,
   capacityPips,
@@ -9,7 +11,12 @@ import {
   isoToKstInputs,
   kstClock,
   kstInputsToIso,
+  noShowMarkHintText,
+  noShowRuleText,
   restrictionText,
+  restrictionUntilText,
+  scheduleMaxMs,
+  scheduleMaxText,
   scrimCardAction,
   scrimCardBadge,
   scrimDayLabel,
@@ -108,6 +115,8 @@ describe('카드 표시', () => {
       '서포터 1 · 정글 1 구함',
     );
     expect(scrimNeedLine(base).text).toBe('2자리 남음');
+    // D100: 서버가 open_positions를 []로 내리면(합계 > 빈 자리) 포지션 게임도 「N자리 남음」
+    expect(scrimNeedLine({ ...base, joined_count: 9, open_positions: [] }).text).toBe('1자리 남음');
     expect(scrimNeedLine({ ...base, status: 'full', joined_count: 10, waitlist_count: 2 }).text).toBe('대기 2명');
     expect(scrimNeedLine({ ...base, status: 'full', joined_count: 10 }).text).toBe('정원 마감');
     expect(scrimNeedLine({ ...base, status: 'finished', joined_count: 10 }).text).toBe('참가 10명');
@@ -160,11 +169,41 @@ describe('상세 표시', () => {
     expect(toPreferredPositions('mid', 'top')).toEqual(['mid', 'top']);
   });
 
-  it('노쇼 제한 문구(KST MM.DD HH:mm)', () => {
-    expect(restrictionText({ restricted: true, until: '2026-11-02T06:00:00.000Z', recent_no_show_count: 3 })).toBe(
-      '노쇼 3회로 11.02 15:00까지 내전 참가·모집이 제한돼요.',
+  it('노쇼 제한 문구(KST MM.DD HH:mm, 횟수 없음 D99)', () => {
+    const text = restrictionText({ restricted: true, until: '2026-11-02T06:00:00.000Z' });
+    expect(text).toBe('노쇼가 누적되어 11.02 15:00까지 내전을 만들거나 참가할 수 없어요');
+    expect(text).not.toMatch(/\d+회/);
+    // 상세 대체 문구(viewer.restricted_until)도 같은 문구
+    expect(restrictionUntilText('2026-11-02T06:00:00.000Z')).toBe(text);
+    expect(restrictionText({ restricted: false, until: null })).toBeNull();
+    expect(restrictionText({ restricted: true, until: null })).toBeNull();
+  });
+});
+
+describe('정책 값 문구(D101·D102)', () => {
+  it('자동 마감 안내: 정책 값이 있으면 그 분, 없으면 숫자 없는 문구', () => {
+    expect(autoCloseHintText({ auto_close_after_min: 90 })).toBe('시작 시각 90분 뒤까지 시작하지 않으면 자동으로 정리돼요.');
+    expect(autoCloseHintText(undefined)).toBe('시작 시각이 한참 지나도 시작하지 않으면 자동으로 정리돼요.');
+    expect(autoCloseHintText(undefined)).not.toMatch(/\d/);
+  });
+
+  it('노쇼 규칙·표시 기한: 정책 값 그대로, 없으면 숫자 없는 문구', () => {
+    expect(noShowRuleText({ window_days: 14, threshold: 2, restriction_days: 3 })).toBe(
+      '최근 14일 노쇼가 2회가 되면 3일 동안 내전 참가·모집이 제한돼요.',
     );
-    expect(restrictionText({ restricted: false, until: null, recent_no_show_count: 1 })).toBeNull();
+    expect(noShowRuleText(null)).toBe('노쇼가 누적되면 일정 기간 내전 참가·모집이 제한돼요.');
+    expect(noShowMarkHintText({ mark_window_days: 5 })).toContain('시작 후 5일 안에만 표시할 수 있어요');
+  });
+
+  it('시작 시각 상한: 정책 값이 없으면 null(사전 검사 생략)', () => {
+    expect(scheduleMaxMs(NOW, { schedule_max_days_ahead: 14 })).toBe(NOW + 14 * 86_400_000);
+    expect(scheduleMaxMs(NOW, undefined)).toBeNull();
+    expect(scheduleMaxText({ schedule_max_days_ahead: 14 })).toBe('14일 안의 시각만 고를 수 있어요.');
+  });
+
+  it('SCRIM_NO_SHOW_NOT_ALLOWED 문구에 고정 일수가 없다(D102)', () => {
+    expect(ERROR_MESSAGES.SCRIM_NO_SHOW_NOT_ALLOWED).toContain('표시 기한 안에');
+    expect(ERROR_MESSAGES.SCRIM_NO_SHOW_NOT_ALLOWED).not.toMatch(/\d/);
   });
 });
 

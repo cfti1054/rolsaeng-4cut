@@ -49,7 +49,7 @@ export const ERROR_MESSAGES: Record<AppErrorCode, string> = {
   SCRIM_BANNED: '노쇼가 쌓여 지금은 새 내전 참가·대기 등록·모집글 작성이 제한돼 있어요.',
   SCRIM_CAPACITY_BELOW_JOINED: '정원을 지금 참가 확정된 인원보다 적게 줄일 수 없어요.',
   SCRIM_CANNOT_START: '아직 시작할 수 없어요. 시작에 필요한 인원이 모였는지 확인해 주세요.',
-  SCRIM_NO_SHOW_NOT_ALLOWED: '지금은 노쇼를 표시할 수 없어요. 진행 중·종료된 내전의 참가자에게만, 시작 후 7일 안에 표시할 수 있어요.',
+  SCRIM_NO_SHOW_NOT_ALLOWED: '지금은 노쇼를 표시할 수 없어요. 진행 중·종료된 내전의 참가자에게만, 표시 기한 안에 표시할 수 있어요.',
   NETWORK_ERROR: '서버에 연결하지 못했어요. 네트워크를 확인하고 다시 시도해 주세요.',
   INVALID_RESPONSE: '서버 응답 형식이 예상과 달라요. 운영진에게 알려 주세요.',
 };

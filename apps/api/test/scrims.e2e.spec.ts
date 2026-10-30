@@ -202,7 +202,8 @@ describe('GET /me/scrim-restriction', () => {
       until: null,
       recent_no_show_count: 0,
       last_no_show_at: null,
-      policy: { threshold: 3, window_days: 30, restriction_days: 1 },
+      policy: { threshold: 3, window_days: 30, restriction_days: 1, mark_window_days: 7 },
+      scrim_policy: { schedule_max_days_ahead: 30, auto_close_after_min: 60 },
     });
     const now = t.clock.now().getTime();
     const last = new Date(now - HOUR);
@@ -210,6 +211,9 @@ describe('GET /me/scrim-restriction', () => {
     const r = await get();
     expect(r).toMatchObject({ restricted: true, recent_no_show_count: 3, last_no_show_at: last.toISOString() });
     expect(r.until).toBe(new Date(last.getTime() + DAY).toISOString());
+    // 제한 중에도 정책 값은 같다(전역 값, D101)
+    expect(r.policy).toEqual({ threshold: 3, window_days: 30, restriction_days: 1, mark_window_days: 7 });
+    expect(r.scrim_policy).toEqual({ schedule_max_days_ahead: 30, auto_close_after_min: 60 });
   });
 
   it('환경 변수 정책(SCRIM_NO_SHOW_THRESHOLD=2)', async () => {
@@ -220,6 +224,27 @@ describe('GET /me/scrim-restriction', () => {
     const r = GetMyScrimRestrictionResponse.parse(await (await call(t, 'GET', '/me/scrim-restriction', a.token)).json());
     expect(r.restricted).toBe(true);
     expect(r.policy.threshold).toBe(2);
+  });
+
+  it('env 6개를 바꾸면 policy·scrim_policy가 그대로 따라감(제한 아님에도 채움, D101)', async () => {
+    t = await createTestApp({
+      fixedClock: true,
+      env: {
+        SCRIM_NO_SHOW_THRESHOLD: '5',
+        SCRIM_NO_SHOW_WINDOW_DAYS: '14',
+        SCRIM_NO_SHOW_RESTRICTION_DAYS: '3',
+        SCRIM_NO_SHOW_MARK_WINDOW_DAYS: '2',
+        SCRIM_SCHEDULE_MAX_DAYS_AHEAD: '45',
+        SCRIM_AUTO_CLOSE_AFTER_MIN: '90',
+      },
+    });
+    const a = await login(t, 'alice');
+    const res = await call(t, 'GET', '/me/scrim-restriction', a.token);
+    expect(res.status).toBe(200);
+    const r = GetMyScrimRestrictionResponse.parse(await res.json());
+    expect(r.restricted).toBe(false);
+    expect(r.policy).toEqual({ threshold: 5, window_days: 14, restriction_days: 3, mark_window_days: 2 });
+    expect(r.scrim_policy).toEqual({ schedule_max_days_ahead: 45, auto_close_after_min: 90 });
   });
 });
 
@@ -297,6 +322,20 @@ describe('GET /scrims 목록', () => {
       { position: 'support', count: 2 },
     ]);
     expect(page.items[0]?.my_status).toBe('joined');
+  });
+
+  it('open_positions(D100): 포지션별 남은 수 합계 > 빈 자리면 []', async () => {
+    t = await createTestApp({ fixedClock: true });
+    const a = await login(t, 'alice');
+    const b = await login(t, 'bob');
+    const c = await login(t, 'carol');
+    const s = await create(t, a); // 방장 mid
+    await join(t, b, s.id, ['mid']);
+    await join(t, c, s.id, ['mid']);
+    // mid 3명(정원 2 초과) → 나머지 4포지션 × 2 = 8 > 빈 자리 7
+    const page = ListScrimsResponse.parse(await (await call(t, 'GET', '/scrims', a.token)).json());
+    expect(page.items[0]?.joined_count).toBe(3);
+    expect(page.items[0]?.open_positions).toEqual([]);
   });
 });
 

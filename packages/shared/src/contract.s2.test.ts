@@ -242,15 +242,30 @@ describe('scrim responses', () => {
     expect(r.items[0]).not.toHaveProperty('players');
     expect(r.items[0]).not.toHaveProperty('viewer');
   });
-  it('ScrimRestriction', () => {
-    const r = GetMyScrimRestrictionResponse.parse({
+  it('ScrimRestriction: 노쇼 정책 + 모집 정책(D101)', () => {
+    const body = {
       restricted: true,
       until: '2026-11-05T12:00:00.000Z',
-      recent_no_show_count: 3,
+      recent_no_show_count: 1,
       last_no_show_at: T,
-      policy: { threshold: 3, window_days: 30, restriction_days: 7 },
-    });
+      policy: { threshold: 3, window_days: 30, restriction_days: 1, mark_window_days: 7 },
+      scrim_policy: { schedule_max_days_ahead: 30, auto_close_after_min: 60 },
+    };
+    const r = GetMyScrimRestrictionResponse.parse(body);
     expect(r.restricted).toBe(true);
+    expect(r.policy.mark_window_days).toBe(7);
+    expect(r.scrim_policy).toEqual({ schedule_max_days_ahead: 30, auto_close_after_min: 60 });
+    // 새 필드는 필수(웹이 기본값 상수로 대신 채우지 않게)
+    expect(GetMyScrimRestrictionResponse.safeParse({ ...body, scrim_policy: undefined }).success).toBe(false);
+    const { mark_window_days: _omit, ...oldPolicy } = body.policy;
+    expect(GetMyScrimRestrictionResponse.safeParse({ ...body, policy: oldPolicy }).success).toBe(false);
+    // 양의 정수만
+    expect(
+      GetMyScrimRestrictionResponse.safeParse({ ...body, scrim_policy: { schedule_max_days_ahead: 0, auto_close_after_min: 60 } }).success,
+    ).toBe(false);
+    expect(
+      GetMyScrimRestrictionResponse.safeParse({ ...body, scrim_policy: { schedule_max_days_ahead: 30, auto_close_after_min: 1.5 } }).success,
+    ).toBe(false);
   });
 });
 

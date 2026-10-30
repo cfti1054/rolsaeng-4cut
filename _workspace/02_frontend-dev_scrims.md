@@ -57,3 +57,18 @@ backend 확정 사항 대조: (1) join 본문 필수 — 훅은 항상 객체를
 ## 계약 변경 요청
 
 없음. 참고(차단 아님): `ScrimGameRef`에 정원 범위가 없어 상세의 「시작 불가 이유」·수정 대화상자 정원 범위는 GET /games로 보완한다. 상세에서 /games 실패 시 수정 대화상자 대신 재시도 안내를 띄운다.
+
+## 2026-10-30 결함 s2-1~3 반영 (D99–D102)
+
+- 제한 문구(D99): `lib/scrims.ts`에 `restrictionUntilText(until)` 추가 — 「노쇼가 누적되어 {KST MM.DD HH:mm}까지 내전을 만들거나 참가할 수 없어요」. `restrictionText`는 횟수를 빼고 이 함수를 쓴다(입력 Pick에서 `recent_no_show_count` 제거). `scrim-detail.tsx` 참가 영역 제한 Notice는 조회 응답 유무와 관계없이 `restrictionUntilText(restrictedUntil)` 하나로 통일.
+- env 값(D101): 화면 코드에서 `*_DEFAULT` import 제거. 새 순수 함수 `autoCloseHintText(scrim_policy?)`, `noShowRuleText(policy?)`, `noShowMarkHintText(policy)`, `scheduleMaxMs(now, scrim_policy?)`, `scheduleMaxText(scrim_policy)`.
+  - 방장 메뉴: `scrim_policy.auto_close_after_min`, 응답 전이면 「시작 시각이 한참 지나도 시작하지 않으면 자동으로 정리돼요.」
+  - Roster 노쇼 확인 대화상자: policy 값, 응답 전이면 「노쇼가 누적되면 일정 기간 내전 참가·모집이 제한돼요.」 운영진 노쇼 영역에 「시작 후 {mark_window_days}일 안에만 표시할 수 있어요. 정정은 언제든 할 수 있어요.」(policy 있을 때만).
+  - 작성 폼·수정 대화상자: 날짜 `max`·사전 검사·문구 모두 `scrim_policy.schedule_max_days_ahead`. 응답 전·실패면 상한 검사 없음(서버 VALIDATION_FAILED details에 맡김). 수정 대화상자에는 원래 상한 검사가 없었는데 계약 8절 「수정 대화상자도 같다」에 맞춰 추가(시작 시각을 바꿀 때만).
+- `lib/errors.ts` `SCRIM_NO_SHOW_NOT_ALLOWED`(D102): 「…, 표시 기한 안에 표시할 수 있어요.」
+- 목 백엔드: `GET /me/scrim-restriction`에 `policy.mark_window_days`, `scrim_policy {schedule_max_days_ahead, auto_close_after_min}` 추가(목 전용 기본값 상수 사용). `computeOpenPositions` 복사본에 D100(합계 > 빈 자리 → []) 반영 후 테스트용 export. core import 대신 복사본을 유지한 이유: web은 `@gcd/core`에 의존하지 않고, 의존성을 추가하면 apps/web 밖의 lockfile이 바뀐다.
+- 카드: `scrimNeedLine`은 원래 open_positions가 []면 「N자리 남음」이라 코드 변경 없음(테스트만 추가).
+- 테스트: `lib/scrims.test.ts`(D99 문구·횟수 없음, 정책 문구·숫자 없는 대체 문구, 상한 null, D102 문구, D100 카드 줄), `lib/api/mock/scrims.test.ts`(새 필드 3개·제한 아닐 때도 채움, D100 미드 9명·합계 = 빈 자리·null/밖 값·무작위 300회 불변식).
+- 확인: `grep -rnE 'NO_SHOW_.*_DEFAULT|SCRIM_(SCHEDULE_MAX_DAYS_AHEAD|AUTO_CLOSE_AFTER_MIN)_DEFAULT' apps/web/src --exclude-dir=mock` 0건.
+- 검증: `corepack pnpm --filter web typecheck` 통과, `test` 13 파일 136 테스트 통과, `build` 통과.
+- 목 사용: 화면은 실제 API에서 새 필드가 오기 전까지(backend 반영 전) `GET /me/scrim-restriction` parse 실패 → 숫자 없는 문구·상한 검사 생략 경로로 동작한다. 목 모드에서는 새 필드가 채워진다.

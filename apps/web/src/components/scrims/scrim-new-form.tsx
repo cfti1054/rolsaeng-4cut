@@ -3,7 +3,6 @@
 import {
   CreateScrimRequest,
   SCRIM_RULES_MAX_LENGTH,
-  SCRIM_SCHEDULE_MAX_DAYS_AHEAD_DEFAULT,
   SCRIM_TITLE_MAX_LENGTH,
   ScrimTitle,
   type CreateScrimRequestInput,
@@ -25,7 +24,14 @@ import { useMe } from '@/lib/hooks/auth';
 import { useCreateScrim, useGames } from '@/lib/hooks/scrims';
 import { useNow } from '@/lib/hooks/use-now';
 import { routes } from '@/lib/routes';
-import { defaultScheduleInputs, isoToKstInputs, kstInputsToIso, toPreferredPositions } from '@/lib/scrims';
+import {
+  defaultScheduleInputs,
+  isoToKstInputs,
+  kstInputsToIso,
+  scheduleMaxMs,
+  scheduleMaxText,
+  toPreferredPositions,
+} from '@/lib/scrims';
 import { PositionPicker } from './position-picker';
 import { RestrictionBanner, scrimErrorText, useRestriction } from './scrim-bits';
 import { ScrimCard } from './scrim-card';
@@ -99,7 +105,10 @@ export function ScrimNewForm() {
 
   const ids = { title: useId(), date: useId(), time: useId(), cap: useId(), rules: useId(), pos: useId() };
   const minDate = now ? isoToKstInputs(new Date(now).toISOString()).date : undefined;
-  const maxDate = now ? isoToKstInputs(new Date(now + SCRIM_SCHEDULE_MAX_DAYS_AHEAD_DEFAULT * 86_400_000).toISOString()).date : undefined;
+  // 상한은 GET /me/scrim-restriction scrim_policy에서만(D101). 응답 전이면 상한 없이 서버 검사에 맡긴다
+  const scrimPolicy = restriction?.scrim_policy;
+  const maxMs = now ? scheduleMaxMs(now, scrimPolicy) : null;
+  const maxDate = maxMs !== null ? isoToKstInputs(new Date(maxMs).toISOString()).date : undefined;
   const scheduledIso = kstInputsToIso(date, time);
 
   const submit = (e: FormEvent) => {
@@ -110,8 +119,9 @@ export function ScrimNewForm() {
     if (!t.success) next.title = `제목은 앞뒤 공백을 빼고 2–${SCRIM_TITLE_MAX_LENGTH}자로 써 주세요.`;
     if (!scheduledIso) next.scheduled_at = '날짜와 시작 시간을 골라 주세요.';
     else if (Date.parse(scheduledIso) <= Date.now()) next.scheduled_at = '시작 시각은 지금보다 뒤여야 해요.';
-    else if (Date.parse(scheduledIso) > Date.now() + SCRIM_SCHEDULE_MAX_DAYS_AHEAD_DEFAULT * 86_400_000) {
-      next.scheduled_at = `${SCRIM_SCHEDULE_MAX_DAYS_AHEAD_DEFAULT}일 안의 시각만 고를 수 있어요.`;
+    else {
+      const limit = scheduleMaxMs(Date.now(), scrimPolicy);
+      if (scrimPolicy && limit !== null && Date.parse(scheduledIso) > limit) next.scheduled_at = scheduleMaxText(scrimPolicy);
     }
     if (needsApp && !steamApp) next.steam_app_id = '어떤 스팀 게임으로 내전할지 골라 주세요.';
     if (effPositions && !first) next.host_preferred_positions = '방장도 참가자예요. 1지망 포지션을 골라 주세요.';

@@ -1,11 +1,13 @@
 import type {
   GameCapacityRange,
   GameCode,
+  NoShowPolicyView,
   OpenPosition,
   ScrimCancelReason,
   ScrimDetail,
   ScrimListStatus,
   ScrimOptions,
+  ScrimPolicyView,
   ScrimRestriction,
   ScrimStatus,
   ScrimSummary,
@@ -296,16 +298,56 @@ export function positionsText(positions: readonly string[]): string {
 // 노쇼 제한
 // -----------------------------------------------------------------------------
 
-/** 「노쇼 3회로 10.28 21:00까지 내전 참가·모집이 제한돼요」(계약 8절). 제한이 아니면 null */
-export function restrictionText(r: Pick<ScrimRestriction, 'restricted' | 'until' | 'recent_no_show_count'>): string | null {
+/**
+ * 「노쇼가 누적되어 10.28 21:00까지 내전을 만들거나 참가할 수 없어요」(계약 8절, D99).
+ * recent_no_show_count는 제한을 일으킨 횟수가 아니라서 넣지 않는다.
+ */
+export function restrictionUntilText(until: string): string {
+  return `노쇼가 누적되어 ${kstMonthDayTime(until)}까지 내전을 만들거나 참가할 수 없어요`;
+}
+
+/** 제한 배너 문구(D99). 제한이 아니면 null */
+export function restrictionText(r: Pick<ScrimRestriction, 'restricted' | 'until'>): string | null {
   if (!r.restricted || !r.until) return null;
-  return `노쇼 ${r.recent_no_show_count}회로 ${kstMonthDayTime(r.until)}까지 내전 참가·모집이 제한돼요.`;
+  return restrictionUntilText(r.until);
+}
+
+/** 방장 메뉴 자동 마감 안내(D101). 정책 값이 없으면(제한 조회 전·실패) 숫자 없는 문구 */
+export function autoCloseHintText(scrimPolicy: Pick<ScrimPolicyView, 'auto_close_after_min'> | null | undefined): string {
+  return scrimPolicy
+    ? `시작 시각 ${scrimPolicy.auto_close_after_min}분 뒤까지 시작하지 않으면 자동으로 정리돼요.`
+    : '시작 시각이 한참 지나도 시작하지 않으면 자동으로 정리돼요.';
+}
+
+/** 운영진 노쇼 표시 기한 안내(D101·D102) */
+export function noShowMarkHintText(policy: Pick<NoShowPolicyView, 'mark_window_days'>): string {
+  return `시작 후 ${policy.mark_window_days}일 안에만 표시할 수 있어요. 정정은 언제든 할 수 있어요.`;
+}
+
+/** 운영진 노쇼 확인 대화상자의 규칙 문구(D101). 정책 값이 없으면 숫자 없는 문구 */
+export function noShowRuleText(policy: Pick<NoShowPolicyView, 'window_days' | 'threshold' | 'restriction_days'> | null | undefined): string {
+  return policy
+    ? `최근 ${policy.window_days}일 노쇼가 ${policy.threshold}회가 되면 ${policy.restriction_days}일 동안 내전 참가·모집이 제한돼요.`
+    : '노쇼가 누적되면 일정 기간 내전 참가·모집이 제한돼요.';
+}
+
+/**
+ * 시작 시각 상한(ms) = now + schedule_max_days_ahead일. 정책 값이 없으면(제한 조회 전·실패) null —
+ * 그때는 상한 사전 검사를 하지 않고 서버 VALIDATION_FAILED에 맡긴다(D101)
+ */
+export function scheduleMaxMs(now: number, scrimPolicy: Pick<ScrimPolicyView, 'schedule_max_days_ahead'> | null | undefined): number | null {
+  return scrimPolicy ? now + scrimPolicy.schedule_max_days_ahead * DAY_MS : null;
+}
+
+/** 작성·수정 폼 시작 시각 상한 문구(D101) */
+export function scheduleMaxText(scrimPolicy: Pick<ScrimPolicyView, 'schedule_max_days_ahead'>): string {
+  return `${scrimPolicy.schedule_max_days_ahead}일 안의 시각만 고를 수 있어요.`;
 }
 
 /** 제한 규칙 안내(정책 값) */
 export function restrictionPolicyText(r: Pick<ScrimRestriction, 'policy'>): string {
   const { threshold, window_days, restriction_days } = r.policy;
-  return `최근 ${window_days}일 안에 노쇼가 ${threshold}회 쌓이면 마지막 노쇼부터 ${restriction_days}일 동안 새 참가·대기 등록·모집글 작성이 막혀요. 이미 참가한 내전은 그대로예요.`;
+  return `최근 ${window_days}일 안에 노쇼가 ${threshold}회 쌓이면 ${restriction_days}일 동안 새 참가·대기 등록·모집글 작성이 막혀요. 제한 중에 기준을 채우는 노쇼가 또 생기면 그만큼 늦게 풀려요. 이미 참가한 내전은 그대로예요.`;
 }
 
 /** 해제 시각 툴팁·짧은 안내 「10.28 21:00 해제」 */

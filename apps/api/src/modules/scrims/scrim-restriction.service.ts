@@ -64,6 +64,12 @@ export class ScrimRestrictionService {
         threshold: this.policy.threshold,
         window_days: this.policy.windowDays,
         restriction_days: this.policy.restrictionDays,
+        mark_window_days: this.config.scrim.noShowMarkWindowDays,
+      },
+      // D101: 전역 모집 정책. 제한 여부와 관계없이 항상 env 실제 값
+      scrim_policy: {
+        schedule_max_days_ahead: this.config.scrim.scheduleMaxDaysAhead,
+        auto_close_after_min: this.config.scrim.autoCloseAfterMin,
       },
     });
   }

@@ -1,9 +1,6 @@
 'use client';
 
 import {
-  NO_SHOW_RESTRICTION_DAYS_DEFAULT,
-  NO_SHOW_THRESHOLD_DEFAULT,
-  NO_SHOW_WINDOW_DAYS_DEFAULT,
   Uuid,
   type GameView,
   type ScrimDetail,
@@ -35,9 +32,12 @@ import {
   CANCEL_REASON_TEXT,
   SCRIM_STEP_LABELS,
   formatHms,
+  autoCloseHintText,
   isOpenStatus,
+  noShowMarkHintText,
+  noShowRuleText,
   positionsText,
-  restrictionText,
+  restrictionUntilText,
   samePositions,
   scrimDetailBadge,
   scrimShareText,
@@ -274,7 +274,7 @@ function Hero({ s }: { s: ScrimDetail }) {
           <div className="flex flex-col items-end gap-0.5" role="timer" aria-label="시작까지 남은 시간">
             <span className="text-xs text-faint">시작까지</span>
             <span className="font-display text-[32px] font-bold leading-none tabular-nums md:text-[40px]">
-              {remaining === null ? '--:--:--' : formatHms(remaining)}
+              {remaining === null ? '--:--:--' : remaining <= 0 ? '곧 시작' : formatHms(remaining)}
             </span>
           </div>
         ) : open ? (
@@ -337,6 +337,7 @@ function HostMenu({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => 
   const games = useGames();
   const start = useStartScrim(s.id);
   const cancel = useCancelScrim(s.id);
+  const { restriction } = useRestriction();
   const [dialog, setDialog] = useState<'edit' | 'start' | 'cancel' | null>(null);
   const v = s.viewer;
   if (!v.can_edit && !v.can_cancel && !v.can_start) return null;
@@ -360,7 +361,7 @@ function HostMenu({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => 
       </div>
       {blocked && (
         <p id="start-blocked" className="m-0 px-1 text-xs text-faint">
-          {blocked} 시작 시각 60분 뒤까지 시작하지 않으면 자동으로 정리돼요.
+          {blocked} {autoCloseHintText(restriction?.scrim_policy)}
         </p>
       )}
       {(start.isError || cancel.isError) && <InlineError>{scrimErrorText(err)}</InlineError>}
@@ -423,9 +424,8 @@ function HostMenu({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => 
 function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => void }) {
   const me = useMe();
   const { restriction } = useRestriction();
-  const windowDays = restriction?.policy.window_days ?? NO_SHOW_WINDOW_DAYS_DEFAULT;
-  const threshold = restriction?.policy.threshold ?? NO_SHOW_THRESHOLD_DEFAULT;
-  const restrictionDays = restriction?.policy.restriction_days ?? NO_SHOW_RESTRICTION_DAYS_DEFAULT;
+  // 정책 숫자는 GET /me/scrim-restriction 응답에서만 쓴다(D101). 응답 전이면 숫자 없는 문구
+  const policy = restriction?.policy;
   const isAdmin = me.data?.role === 'admin';
   const showNoShow = isAdmin && (s.status === 'playing' || s.status === 'finished');
   const noShow = useSetScrimNoShow(s.id);
@@ -495,7 +495,8 @@ function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => vo
           </li>
         ))}
       </ul>
-      {showNoShow && noShow.isError && <InlineError>{scrimErrorText(noShow.error)}</InlineError>}
+      {showNoShow && policy && <p className="m-0 px-1 text-xs text-faint">{noShowMarkHintText(policy)}</p>}
+      {showNoShow && noShow.isError &&<InlineError>{scrimErrorText(noShow.error)}</InlineError>}
 
       {open && (s.waitlist.length > 0 || s.status === 'full') && (
         <div className="mt-2.5 flex flex-col gap-2 rounded-[14px] bg-surface-2 p-3.5">
@@ -526,8 +527,8 @@ function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => vo
         description={
           markTarget && (
             <>
-              <strong className="text-text">{markTarget.user.nickname}</strong>님을 이 내전의 노쇼로 표시해요. 최근 {windowDays}일 노쇼가 {threshold}회가
-              되면 {restrictionDays}일 동안 내전 참가·모집이 제한돼요. 잘못 표시했다면 「노쇼 정정」으로 되돌릴 수 있어요.
+              <strong className="text-text">{markTarget.user.nickname}</strong>님을 이 내전의 노쇼로 표시해요. {noShowRuleText(policy)} 잘못 표시했다면 「노쇼
+              정정」으로 되돌릴 수 있어요.
             </>
           )
         }
@@ -642,7 +643,7 @@ function JoinControls({
   return (
     <div className="flex flex-col gap-4">
       {restrictedUntil && !inRoster && (
-        <Notice title={restriction ? (restrictionText(restriction) ?? '노쇼 제한 중이에요.') : `노쇼 누적으로 ${kstMonthDayTime(restrictedUntil)}까지 참가·모집이 제한돼요.`}>
+        <Notice title={restrictionUntilText(restrictedUntil)}>
           제한이 풀리면 다시 참가할 수 있어요. 이미 참가한 내전은 그대로예요.
         </Notice>
       )}
