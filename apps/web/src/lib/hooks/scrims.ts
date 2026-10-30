@@ -3,8 +3,11 @@
 import type {
   CreateScrimRequestInput,
   GameCode,
+  RejectScrimResultRequestInput,
+  SaveScrimTeamsRequestInput,
   ScrimDetail,
   ScrimListStatus,
+  SubmitScrimResultRequest,
   UpdateScrimRequestInput,
 } from '@gcd/shared';
 import {
@@ -17,6 +20,12 @@ import {
 } from '@tanstack/react-query';
 import { isApiError } from '@/lib/api/client';
 import {
+  approveScrimResult,
+  balanceScrim,
+  rejectScrimResult,
+  saveScrimTeams,
+  submitScrimResult,
+  withdrawScrimResult,
   cancelScrim,
   createScrim,
   getMyScrimRestriction,
@@ -31,6 +40,8 @@ import {
   updateScrim,
 } from '@/lib/api/scrims';
 import { isOpenStatus } from '@/lib/scrims';
+import { gameAccountKeys } from './game-accounts';
+import { ratingKeys } from './ratings';
 
 /**
  * S2 데이터 훅 11개(계약 8절) + 스팀 게임 검색(D98). 엔드포인트 하나당 훅 하나.
@@ -49,7 +60,7 @@ export const scrimKeys = {
 
 /** 목록 페이지 크기(3열 × 4줄) */
 export const SCRIMS_PAGE_SIZE = 12;
-/** 모집 중 상세 재조회 간격(계약 8절) */
+/** 모집 중·진행 중 상세 재조회 간격(S2 계약 8절, S3 9절: playing에도 적용해 승인 대기 반영) */
 export const SCRIM_DETAIL_POLL_MS = 20_000;
 
 const noRetryOn4xx = (count: number, err: unknown) =>
@@ -78,15 +89,18 @@ export function useScrims(q: { game?: GameCode; status: ScrimListStatus }) {
   });
 }
 
-/** GET /scrims/:id — 모집 중이면 20초 간격 + 창 포커스 시 재조회 */
+/** 재조회 대상: 모집 중(참가 현황) + 진행 중(결과 제출·승인 대기) */
+const isLiveStatus = (d: ScrimDetail | undefined) => !!d && (isOpenStatus(d.status) || d.status === 'playing');
+
+/** GET /scrims/:id — 모집 중·진행 중이면 20초 간격 + 창 포커스 시 재조회 */
 export function useScrim(id: string, enabled = true) {
   return useQuery({
     queryKey: scrimKeys.detail(id),
     queryFn: ({ signal }) => getScrim(id, signal),
     enabled,
     retry: noRetryOn4xx,
-    refetchInterval: (query) => (query.state.data && isOpenStatus(query.state.data.status) ? SCRIM_DETAIL_POLL_MS : false),
-    refetchOnWindowFocus: (query) => !!query.state.data && isOpenStatus(query.state.data.status),
+    refetchInterval: (query) => (isLiveStatus(query.state.data) ? SCRIM_DETAIL_POLL_MS : false),
+    refetchOnWindowFocus: (query) => isLiveStatus(query.state.data),
   });
 }
 
@@ -116,6 +130,12 @@ export function useMyScrimRestriction() {
 export function applyScrimDetail(qc: QueryClient, detail: ScrimDetail): void {
   qc.setQueryData(scrimKeys.detail(detail.id), detail);
   void qc.invalidateQueries({ queryKey: scrimKeys.lists });
+}
+
+/** S3 결과 승인 등으로 레이팅·최근 내전이 바뀔 때: 상세 교체 + 목록·프로필·레이팅 그래프(['users', …]) 무효화 */
+export function applyScrimResultDetail(qc: QueryClient, detail: ScrimDetail): void {
+  applyScrimDetail(qc, detail);
+  void qc.invalidateQueries({ queryKey: gameAccountKeys.profiles });
 }
 
 /**
@@ -197,6 +217,77 @@ export function useSetScrimNoShow(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { userId: string; noShow: boolean }) => setScrimNoShow(id, v.userId, { no_show: v.noShow }),
+    // 노쇼는 프로필 최근 내전(no_show 칩)에도 보이므로 프로필 캐시도 무효화한다
+    onSuccess: (d) => applyScrimResultDetail(qc, d),
+    onError: (err) => handleScrimMutationError(qc, id, err),
+  });
+}
+
+// -----------------------------------------------------------------------------
+// S3 팀 밸런스·팀 구성·결과(계약 S3 9절 훅 6개, 나머지 2개는 hooks/ratings.ts)
+// -----------------------------------------------------------------------------
+
+/**
+ * POST /scrims/:id/balance — 계산만 한다. 응답은 캐시에 저장하지 않고 화면 상태로만 둔다(저장 전까지).
+ * 409(팀 수정 불가·밸런스 불가)면 상세를 다시 받아 버튼 노출을 맞춘다.
+ */
+export function useBalanceScrim(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => balanceScrim(id),
+    onError: (err) => handleScrimMutationError(qc, id, err),
+  });
+}
+
+/** PUT /scrims/:id/teams — 안 선택·직접 수정 저장 */
+export function useSaveScrimTeams(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SaveScrimTeamsRequestInput) => saveScrimTeams(id, body),
+    onSuccess: (d) => applyScrimDetail(qc, d),
+    onError: (err) => handleScrimMutationError(qc, id, err),
+  });
+}
+
+/** POST /scrims/:id/result — 결과 제출 */
+export function useSubmitScrimResult(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SubmitScrimResultRequest) => submitScrimResult(id, body),
+    onSuccess: (d) => applyScrimDetail(qc, d),
+    onError: (err) => handleScrimMutationError(qc, id, err),
+  });
+}
+
+/** DELETE /scrims/:id/result — 제출 취소 */
+export function useWithdrawScrimResult(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => withdrawScrimResult(id),
+    onSuccess: (d) => applyScrimDetail(qc, d),
+    onError: (err) => handleScrimMutationError(qc, id, err),
+  });
+}
+
+/** POST /scrims/:id/result/approve — 승인 + 레이팅 반영(운영진). 프로필·그래프 캐시도 무효화 */
+export function useApproveScrimResult(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (resultId: string) => approveScrimResult(id, { result_id: resultId }),
+    onSuccess: (d) => {
+      applyScrimResultDetail(qc, d);
+      // 승인이 시즌을 자동으로 만들 수 있다(D116) → 그래프 시즌 선택 목록도 새로 받는다
+      void qc.invalidateQueries({ queryKey: ratingKeys.seasons });
+    },
+    onError: (err) => handleScrimMutationError(qc, id, err),
+  });
+}
+
+/** POST /scrims/:id/result/reject — 반려(운영진, 사유 필수) */
+export function useRejectScrimResult(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RejectScrimResultRequestInput) => rejectScrimResult(id, body),
     onSuccess: (d) => applyScrimDetail(qc, d),
     onError: (err) => handleScrimMutationError(qc, id, err),
   });

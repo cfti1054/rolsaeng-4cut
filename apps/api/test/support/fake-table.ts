@@ -260,6 +260,33 @@ export class FakeTable<T extends Row = Row> {
     });
   };
 
+  /**
+   * createMany: 행마다 고유 제약 검사. skipDuplicates면 위반 행만 건너뛴다(INSERT … ON CONFLICT DO NOTHING),
+   * 아니면 전체를 되돌리고 P2002
+   */
+  createMany = async (args: { data: Row[]; skipDuplicates?: boolean }): Promise<{ count: number }> => {
+    await this.tick();
+    return this.statement(() => {
+      let count = 0;
+      for (const d of args.data) {
+        const before = this.rows.length;
+        const now = new Date();
+        const row = { id: randomUUID(), createdAt: now, ...this.defaults(d), ...d } as Row;
+        if ('updatedAt' in row && row.updatedAt === undefined) row.updatedAt = now;
+        for (const k of Object.keys(row)) if (row[k] === undefined) row[k] = null;
+        this.rows.push(row as T);
+        try {
+          this.checkUnique();
+          count++;
+        } catch (err) {
+          this.rows.length = before;
+          if (!args.skipDuplicates) throw err;
+        }
+      }
+      return { count };
+    });
+  };
+
   updateMany = async (args: { where?: Where; data: Row }): Promise<{ count: number }> => {
     await this.tick();
     return this.statement(() => {

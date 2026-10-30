@@ -9,6 +9,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { GameAccountsModule } from './modules/game-accounts/game-accounts.module';
 import { GamesModule } from './modules/games/games.module';
 import { ProfileModule } from './modules/profile/profile.module';
+import { RatingsModule } from './modules/ratings/ratings.module';
 import { ScrimsModule } from './modules/scrims/scrims.module';
 import { UsersModule } from './modules/users/users.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -30,6 +31,7 @@ import { PrismaModule } from './prisma/prisma.module';
     GameAccountsModule,
     ProfileModule,
     GamesModule,
+    RatingsModule,
     ScrimsModule.forRoot(),
   ],
   providers: [{ provide: APP_FILTER, useClass: ErrorFilter }],

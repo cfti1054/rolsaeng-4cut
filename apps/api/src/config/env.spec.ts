@@ -127,6 +127,26 @@ describe('환경 변수', () => {
     expect(() => loadConfig({ ...REQUIRED, SCRIM_JOBS_ENABLED: '1' })).toThrow(/SCRIM_JOBS_ENABLED/);
   });
 
+  it('S3 기본값·검증(계약 S3 12절): K 32/40, 신규 기준 10, 자동 시즌 3개월(1–24)', () => {
+    const d = loadConfig({ ...REQUIRED, SCRIM_ELO_K_BASE: '' });
+    expect(d.rating).toEqual({ kBase: 32, kNew: 40, newPlayerGames: 10 });
+    expect(d.seasonAutoLengthMonths).toBe(3);
+    const c = loadConfig({
+      ...REQUIRED,
+      SCRIM_ELO_K_BASE: '24',
+      SCRIM_ELO_K_NEW: '48',
+      SCRIM_ELO_NEW_PLAYER_GAMES: '5',
+      SEASON_AUTO_LENGTH_MONTHS: '24',
+    });
+    expect(c.rating).toEqual({ kBase: 24, kNew: 48, newPlayerGames: 5 });
+    expect(c.seasonAutoLengthMonths).toBe(24);
+    for (const k of ['SCRIM_ELO_K_BASE', 'SCRIM_ELO_K_NEW', 'SCRIM_ELO_NEW_PLAYER_GAMES', 'SEASON_AUTO_LENGTH_MONTHS']) {
+      expect(() => loadConfig({ ...REQUIRED, [k]: '0' })).toThrow(new RegExp(k));
+      expect(() => loadConfig({ ...REQUIRED, [k]: '1.5' })).toThrow(new RegExp(k));
+    }
+    expect(() => loadConfig({ ...REQUIRED, SEASON_AUTO_LENGTH_MONTHS: '25' })).toThrow(/SEASON_AUTO_LENGTH_MONTHS/);
+  });
+
   it('scrimJobsEnabledFromEnv: 모듈 구성용(잘못된 값은 true, 기동은 loadConfig가 막는다)', () => {
     expect(scrimJobsEnabledFromEnv({})).toBe(true);
     expect(scrimJobsEnabledFromEnv({ SCRIM_JOBS_ENABLED: ' False ' })).toBe(false);

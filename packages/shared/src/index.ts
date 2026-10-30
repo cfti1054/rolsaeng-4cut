@@ -13,3 +13,6 @@ export * from './profile';
 export * from './game-catalog';
 export * from './scrims';
 export * from './steam-apps';
+export * from './seasons';
+export * from './scrim-results';
+export * from './ratings';

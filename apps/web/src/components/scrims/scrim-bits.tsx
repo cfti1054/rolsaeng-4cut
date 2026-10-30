@@ -111,6 +111,27 @@ export function scrimErrorText(err: unknown, restriction?: ScrimRestriction | nu
   return errorMessageWithRetry(err.code, err.retryAfterSec);
 }
 
+/**
+ * 패널 하단 오류 문구(S3 계약 9절). VALIDATION_FAILED의 details 중 입력 행에 붙인 것은 빼고 나머지(rest)만 보여 준다.
+ * 모두 행에 붙었으면 null(하단에는 아무것도 그리지 않는다)
+ */
+export function scrimErrorTextRest(err: unknown, rest: readonly string[]): string | null {
+  if (isApiError(err) && err.code === 'VALIDATION_FAILED' && err.details?.length) {
+    return rest.length ? `${errorMessage('VALIDATION_FAILED')} (${rest.join(', ')})` : null;
+  }
+  return scrimErrorText(err);
+}
+
+/** 입력 행 아래 오류(VALIDATION_FAILED details) */
+export function RowErrors({ messages }: { messages: readonly string[] | undefined }) {
+  if (!messages?.length) return null;
+  return (
+    <span role="alert" className="block w-full text-xs text-orange-text">
+      {messages.join(' · ')}
+    </span>
+  );
+}
+
 /** 노쇼 제한 배너(목록·작성 화면). 제한이 아니면 아무것도 그리지 않는다 */
 export function RestrictionBanner({ restriction }: { restriction: ScrimRestriction | undefined }) {
   if (!restriction) return null;

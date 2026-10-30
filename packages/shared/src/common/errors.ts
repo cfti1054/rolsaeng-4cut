@@ -50,6 +50,15 @@ export const ErrorCode = z.enum([
   'SCRIM_CAPACITY_BELOW_JOINED', // 409 정원을 현재 참가 확정 인원보다 적게 바꾸려 함
   'SCRIM_CANNOT_START', // 409 시작 조건 미충족(포지션 게임은 정원을 채워야, 그 외는 2명 이상)
   'SCRIM_NO_SHOW_NOT_ALLOWED', // 409 노쇼 표시 불가: 시작 전 내전, 표시 기한 경과, 대상이 참가 확정·노쇼 상태가 아님
+
+  // ---- S3 팀 밸런스·결과 입력·승인 ----
+  'SCRIM_TEAMS_NOT_EDITABLE', // 409 팀 구성·밸런스 불가: 팀 없는 게임, 상태가 full·playing 아님, 결과가 제출(pending)·승인됨
+  'SCRIM_BALANCE_UNAVAILABLE', // 409 자동 밸런스 불가: 모집글 자동 밸런스 꺼짐, 팀에 넣을 참가 확정자 2명 미만·16명 초과
+  'SCRIM_RESULT_NOT_ALLOWED', // 409 결과 제출 불가: 진행 중(playing)이 아닌 내전
+  'SCRIM_RESULT_EXISTS', // 409 이미 승인 대기(pending) 또는 승인된 결과가 있음
+  'SCRIM_TEAMS_REQUIRED', // 409 팀 게임 결과 제출 전에 두 팀 모두 참가자를 1명 이상 배정해야 함
+  'SCRIM_RESULT_NOT_PENDING', // 409 승인·반려·제출 취소할 대기 결과가 없음, 또는 result_id가 지금 대기 중인 결과가 아님
+  'SCRIM_RESULT_SELF_REVIEW', // 403 자기가 제출한 결과는 승인·반려할 수 없음(다른 운영진 필요)
 ]);
 export type ErrorCode = z.infer<typeof ErrorCode>;
 
@@ -91,6 +100,13 @@ export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
   SCRIM_CAPACITY_BELOW_JOINED: 409,
   SCRIM_CANNOT_START: 409,
   SCRIM_NO_SHOW_NOT_ALLOWED: 409,
+  SCRIM_TEAMS_NOT_EDITABLE: 409,
+  SCRIM_BALANCE_UNAVAILABLE: 409,
+  SCRIM_RESULT_NOT_ALLOWED: 409,
+  SCRIM_RESULT_EXISTS: 409,
+  SCRIM_TEAMS_REQUIRED: 409,
+  SCRIM_RESULT_NOT_PENDING: 409,
+  SCRIM_RESULT_SELF_REVIEW: 403,
 };
 
 /** VALIDATION_FAILED일 때만 채우는 필드별 상세. path는 snake_case 필드 경로(`nickname`, `events.0.type`). */

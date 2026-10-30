@@ -14,6 +14,7 @@ import {
   scrimDayLabel,
   scrimNeedLine,
   scrimOptionTags,
+  scrimOutcomeLine,
 } from '@/lib/scrims';
 import { CapacityPips, StatusPill } from './scrim-bits';
 
@@ -38,6 +39,7 @@ export function ScrimCard({ s, now, preview = false }: { s: ScrimSummary; now: n
   const meta = GAME_SCRIM_META[s.game.code];
   const badge = scrimCardBadge(s);
   const need = scrimNeedLine(s);
+  const outcome = scrimOutcomeLine(s);
   const action = scrimCardAction(s);
   const mine = isOpenStatus(s.status) && (s.my_status === 'joined' || s.my_status === 'waitlist');
   const day = now === null ? '' : scrimDayLabel(s.scheduled_at, now);
@@ -111,7 +113,21 @@ export function ScrimCard({ s, now, preview = false }: { s: ScrimSummary; now: n
 
         <div className="flex flex-col gap-2">
           <div className="flex justify-between gap-2 text-[13px]">
-            <span className={need.emphasis ? 'text-orange-ink-2' : 'text-muted'}>{need.text}</span>
+            {outcome ? (
+              <span
+                className={cn(
+                  'flex items-center gap-1.5 font-semibold',
+                  outcome.team === 'blue' ? 'text-blue-ink' : outcome.team === 'orange' ? 'text-orange-ink' : 'text-accent-ink',
+                )}
+              >
+                {outcome.team && (
+                  <span aria-hidden="true" className={cn('size-2 rounded-full', outcome.team === 'blue' ? 'bg-blue' : 'bg-orange')} />
+                )}
+                {outcome.text}
+              </span>
+            ) : (
+              <span className={need.emphasis ? 'text-orange-ink-2' : 'text-muted'}>{need.text}</span>
+            )}
             <span className="font-display font-semibold" aria-label={`정원 ${s.capacity}명 중 ${s.joined_count}명 참가`}>
               {s.joined_count} / {s.capacity}
             </span>

@@ -174,6 +174,8 @@ export function ScrimNewForm() {
           join_closed: false,
           my_status: 'joined',
           created_at: new Date(now ?? 0).toISOString(),
+          result_status: null,
+          outcome: null,
         }
       : null;
 

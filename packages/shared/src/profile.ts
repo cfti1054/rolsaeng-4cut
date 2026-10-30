@@ -4,6 +4,7 @@ import { UserRole } from './constants/enums';
 import { GameCode } from './constants/games';
 import { LolPosition, RankValue, RankedQueue } from './constants/riot';
 import { GameAccountView, SyncQuota } from './game-accounts';
+import { ProfileScrim } from './ratings';
 
 // =============================================================================
 // GET /users/{id}/profile — 멤버 프로필(문서 6장, 8장 /members/[id], 목업 Profile)
@@ -104,8 +105,11 @@ export const GetUserProfileResponse = z.object({
   main_position: MainPosition.nullable(),
   recent_matches: ProfileRecentMatches.nullable(),
   sync_quota: SyncQuota.nullable(),
-  /** S3 자리(내전 레이팅·그래프·승률·최근 내전) */
-  scrim: z.null(),
+  /**
+   * S3 내전 블록(현재 시즌 레이팅 카드·최근 내전). 그래프는 GET /users/{id}/rating-history.
+   * S3부터 backend는 항상 객체를 넣는다. nullable은 D39 확장 규칙(넓히기만)과 S1 목 호환 때문에 남긴다.
+   */
+  scrim: ProfileScrim.nullable(),
   /** P2 자리(뱃지) */
   badges: z.null(),
 });

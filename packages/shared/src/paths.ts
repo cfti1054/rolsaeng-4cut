@@ -37,6 +37,15 @@ export const ApiPath = {
   scrimPlayerNoShow: '/scrims/:id/players/:userId/no-show',
   // S2 내 노쇼 제한 상태
   myScrimRestriction: '/me/scrim-restriction',
+  // S3 팀 밸런스·팀 구성·결과 (scrimResult: POST 제출, DELETE 제출 취소)
+  scrimBalance: '/scrims/:id/balance',
+  scrimTeams: '/scrims/:id/teams',
+  scrimResult: '/scrims/:id/result',
+  scrimResultApprove: '/scrims/:id/result/approve',
+  scrimResultReject: '/scrims/:id/result/reject',
+  // S3 시즌·레이팅 그래프
+  seasons: '/seasons',
+  userRatingHistory: '/users/:id/rating-history',
 } as const;
 export type ApiPath = (typeof ApiPath)[keyof typeof ApiPath];
 

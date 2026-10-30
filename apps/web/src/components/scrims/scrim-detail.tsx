@@ -16,6 +16,7 @@ import { copyText } from '@/lib/clipboard';
 import { cn } from '@/lib/cn';
 import { errorMessage } from '@/lib/errors';
 import { formatFull } from '@/lib/format';
+import { positionLabel } from '@/lib/games';
 import { useMe } from '@/lib/hooks/auth';
 import {
   useCancelScrim,
@@ -30,7 +31,6 @@ import { useNow } from '@/lib/hooks/use-now';
 import { routes } from '@/lib/routes';
 import {
   CANCEL_REASON_TEXT,
-  SCRIM_STEP_LABELS,
   formatHms,
   autoCloseHintText,
   isOpenStatus,
@@ -50,6 +50,8 @@ import {
 import { PositionPicker } from './position-picker';
 import { GameTag, PositionChips, SectionHead, StatusPill, scrimErrorText, useRestriction } from './scrim-bits';
 import { ScrimEditDialog } from './scrim-edit-dialog';
+import { ResultPanel } from './scrim-result';
+import { NewBadge, TEAM_TONE, TeamsPanel } from './scrim-teams';
 import { SteamAppImage, steamStoreUrl } from './steam-app-picker';
 
 type ToastState = { message: string; tone: 'success' | 'error' } | null;
@@ -149,29 +151,10 @@ function DetailBody({
         <Roster s={s} onToast={setToast} />
         <div className="flex min-w-0 flex-[2_1_520px] flex-col gap-5">
           <JoinPanel s={s} onToast={setToast} />
-          <Card aria-labelledby="balance-title">
-            <SectionHead eyebrow="AUTO BALANCE" title="팀 자동 밸런스" id="balance-title" />
-            <EmptyState
-              mark="BAL"
-              title="팀 밸런스는 곧 열려요"
-              description={
-                s.options.auto_balance
-                  ? '정원이 차면 티어와 내전 레이팅으로 두 팀 전력을 맞춘 3가지 안을 보여 줄 예정이에요.'
-                  : '이 내전은 자동 밸런스를 쓰지 않아요. 방장이 직접 팀을 나눠요.'
-              }
-            />
-          </Card>
+          {s.game.has_teams && <TeamsPanel s={s} onToast={setToast} />}
         </div>
       </div>
-      <Card aria-labelledby="result-title">
-        <SectionHead
-          eyebrow="RESULT"
-          title="결과 입력"
-          id="result-title"
-          right={<span className="text-xs text-faint">방장 입력 → 운영진 승인 → 레이팅 반영</span>}
-        />
-        <EmptyState mark="WIN" title="결과 입력은 곧 열려요" description="경기가 끝나면 방장이 승리 팀을 입력하고 운영진이 승인하는 기능이 열릴 예정이에요." />
-      </Card>
+      <ResultPanel s={s} onToast={setToast} />
       <Toast message={toast?.message ?? null} tone={toast?.tone} onClose={closeToast} />
     </>
   );
@@ -224,7 +207,7 @@ function Hero({ s }: { s: ScrimDetail }) {
   const counting = open && !s.join_closed;
   const now = useNow(1_000, counting);
   const badge = scrimDetailBadge(s);
-  const steps = scrimSteps(s.status);
+  const steps = scrimSteps(s);
   const remaining = now === null ? null : (Date.parse(s.scheduled_at) - now) / 1000;
   const meta = [
     now === null ? null : scrimWhen(s.scheduled_at, now),
@@ -287,10 +270,9 @@ function Hero({ s }: { s: ScrimDetail }) {
 
       {steps ? (
         <ol aria-label="진행 단계" className="m-0 grid list-none grid-cols-4 p-0">
-          {SCRIM_STEP_LABELS.map((label, i) => {
-            const st = steps[i]!;
+          {steps.map(({ label, state: st, note }, i) => {
             return (
-              <li key={label} className="flex flex-col gap-2.5" aria-current={st === 'current' ? 'step' : undefined}>
+              <li key={label} className="flex min-w-0 flex-col gap-2.5" aria-current={st === 'current' ? 'step' : undefined}>
                 <div className="flex items-center">
                   <span
                     className={cn(
@@ -307,6 +289,9 @@ function Hero({ s }: { s: ScrimDetail }) {
                 <span className={cn('text-[13px] font-semibold', st === 'todo' ? 'text-faint' : 'text-text')}>
                   {label}
                   <span className="sr-only">{st === 'done' ? ' (완료)' : st === 'current' ? ' (진행 중)' : ''}</span>
+                  {note && (
+                    <span className={cn('mt-0.5 block text-xs font-medium', note === '결과 반려됨' ? 'text-orange-text' : 'text-muted')}>{note}</span>
+                  )}
                 </span>
               </li>
             );
@@ -456,6 +441,7 @@ function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => vo
               <Link href={routes.member(p.user.id)} className="truncate text-text no-underline hover:text-text hover:underline">
                 {p.user.nickname}
               </Link>
+              {p.is_new && <NewBadge />}
               {p.is_host && <Badge tone="accent">방장</Badge>}
               {p.user.id === me.data?.id && <span className="text-xs text-faint">(나)</span>}
               {p.status === 'no_show' && (
@@ -464,7 +450,18 @@ function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => vo
                 </span>
               )}
             </span>
-            <PositionChips positions={p.preferred_positions} />
+            {p.team ? (
+              <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-text-2">
+                <span aria-hidden="true" className={cn('size-2 rounded-full', TEAM_TONE[p.team].dot)} />
+                <span className="sr-only">{p.team === 'blue' ? '블루팀' : '오렌지팀'}</span>
+                {p.position ? positionLabel(p.position) : null}
+              </span>
+            ) : (
+              <PositionChips positions={p.preferred_positions} />
+            )}
+            <span className="w-10 shrink-0 text-right font-display text-sm font-semibold tabular-nums" title="실력값">
+              {p.skill}
+            </span>
             {showNoShow &&
               (p.status === 'no_show' ? (
                 <Button
@@ -529,6 +526,7 @@ function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => vo
             <>
               <strong className="text-text">{markTarget.user.nickname}</strong>님을 이 내전의 노쇼로 표시해요. {noShowRuleText(policy)} 잘못 표시했다면 「노쇼
               정정」으로 되돌릴 수 있어요.
+              {s.result?.status === 'approved' && <span className="mt-2 block">이미 반영된 레이팅은 바뀌지 않아요.</span>}
             </>
           )
         }

@@ -22,10 +22,11 @@ import { useSyncGameAccount, useUserProfile } from '@/lib/hooks/game-accounts';
 import { useNow } from '@/lib/hooks/use-now';
 import { routes } from '@/lib/routes';
 import { TIER_META, lolRankSub, tftRankSub, tierLabel, tierMark } from '@/lib/tiers';
+import { RatingHistoryPanel, RecentScrimsPanel, scrimRatingSummary } from './profile-scrim';
 
 /**
  * 멤버 프로필(목업 Profile, 계약 8·12절). 대표 라이엇 계정 기준 티어·주 포지션·최근 솔로 랭크.
- * 내전 레이팅·그래프·최근 내전(S3), 뱃지(P2)는 응답이 null이라 빈 상태 카드.
+ * S3: 내전 레이팅 카드·레이팅 그래프·최근 내전(profile-scrim.tsx). 뱃지(P2)는 빈 상태 카드.
  */
 export function ProfileView({ id }: { id: string }) {
   const validId = Uuid.safeParse(id).success;
@@ -69,17 +70,13 @@ export function ProfileView({ id }: { id: string }) {
       )}
       <SummaryCards p={p} now={now} />
       <div className="flex flex-wrap items-stretch gap-5">
-        <Panel eyebrow="RATING HISTORY" title="내전 레이팅 변동" className="flex-[2_1_540px]">
-          <EmptyState mark="ELO" title="내전 기록은 곧 열려요" description="내전 결과가 쌓이면 레이팅 변동 그래프가 여기에 그려져요." />
-        </Panel>
+        <RatingHistoryPanel p={p} className="flex-[2_1_540px]" />
         <Panel eyebrow="BADGES" title="뱃지" className="flex-[1_1_300px]">
           <EmptyState mark="★" title="아직 뱃지가 없어요" description="뱃지는 이후 업데이트에서 열려요." />
         </Panel>
       </div>
       <div className="flex flex-wrap items-stretch gap-5">
-        <Panel eyebrow="SCRIMS" title="최근 내전" className="flex-[1_1_420px]">
-          <EmptyState mark="VS" title="내전 기록은 곧 열려요" description="참가한 내전과 레이팅 변동이 여기에 쌓여요." />
-        </Panel>
+        <RecentScrimsPanel p={p} className="flex-[1_1_420px]" />
         <RecentMatchesPanel p={p} now={now} />
       </div>
     </>
@@ -332,6 +329,7 @@ function SummaryCards({ p, now }: { p: GetUserProfileResponse; now: number | nul
   const tft = p.tiers.find((t) => t.game === 'tft');
   const mp = p.main_position;
   const top = mp?.positions[0];
+  const scrim = scrimRatingSummary(p);
   return (
     <section aria-label="게임별 요약" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <TierSummary card={lol} label="롤 솔로 랭크" isSelf={p.is_self} game="lol" now={now} />
@@ -353,7 +351,7 @@ function SummaryCards({ p, now }: { p: GetUserProfileResponse; now: number | nul
           sub={p.tiers.length ? '최근 솔로 랭크 경기가 쌓이면 나와요' : '라이엇 ID를 연동하면 나와요'}
         />
       )}
-      <SummaryCard mark="#" tone="text-accent-ink" label="내전 레이팅" value={<span className="text-muted">준비 중</span>} sub="내전 기록은 곧 열려요" />
+      <SummaryCard mark="ELO" tone="text-accent-ink" label="내전 레이팅" value={scrim.value} sub={scrim.sub} />
     </section>
   );
 }

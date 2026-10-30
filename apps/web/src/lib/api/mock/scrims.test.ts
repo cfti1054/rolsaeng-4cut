@@ -113,8 +113,10 @@ describe('S2 목: 게임·목록', () => {
     expect(tft.items.length).toBeGreaterThan(0);
     expect(tft.items.every((s) => s.game.code === 'tft')).toBe(true);
     expect((await t.list('playing')).items.every((s) => s.status === 'playing')).toBe(true);
-    const ended = await t.list('ended');
-    expect(ended.items.map((s) => s.status).sort()).toEqual(['cancelled', 'finished']);
+    const ended = await t.list('ended', { limit: '100' });
+    // S3 시드: 지난 협곡 내전 14개 + 지난주 롤체 로비(finished) + 취소 1개
+    expect([...new Set(ended.items.map((s) => s.status))].sort()).toEqual(['cancelled', 'finished']);
+    expect(ended.items.filter((s) => s.status === 'finished')).toHaveLength(15);
   });
 
   it('카드 집계: open_positions(1지망 기준), my_status, 응답에 email·discord_id 없음', async () => {
@@ -227,6 +229,8 @@ describe('S2 목: 참가·취소·대기열', () => {
       joined_at: new Date().toISOString(),
       no_show_marked_at: null,
       no_show_marked_by: null,
+      team: null,
+      position: null,
     });
     t.db().s2!.scrims.find((x) => x.id === created.id)!.status = 'full';
     // 방장을 바꿔 내가 나갈 수 있게
@@ -292,6 +296,8 @@ describe('S2 목: 작성·수정·시작·취소', () => {
       joined_at: new Date().toISOString(),
       no_show_marked_at: null,
       no_show_marked_by: null,
+      team: null,
+      position: null,
     });
     await expect(patch(d.id, { capacity: 1 })).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
     await expect(patch(d.id, { capacity: 2 })).resolves.toMatchObject({ capacity: 2, status: 'full' });
@@ -307,6 +313,8 @@ describe('S2 목: 작성·수정·시작·취소', () => {
       joined_at: new Date().toISOString(),
       no_show_marked_at: null,
       no_show_marked_by: null,
+      team: null,
+      position: null,
     });
     await expect(patch(d.id, { capacity: 2 })).rejects.toMatchObject({ code: 'SCRIM_CAPACITY_BELOW_JOINED' });
   });

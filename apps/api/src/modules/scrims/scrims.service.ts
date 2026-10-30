@@ -29,6 +29,7 @@ import {
 } from '@gcd/shared';
 import type { Game, Prisma } from '@prisma/client';
 import { AppError } from '../../common/app-error';
+import { scrimWriteTx } from '../../common/scrim-tx';
 import { APP_CLOCK, type Clock } from '../../common/clock';
 import type { AuthUser } from '../../common/decorators/current-user';
 import { type LockedScrim, lockScrim } from '../../common/scrim-lock';
@@ -79,6 +80,14 @@ export async function loadGame(tx: Pick<Tx, 'game'>, gameId: string): Promise<Ga
 
 export function countJoined(tx: Tx, scrimId: string): Promise<number> {
   return tx.scrimPlayer.count({ where: { scrimId, status: 'joined' } });
+}
+
+/**
+ * S3 5-1(D110): 명단(joined 집합)이 바뀌면 그 내전 팀 배정 전원 초기화. 같은 트랜잭션(내전 행 잠금 아래)에서 부른다.
+ * 노쇼 표시·정정은 부르지 않는다(노쇼는 반영 단계에서 빠진다).
+ */
+export async function resetTeams(tx: Tx, scrimId: string): Promise<void> {
+  await tx.scrimPlayer.updateMany({ where: { scrimId }, data: { team: null, position: null } });
 }
 
 /**
@@ -185,7 +194,7 @@ export class ScrimsService {
     await this.restriction.assertNotRestricted(user.id, now);
     const steamApp = steamAppId === null ? null : await this.resolveSteamApp(steamAppId);
 
-    const id = await this.prisma.$transaction(async (tx) => {
+    const id = await scrimWriteTx(this.prisma, async (tx) => {
       const scrim = await tx.scrim.create({
         data: {
           gameId: game.id,
@@ -249,7 +258,7 @@ export class ScrimsService {
   async update(user: AuthUser, id: string, body: UpdateScrimRequest): Promise<ScrimDetail> {
     const now = this.clock.now();
     const steamApp = body.steam_app_id === undefined ? undefined : await this.steamAppForUpdate(user, id, body.steam_app_id);
-    await this.prisma.$transaction(async (tx) => {
+    await scrimWriteTx(this.prisma, async (tx) => {
       const s = await lockOrNotFound(tx, id);
       if (s.hostId !== user.id) throw new AppError('FORBIDDEN');
       if (!isOpenStatus(s.status)) throw new AppError('SCRIM_NOT_RECRUITING');
@@ -286,7 +295,9 @@ export class ScrimsService {
         },
       });
       if (body.capacity !== undefined) {
-        await this.applyRoster(tx, { ...s, capacity: body.capacity }, joinedCount);
+        const promoted = await this.applyRoster(tx, { ...s, capacity: body.capacity }, joinedCount);
+        // S3 5-1: 정원 확대로 승격이 일어나면 joined 집합이 바뀐다
+        if (promoted > 0) await resetTeams(tx, s.id);
       }
     });
     return this.views.detail(id, user, now);
@@ -294,9 +305,9 @@ export class ScrimsService {
 
   /**
    * 자리 변화 뒤 대기열 승격 + recruiting ↔ full(5-3 6단계, 5-4 4단계, core planRosterAfterChange).
-   * 승격자는 preferred_positions·joined_at을 그대로 둔다(메인 기본값 7).
+   * 승격자는 preferred_positions·joined_at을 그대로 둔다(메인 기본값 7). 반환: 승격 인원
    */
-  private async applyRoster(tx: Tx, s: LockedScrim, joinedCount: number): Promise<void> {
+  private async applyRoster(tx: Tx, s: LockedScrim, joinedCount: number): Promise<number> {
     const waitlist = await tx.scrimPlayer.findMany({
       where: { scrimId: s.id, status: 'waitlist' },
       select: { id: true, joinedAt: true },
@@ -314,6 +325,7 @@ export class ScrimsService {
       assertScrimTransition(s.status, plan.nextStatus);
       await tx.scrim.update({ where: { id: s.id }, data: { status: plan.nextStatus } });
     }
+    return plan.promoteIds.length;
   }
 
   // ---------------------------------------------------------------------------
@@ -323,7 +335,7 @@ export class ScrimsService {
   /** POST /scrims/:id/join */
   async join(user: AuthUser, id: string, body: JoinScrimRequest): Promise<ScrimDetail> {
     const now = this.clock.now();
-    await this.prisma.$transaction(async (tx) => {
+    await scrimWriteTx(this.prisma, async (tx) => {
       const s = await lockOrNotFound(tx, id);
       if (!isOpenStatus(s.status)) throw new AppError('SCRIM_NOT_RECRUITING');
       if (isJoinClosed(s.scheduledAt, now)) throw new AppError('SCRIM_JOIN_CLOSED');
@@ -356,6 +368,8 @@ export class ScrimsService {
       }
       // 7
       if (place === 'joined') {
+        // S3 5-1(D110): 새 참가 확정으로 joined 집합이 바뀐다(재참가 행은 위에서 team·position도 null로 썼다)
+        await resetTeams(tx, s.id);
         const next = statusForJoinedCount(n + 1, s.capacity);
         if (next !== s.status) {
           assertScrimTransition(s.status, next);
@@ -369,7 +383,7 @@ export class ScrimsService {
   /** DELETE /scrims/:id/join */
   async leave(user: AuthUser, id: string): Promise<ScrimDetail> {
     const now = this.clock.now();
-    await this.prisma.$transaction(async (tx) => {
+    await scrimWriteTx(this.prisma, async (tx) => {
       const s = await lockOrNotFound(tx, id);
       if (!isOpenStatus(s.status)) throw new AppError('SCRIM_NOT_RECRUITING');
       if (isJoinClosed(s.scheduledAt, now)) throw new AppError('SCRIM_JOIN_CLOSED');
@@ -380,6 +394,8 @@ export class ScrimsService {
       await tx.scrimPlayer.update({ where: { id: mine.id }, data: { status: 'cancelled' } });
       if (mine.status === 'joined') {
         await this.applyRoster(tx, s, await countJoined(tx, s.id));
+        // S3 5-1: 참가 확정자 취소(승격 포함)로 joined 집합이 바뀐다. 대기자 취소는 그대로
+        await resetTeams(tx, s.id);
       }
     });
     return this.views.detail(id, user, now);
@@ -392,7 +408,7 @@ export class ScrimsService {
   /** POST /scrims/:id/start — 방장·운영진 */
   async start(user: AuthUser, id: string): Promise<ScrimDetail> {
     const now = this.clock.now();
-    await this.prisma.$transaction(async (tx) => {
+    await scrimWriteTx(this.prisma, async (tx) => {
       const s = await lockOrNotFound(tx, id);
       if (s.hostId !== user.id && user.role !== 'admin') throw new AppError('FORBIDDEN');
       if (!isOpenStatus(s.status)) throw new AppError('SCRIM_NOT_RECRUITING');
@@ -411,7 +427,7 @@ export class ScrimsService {
   /** POST /scrims/:id/cancel — 방장(reason host)·운영진(reason admin) */
   async cancel(user: AuthUser, id: string): Promise<ScrimDetail> {
     const now = this.clock.now();
-    await this.prisma.$transaction(async (tx) => {
+    await scrimWriteTx(this.prisma, async (tx) => {
       const s = await lockOrNotFound(tx, id);
       const isHost = s.hostId === user.id;
       if (!isHost && user.role !== 'admin') throw new AppError('FORBIDDEN');
@@ -432,7 +448,7 @@ export class ScrimsService {
 
   async setNoShow(admin: AuthUser, id: string, targetUserId: string, body: SetScrimNoShowRequest): Promise<ScrimDetail> {
     const now = this.clock.now();
-    await this.prisma.$transaction(async (tx) => {
+    await scrimWriteTx(this.prisma, async (tx) => {
       const s = await lockOrNotFound(tx, id);
       if (s.status !== 'playing' && s.status !== 'finished') throw new AppError('SCRIM_NO_SHOW_NOT_ALLOWED');
       const row = await tx.scrimPlayer.findFirst({ where: { scrimId: s.id, userId: targetUserId } });

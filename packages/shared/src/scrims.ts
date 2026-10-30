@@ -1,15 +1,19 @@
 import { z } from 'zod';
 import { PaginationQuery, paginated } from './common/pagination';
 import { IsoDateTime, Uuid } from './common/primitives';
-import { ScrimCancelReason, ScrimPlayerStatus, ScrimStatus, ScrimTeam } from './constants/enums';
+import { ScrimCancelReason, ScrimPlayerStatus, ScrimResultStatus, ScrimStatus, ScrimTeam } from './constants/enums';
 import { GameCode } from './constants/games';
+import { SeasonRef } from './seasons';
 import { SteamAppId, SteamAppRef } from './steam-apps';
 
 // =============================================================================
-// S2 내전 모집·참가·대기열·노쇼 제한. 계약: _workspace/01_architect_contract.md(S2) 4–8절
+// S2 내전 모집·참가·대기열·노쇼 제한. 계약: _workspace/S2/01_architect_contract.md 4–8절
+// S3 팀 구성·결과·레이팅 응답 조각과 ScrimSummary·ScrimDetail 확장. 계약: _workspace/01_architect_contract.md(S3) 4·9절
+// (S3 요청 스키마는 scrim-results.ts)
 //
 // 응답 공통 규칙
-// - 상태를 바꾸는 엔드포인트(생성·수정·참가·취소·시작·모집 취소·노쇼 표시)는 모두 갱신 후 ScrimDetail을 돌려준다.
+// - 상태를 바꾸는 엔드포인트(생성·수정·참가·취소·시작·모집 취소·노쇼 표시, S3 팀 저장·결과 제출·제출 취소·승인·반려)는
+//   모두 갱신 후 ScrimDetail을 돌려준다.
 //   웹은 응답으로 상세 캐시를 바꾸고 목록 캐시만 무효화한다.
 // - 서버 시각 기준 판단(join_closed, viewer.can_*)은 서버가 계산해 내려준다(클라이언트 시계 오차 방지).
 // =============================================================================
@@ -40,6 +44,26 @@ export const NO_SHOW_WINDOW_DAYS_DEFAULT = 30;
 export const NO_SHOW_RESTRICTION_DAYS_DEFAULT = 1;
 /** 운영진이 노쇼를 표시할 수 있는 기한: 시작 시각(scheduled_at)부터 이 일수까지(D83). 정정(해제)은 기한 없음 */
 export const NO_SHOW_MARK_WINDOW_DAYS_DEFAULT = 7;
+
+// ---- S3 레이팅·밸런스 (계약 S3 7·12절) ----
+// `*_DEFAULT`는 API env 기본값·목 백엔드 전용. 화면 문구는 BalanceScrimResponse.rating_policy를 쓴다(D101과 같은 규칙).
+
+/** ELO 기본 K(SCRIM_ELO_K_BASE, 문서 7-1) */
+export const SCRIM_ELO_K_BASE_DEFAULT = 32;
+/** 신규 멤버 K(SCRIM_ELO_K_NEW) */
+export const SCRIM_ELO_K_NEW_DEFAULT = 40;
+/** 「신규」 기준: 그 게임의 승인된 rated 내전 경기 수(모든 시즌 합계)가 이 값 미만(SCRIM_ELO_NEW_PLAYER_GAMES) */
+export const SCRIM_ELO_NEW_PLAYER_GAMES_DEFAULT = 10;
+/** 밸런스 실력값 가중치 w = min(경기 수 ÷ 이 값, 1)(문서 7-2 1번). 설정값 아님(core 상수와 같은 값) */
+export const BALANCE_FULL_WEIGHT_GAMES = 10;
+/** 밸런스 결과 안 최대 개수(문서 7-2 4번) */
+export const BALANCE_OPTIONS_MAX = 3;
+/** 밸런스·팀 구성 인원 범위(팀에 넣을 참가 확정 인원). 16명 = C(16,8)/2 = 6435가지 */
+export const BALANCE_PLAYERS_MIN = 2;
+export const BALANCE_PLAYERS_MAX = 16;
+/** 결과 반려 사유 길이(정규화 후) */
+export const SCRIM_REJECT_REASON_MIN_LENGTH = 2;
+export const SCRIM_REJECT_REASON_MAX_LENGTH = 200;
 
 // -----------------------------------------------------------------------------
 // 입력 조각
@@ -128,6 +152,130 @@ export const MyScrimStatus = ScrimPlayerStatus.exclude(['cancelled']);
 export type MyScrimStatus = z.infer<typeof MyScrimStatus>;
 
 // -----------------------------------------------------------------------------
+// S3 응답 조각: 팀 구성·결과 (계약 S3 4·5·9절)
+// -----------------------------------------------------------------------------
+
+/**
+ * 배정 포지션이 희망 순위 몇 번째인가(문서 7-2 3번 비용: first 0, second +1, other +3).
+ * 포지션을 쓰지 않는 내전이거나 포지션이 없으면 null.
+ */
+export const PositionPreference = z.enum(['first', 'second', 'other']);
+export type PositionPreference = z.infer<typeof PositionPreference>;
+
+/**
+ * 한 팀 승패 시 예상 ELO 변동(팀 평균 레이팅 기준, K = rating_policy.k_base). 표시용 근사값이다 —
+ * 실제 반영은 참가자별 K(신규 40)로 계산한다. rated=false 내전이면 null.
+ */
+export const EloPreview = z.object({
+  win: z.number().int(),
+  lose: z.number().int(),
+});
+export type EloPreview = z.infer<typeof EloPreview>;
+
+/**
+ * 한 팀의 전력 요약. 실력값(skill) = w × 내전 레이팅 + (1 − w) × 티어 시드(정수, core computeSkill).
+ * rating_avg = 팀원 현재 시즌 레이팅(없으면 시드) 평균(반올림) — ELO 기대 승률 계산에 쓰는 값.
+ */
+export const ScrimTeamSide = z.object({
+  /** 팀 인원 */
+  size: z.number().int().min(0),
+  skill_sum: z.number().int(),
+  skill_avg: z.number().int(),
+  rating_avg: z.number().int(),
+  /** 이 팀의 포지션 비용 합(포지션 미사용 내전은 0) */
+  position_cost: z.number().int().min(0),
+  elo_preview: EloPreview.nullable(),
+});
+export type ScrimTeamSide = z.infer<typeof ScrimTeamSide>;
+
+/**
+ * 저장된 팀 구성 요약(ScrimDetail.balance). 팀원 목록은 players[].team·position으로 본다.
+ * - 대상: status joined인 참가자 중 team이 있는 사람(노쇼는 빠진다)
+ * - blue_win_probability: 실력값 평균 기준 블루 기대 승률(0–1, 소수 셋째 자리 반올림). 오렌지 = 1 − 값
+ * - power_diff: 전력 차 = |블루 평균 − 오렌지 평균| × (두 팀 인원 합 ÷ 2), 반올림. 두 팀 인원이 같으면 실력값 합의 차와 같다
+ * - position_cost: 두 팀 포지션 비용 합
+ */
+export const ScrimTeamsView = z.object({
+  blue: ScrimTeamSide,
+  orange: ScrimTeamSide,
+  blue_win_probability: z.number().min(0).max(1),
+  power_diff: z.number().int().min(0),
+  position_cost: z.number().int().min(0),
+  /** 팀에 배정되지 않은 참가 확정자(노쇼 제외). 결과 승인 때 레이팅 반영 대상이 아니다 */
+  unassigned_user_ids: z.array(Uuid),
+});
+export type ScrimTeamsView = z.infer<typeof ScrimTeamsView>;
+
+/** 개인 순위 결과 1행(placement 1이 1등) */
+export const ScrimPlacementView = z.object({
+  user: ScrimUserRef,
+  placement: z.number().int().min(1),
+});
+export type ScrimPlacementView = z.infer<typeof ScrimPlacementView>;
+
+/** 결과 승인으로 반영된 참가자 1명의 레이팅 변동(rating_history 1행) */
+export const ScrimRatingChange = z.object({
+  user: ScrimUserRef,
+  /** 팀 게임: 반영 당시 팀. 개인 순위 게임: null */
+  team: ScrimTeam.nullable(),
+  /** 개인 순위 게임: 반영 대상끼리 다시 매긴 순위(1부터). 팀 게임: null */
+  placement: z.number().int().min(1).nullable(),
+  /** 팀 게임은 승리 팀이면 win. 개인 순위 게임은 2 × placement ≤ 반영 인원이면 win(상위 절반) */
+  outcome: z.enum(['win', 'loss']),
+  elo_before: z.number().int(),
+  elo_after: z.number().int(),
+  /** elo_after − elo_before */
+  delta: z.number().int(),
+  /** 적용한 K(32 또는 40) */
+  k_factor: z.number().int().min(1),
+});
+export type ScrimRatingChange = z.infer<typeof ScrimRatingChange>;
+
+/**
+ * 결과 레이팅 상태.
+ * - waiting: rated 내전이고 결과가 아직 승인되지 않음(pending·rejected)
+ * - applied: 승인되어 1명 이상 반영됨(rating_changes 채움)
+ * - skipped: 승인됐지만 반영 대상이 2명 미만이거나 한 팀이 비어(노쇼 등) 반영하지 않음
+ * - not_rated: rated=false 내전(결과 흐름은 같고 레이팅만 바뀌지 않음, 메인 기본값 6)
+ */
+export const ScrimRatingStatus = z.enum(['waiting', 'applied', 'skipped', 'not_rated']);
+export type ScrimRatingStatus = z.infer<typeof ScrimRatingStatus>;
+
+/**
+ * 내전의 가장 최근 결과 행(created_at 최신). 반려 뒤 재입력이 없으면 반려된 행이 보인다.
+ * 팀 게임: winner_team 값, placements []. 개인 순위 게임: winner_team null, placements(placement 오름차순).
+ */
+export const ScrimResultView = z.object({
+  id: Uuid,
+  status: ScrimResultStatus,
+  winner_team: ScrimTeam.nullable(),
+  placements: z.array(ScrimPlacementView),
+  submitted_by: ScrimUserRef,
+  submitted_at: IsoDateTime,
+  approved_by: ScrimUserRef.nullable(),
+  approved_at: IsoDateTime.nullable(),
+  rejected_by: ScrimUserRef.nullable(),
+  rejected_at: IsoDateTime.nullable(),
+  reject_reason: z.string().nullable(),
+  rating_status: ScrimRatingStatus,
+  /** 레이팅을 반영한 시즌(applied일 때만), 그 외 null */
+  season: SeasonRef.nullable(),
+  /** applied일 때 반영된 참가자 전원(delta 내림차순, 같으면 user id 순). 그 외 [] */
+  rating_changes: z.array(ScrimRatingChange),
+});
+export type ScrimResultView = z.infer<typeof ScrimResultView>;
+
+/**
+ * 목록 카드용 결과 요약(승인된 결과만, 목업 Scrims 「종료」 탭).
+ * 팀 게임: winner_team, winner null. 개인 순위 게임: winner_team null, winner = 1위.
+ */
+export const ScrimOutcome = z.object({
+  winner_team: ScrimTeam.nullable(),
+  winner: ScrimUserRef.nullable(),
+});
+export type ScrimOutcome = z.infer<typeof ScrimOutcome>;
+
+// -----------------------------------------------------------------------------
 // GET /scrims?game=&status=&cursor=&limit= — 목록(문서 6장)
 // -----------------------------------------------------------------------------
 
@@ -174,6 +322,12 @@ export const ScrimSummary = z.object({
   /** 요청자의 참가 상태(joined | waitlist | no_show), 참가하지 않았거나 취소했으면 null */
   my_status: MyScrimStatus.nullable(),
   created_at: IsoDateTime,
+  /**
+   * S3. 가장 최근 결과 행의 상태(pending = 「승인 대기」, rejected = 반려 후 재입력 전, approved), 결과가 없으면 null
+   */
+  result_status: ScrimResultStatus.nullable(),
+  /** S3. 승인된 결과 요약(status finished일 때만), 그 외 null */
+  outcome: ScrimOutcome.nullable(),
 });
 export type ScrimSummary = z.infer<typeof ScrimSummary>;
 
@@ -186,7 +340,7 @@ export type ListScrimsResponse = z.infer<typeof ListScrimsResponse>;
 
 /**
  * 참가자 슬롯 1개(참가 확정·노쇼). 순서: 방장 먼저, 나머지는 joined_at 오름차순, 같으면 user id 순.
- * position·team은 S3 팀 밸런스 확정 후 채워진다(S2는 항상 null).
+ * position·team은 S3 팀 구성 저장(PUT /scrims/{id}/teams) 후 채워진다. 명단(joined 집합)이 바뀌면 서버가 전원 null로 지운다.
  */
 export const ScrimPlayerView = z.object({
   user: ScrimUserRef,
@@ -200,6 +354,12 @@ export const ScrimPlayerView = z.object({
   team: ScrimTeam.nullable(),
   /** no_show일 때 운영진이 표시한 시각. 그 외 null */
   no_show_marked_at: IsoDateTime.nullable(),
+  /** S3. 배정 포지션의 희망 순위(team·position이 있고 use_positions 내전일 때), 그 외 null */
+  position_preference: PositionPreference.nullable(),
+  /** S3. 이 게임 실력값(core computeSkill, 정수). 목업 ROSTER 숫자 */
+  skill: z.number().int(),
+  /** S3. 이 게임 승인된 rated 내전 경기 수 < rating_policy.new_player_games(신규 K 적용 대상). 목업 「NEW」 */
+  is_new: z.boolean(),
 });
 export type ScrimPlayerView = z.infer<typeof ScrimPlayerView>;
 
@@ -221,6 +381,13 @@ export type ScrimWaitlistEntry = z.infer<typeof ScrimWaitlistEntry>;
  * - can_cancel: (방장 || 운영진) && 모집 중
  * - can_start: (방장 || 운영진) && 모집 중 && 시작 조건 충족(core canStartScrim)
  * - can_mark_no_show: 운영진 && status ∈ {playing, finished} && 노쇼 표시 기한 안
+ * S3(「활성 결과」 = status pending 또는 approved인 결과 행):
+ * - can_edit_teams: (방장 || 운영진) && game.has_teams && status ∈ {full, playing} && 활성 결과 없음
+ * - can_balance: can_edit_teams && options.auto_balance && 팀에 넣을 수 있는 참가 확정자(joined, 노쇼 제외) 2–16명
+ * - can_submit_result: (방장 || 운영진) && status = playing && 활성 결과 없음
+ *   && (has_teams면 두 팀 모두 joined 참가자 1명 이상 배정 / 아니면 joined 참가자 2명 이상)
+ * - can_withdraw_result: 결과 pending && (내가 제출자 || 방장)
+ * - can_review_result: 운영진 && 결과 pending && 제출자가 내가 아님(자기 제출 승인·반려 금지, 메인 기본값 8)
  */
 export const ScrimViewer = z.object({
   status: MyScrimStatus.nullable(),
@@ -237,6 +404,11 @@ export const ScrimViewer = z.object({
   can_cancel: z.boolean(),
   can_start: z.boolean(),
   can_mark_no_show: z.boolean(),
+  can_edit_teams: z.boolean(),
+  can_balance: z.boolean(),
+  can_submit_result: z.boolean(),
+  can_withdraw_result: z.boolean(),
+  can_review_result: z.boolean(),
 });
 export type ScrimViewer = z.infer<typeof ScrimViewer>;
 
@@ -252,10 +424,14 @@ export const ScrimDetail = ScrimSummary.extend({
   /** 대기열(order 오름차순). 길이 = waitlist_count */
   waitlist: z.array(ScrimWaitlistEntry),
   viewer: ScrimViewer,
-  /** S3 팀 밸런스 자리. S2는 항상 null(D39와 같은 규칙: 이후 슬라이스는 nullable로 넓히기만) */
-  balance: z.null(),
-  /** S3 결과 입력·승인 자리. S2는 항상 null */
-  result: z.null(),
+  /**
+   * S3. 저장된 팀 구성 요약. 팀 게임(has_teams)에서 블루·오렌지 모두 joined 참가자(노쇼 제외)가 1명 이상 배정돼 있을 때만,
+   * 그 외 null(팀 저장 전, 노쇼 표시로 한 팀이 비었을 때, 개인 순위 게임).
+   * (밸런스 3안은 저장하지 않는다 — POST /scrims/{id}/balance 응답으로만 받는다)
+   */
+  balance: ScrimTeamsView.nullable(),
+  /** S3. 가장 최근 결과 행. 결과가 없으면 null */
+  result: ScrimResultView.nullable(),
 });
 export type ScrimDetail = z.infer<typeof ScrimDetail>;
 

@@ -1,5 +1,15 @@
 import {
   ApiPath,
+  ApproveScrimResultResponse,
+  BalanceScrimResponse,
+  RejectScrimResultResponse,
+  SaveScrimTeamsResponse,
+  SubmitScrimResultResponse,
+  WithdrawScrimResultResponse,
+  type ApproveScrimResultRequest,
+  type RejectScrimResultRequestInput,
+  type SaveScrimTeamsRequestInput,
+  type SubmitScrimResultRequest,
   CancelScrimResponse,
   CreateScrimResponse,
   GetMyScrimRestrictionResponse,
@@ -101,4 +111,38 @@ export function searchSteamApps(q: string, signal?: AbortSignal) {
 /** GET /me/scrim-restriction */
 export function getMyScrimRestriction(signal?: AbortSignal) {
   return apiClient.request(ApiPath.myScrimRestriction, GetMyScrimRestrictionResponse, { signal });
+}
+
+// -----------------------------------------------------------------------------
+// S3 팀 밸런스·팀 구성·결과(계약 S3 4절). 상태 변경 5개는 ScrimDetail, 밸런스는 계산 결과만
+// -----------------------------------------------------------------------------
+
+/** POST /scrims/:id/balance — 3안 계산(저장 안 함). 본문 `{}` */
+export function balanceScrim(id: string) {
+  return apiClient.request(fillPath(ApiPath.scrimBalance, { id }), BalanceScrimResponse, { method: 'POST', body: {} });
+}
+
+/** PUT /scrims/:id/teams — 두 팀 전체 덮어쓰기 */
+export function saveScrimTeams(id: string, body: SaveScrimTeamsRequestInput) {
+  return apiClient.request(fillPath(ApiPath.scrimTeams, { id }), SaveScrimTeamsResponse, { method: 'PUT', body });
+}
+
+/** POST /scrims/:id/result — 팀 게임 `{winner_team}`, 개인 순위 `{placements}` */
+export function submitScrimResult(id: string, body: SubmitScrimResultRequest) {
+  return apiClient.request(fillPath(ApiPath.scrimResult, { id }), SubmitScrimResultResponse, { method: 'POST', body });
+}
+
+/** DELETE /scrims/:id/result — pending 결과 제출 취소 */
+export function withdrawScrimResult(id: string) {
+  return apiClient.request(fillPath(ApiPath.scrimResult, { id }), WithdrawScrimResultResponse, { method: 'DELETE' });
+}
+
+/** POST /scrims/:id/result/approve (운영진) */
+export function approveScrimResult(id: string, body: ApproveScrimResultRequest) {
+  return apiClient.request(fillPath(ApiPath.scrimResultApprove, { id }), ApproveScrimResultResponse, { method: 'POST', body });
+}
+
+/** POST /scrims/:id/result/reject (운영진) */
+export function rejectScrimResult(id: string, body: RejectScrimResultRequestInput) {
+  return apiClient.request(fillPath(ApiPath.scrimResultReject, { id }), RejectScrimResultResponse, { method: 'POST', body });
 }

@@ -40,6 +40,13 @@ export const DEFAULT_ERROR_MESSAGE: Record<ErrorCode, string> = {
   SCRIM_CAPACITY_BELOW_JOINED: '정원을 현재 참가 인원보다 적게 바꿀 수 없습니다.',
   SCRIM_CANNOT_START: '시작 조건을 채우지 못했습니다.',
   SCRIM_NO_SHOW_NOT_ALLOWED: '노쇼를 표시할 수 없는 상태입니다.',
+  SCRIM_TEAMS_NOT_EDITABLE: '지금은 팀 구성을 바꿀 수 없습니다.',
+  SCRIM_BALANCE_UNAVAILABLE: '이 내전은 팀 자동 밸런스를 쓸 수 없습니다.',
+  SCRIM_RESULT_NOT_ALLOWED: '진행 중인 내전에만 결과를 입력할 수 있습니다.',
+  SCRIM_RESULT_EXISTS: '이미 승인 대기 중이거나 승인된 결과가 있습니다.',
+  SCRIM_TEAMS_REQUIRED: '결과를 입력하기 전에 두 팀을 구성해야 합니다.',
+  SCRIM_RESULT_NOT_PENDING: '승인 대기 중인 결과가 아닙니다.',
+  SCRIM_RESULT_SELF_REVIEW: '자기가 제출한 결과는 승인하거나 반려할 수 없습니다.',
 };
 
 /**

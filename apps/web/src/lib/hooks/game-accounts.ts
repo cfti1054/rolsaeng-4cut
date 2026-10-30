@@ -194,7 +194,8 @@ export function useSyncGameAccount() {
       qc.setQueryData<GetMyGameAccountsResponse>(gameAccountKeys.mine, (old) =>
         old ? { ...old, accounts: res.accounts, sync_quota: res.sync_quota } : old,
       );
-      qc.setQueriesData<GetUserProfileResponse>({ queryKey: gameAccountKeys.profiles }, (old) =>
+      // 범위를 프로필 키(['users', id, 'profile'])로만 좁힌다 — 같은 ['users'] 아래 레이팅 그래프 캐시를 건드리지 않게
+      qc.setQueriesData<GetUserProfileResponse>({ queryKey: gameAccountKeys.profiles, predicate: (q) => q.queryKey[2] === 'profile' }, (old) =>
         old?.is_self ? { ...old, game_accounts: res.accounts, sync_quota: res.sync_quota } : old,
       );
     },

@@ -7,7 +7,11 @@ import {
   RIOT_ACCOUNTS_MAX_DEFAULT,
   RIOT_VERIFICATION_TTL_SEC_DEFAULT,
   SCRIM_AUTO_CLOSE_AFTER_MIN_DEFAULT,
+  SCRIM_ELO_K_BASE_DEFAULT,
+  SCRIM_ELO_K_NEW_DEFAULT,
+  SCRIM_ELO_NEW_PLAYER_GAMES_DEFAULT,
   SCRIM_SCHEDULE_MAX_DAYS_AHEAD_DEFAULT,
+  SEASON_AUTO_LENGTH_MONTHS_DEFAULT,
   SYNC_DAILY_LIMIT_DEFAULT,
 } from '@gcd/shared';
 import { z } from 'zod';
@@ -108,6 +112,14 @@ const EnvSchema = z.object({
   SCRIM_NO_SHOW_WINDOW_DAYS: posInt(NO_SHOW_WINDOW_DAYS_DEFAULT),
   SCRIM_NO_SHOW_RESTRICTION_DAYS: posInt(NO_SHOW_RESTRICTION_DAYS_DEFAULT),
   SCRIM_NO_SHOW_MARK_WINDOW_DAYS: posInt(NO_SHOW_MARK_WINDOW_DAYS_DEFAULT),
+  // ---- S3 (계약 S3 12절) ----
+  SCRIM_ELO_K_BASE: posInt(SCRIM_ELO_K_BASE_DEFAULT),
+  SCRIM_ELO_K_NEW: posInt(SCRIM_ELO_K_NEW_DEFAULT),
+  SCRIM_ELO_NEW_PLAYER_GAMES: posInt(SCRIM_ELO_NEW_PLAYER_GAMES_DEFAULT),
+  SEASON_AUTO_LENGTH_MONTHS: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(1).max(24).default(SEASON_AUTO_LENGTH_MONTHS_DEFAULT),
+  ),
 });
 
 export interface AppConfig {
@@ -159,6 +171,10 @@ export interface AppConfig {
     /** 노쇼 표시 기한(시작 시각부터 일수, D83) */
     noShowMarkWindowDays: number;
   };
+  /** S3 내전 ELO(계약 S3 12절). core EloPolicy와 같은 모양 */
+  rating: { kBase: number; kNew: number; newPlayerGames: number };
+  /** S3 자동 생성 시즌 길이(개월, 1–24, D116) */
+  seasonAutoLengthMonths: number;
 }
 
 export const APP_CONFIG = Symbol('APP_CONFIG');
@@ -219,6 +235,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       },
       noShowMarkWindowDays: e.SCRIM_NO_SHOW_MARK_WINDOW_DAYS,
     },
+    rating: { kBase: e.SCRIM_ELO_K_BASE, kNew: e.SCRIM_ELO_K_NEW, newPlayerGames: e.SCRIM_ELO_NEW_PLAYER_GAMES },
+    seasonAutoLengthMonths: e.SEASON_AUTO_LENGTH_MONTHS,
   };
 }
 

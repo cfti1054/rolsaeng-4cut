@@ -6,7 +6,8 @@
  *
  * S1: KST 하루 구간·수동 새로고침 횟수, 주 포지션, 소유 확인 아이콘, 티어 변환·비교, 전적 캐시 만료.
  * S2: 노쇼 제한(7-4, no-show.ts), 내전 참가·대기열·시작·자동 마감(scrim.ts).
- * S3(ELO 7-1, 팀 밸런스 7-2), S4(랭킹 집계 7-3)에서 추가한다.
+ * S3: 내전 ELO(7-1, rating.ts), 팀 자동 밸런스(7-2, balance.ts), 시즌 판정·자동 생성(season.ts).
+ * S4(랭킹 집계 7-3)에서 추가한다.
  */
 export * from './config';
 export { kstDayWindow, formatKstMidnight, buildSyncQuota } from './time';
@@ -40,3 +41,43 @@ export {
   type WaitlistRow,
   type OpenScrimStatus,
 } from './scrim';
+export {
+  tierSeedRating,
+  eloKFactor,
+  expectedScore,
+  roundHalfAwayFromZero,
+  meanRating,
+  computeTeamEloUpdates,
+  computePlacementEloUpdates,
+  isPlacementWin,
+  computeWinRate,
+  previewTeamElo,
+  selectRatedParticipants,
+  type EloPolicy,
+  type RatedPlayer,
+  type EloUpdate,
+  type RatedParticipantsSelection,
+} from './rating';
+export {
+  computeSkill,
+  positionPreferenceOf,
+  bestPositionAssignment,
+  balanceTeams,
+  evaluateTeams,
+  validateTeamAssignment,
+  validatePlacementUsers,
+  type BalancePlayer,
+  type TeamMemberPlan,
+  type TeamPlan,
+  type TeamsEvaluation,
+  type BalanceResult,
+  type ValidationIssue,
+} from './balance';
+export {
+  resolveSeasonAt,
+  latestStartedSeason,
+  kstMonthStart,
+  addKstMonths,
+  planAutoSeason,
+  type SeasonLike,
+} from './season';

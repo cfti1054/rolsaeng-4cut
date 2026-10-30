@@ -2,7 +2,7 @@
 // 게임 커뮤니티 대시보드 — 전체 스키마 (S0에서 일괄 생성)
 // 명세: 게임 커뮤니티 대시보드 개발 문서.md 5장 + _workspace/00_input/slice.md 결정 사항
 // 계약: _workspace/S0/01_architect_contract.md 6절(S0 전체), _workspace/S1/01_architect_contract.md 3절(S1 변경),
-//       _workspace/01_architect_contract.md 3절(S2 변경)
+//       _workspace/S2/01_architect_contract.md 3절(S2 변경), _workspace/01_architect_contract.md 3절(S3 변경)
 //
 // 규칙
 // - 모든 테이블: id uuid(@default(uuid())), created_at.
@@ -414,6 +414,8 @@ model Rating {
 
 /// 레이팅 변동 이력. 문서 5장 + game_id, season_id, scrim_result_id(그래프·감사용)
 /// (scrim_id, user_id) 유일: 같은 내전 레이팅 이중 반영 방지
+/// S3: 행 1개 = 승인된 rated 내전 1경기. K 판정 경기 수 = (user_id, game_id) 행 수(모든 시즌, D106).
+///     created_at = 결과 승인 시각(같은 트랜잭션의 now)
 model RatingHistory {
   id            String   @id @default(uuid()) @db.Uuid
   userId        String   @map("user_id") @db.Uuid
@@ -423,6 +425,8 @@ model RatingHistory {
   seasonId      String   @map("season_id") @db.Uuid
   eloBefore     Int      @map("elo_before")
   eloAfter      Int      @map("elo_after")
+  /// S3. 적용한 K(32·40 등, 감사용). 이 표가 비어 있는 S3 이전에 추가하므로 기본값 없이 NOT NULL
+  kFactor       Int      @map("k_factor")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -433,6 +437,8 @@ model RatingHistory {
 
   @@unique([scrimId, userId])
   @@index([userId, createdAt])
+  /// S3. 그래프(사용자·게임·시즌, 시각순)와 K 판정 경기 수(사용자·게임) 조회
+  @@index([userId, gameId, seasonId, createdAt])
   @@map("rating_history")
 }
 
@@ -506,7 +512,8 @@ model ScrimPlayer {
   scrimId            String            @map("scrim_id") @db.Uuid
   userId             String            @map("user_id") @db.Uuid
   status             ScrimPlayerStatus @default(joined)
-  /// 팀 밸런스 후 배정된 포지션(games.positions 값). 배정 전 null
+  /// 팀 구성 저장(S3 PUT /scrims/{id}/teams) 때 배정된 포지션(games.positions 값). 배정 전·포지션 미사용 내전은 null.
+  /// S3: 모집 중 명단(joined 집합)이 바뀌면 그 내전 전원의 team·position을 null로 지운다(S3 계약 5-1)
   position           String?
   /// 희망 포지션, 1지망부터 순서대로(문서 7-2 3번)
   preferredPositions String[]          @default([]) @map("preferred_positions")
@@ -530,8 +537,10 @@ model ScrimPlayer {
 }
 
 /// 결과 입력과 운영진 승인. 문서 5장 + 상태·반려 컬럼(slice.md 결정)
-/// 반려 후 재입력은 새 행. 한 내전에 pending·approved 행은 최대 1개(서비스에서 보장)
-/// 자기 승인 금지: approved_by != submitted_by (S3 서비스에서 검사)
+/// 반려 후 재입력은 새 행. 한 내전에 pending·approved 행은 최대 1개 — 서비스(내전 행 잠금) + 부분 고유 인덱스
+/// scrim_results_one_active_per_scrim (Prisma로 표현 불가, 마이그레이션 20261030120000_s3 SQL에 직접 추가. S3 계약 3절)
+/// 자기 승인·반려 금지: approved_by·rejected_by != submitted_by (S3 서비스에서 검사, SCRIM_RESULT_SELF_REVIEW)
+/// 제출 취소(DELETE /scrims/{id}/result)는 pending 행 삭제
 model ScrimResult {
   id            String            @id @default(uuid()) @db.Uuid
   scrimId       String            @map("scrim_id") @db.Uuid

@@ -190,10 +190,11 @@ describe('S1 목 백엔드(계약 파싱 통과)', () => {
       tiers: [],
       main_position: null,
       recent_matches: null,
-      scrim: null,
       badges: null,
       user: { discord_linked: true },
     });
+    // S3: scrim 블록은 항상 객체(내전 목 시드에서 계산 — 시즌·레이팅·최근 내전)
+    expect(empty.scrim).not.toBeNull();
     expect(empty.sync_quota).not.toBeNull();
 
     await linkRiot('main#1');

@@ -110,3 +110,28 @@
 **미실행·미확인:** DB e2e 27건, 브라우저 렌더 — 이전과 동일
 
 **다음:** S3 팀 자동 밸런스, 결과 입력·승인, ELO 반영, 레이팅 그래프
+
+## S3 팀 자동 밸런스, 결과 입력·승인, ELO 반영, 레이팅 그래프 — 2026-10-30 — 판정: pass (DB e2e·브라우저 미확인)
+
+**구현:** core `rating.ts`(팀 평균 ELO, K 32/신규 40, 티어 시드, 개인 순위 쌍대 ELO, 반올림)·`balance.ts`(실력값 w, 2–16명 팀 나누기 전수, 포지션 배정 비용 0/1/3, λ 50, 상위 3안)·`season.ts`(KST 시즌 판정·자동 시즌). api 새 엔드포인트 8개(`POST /scrims/:id/balance`, `PUT /scrims/:id/teams`, `POST·DELETE /scrims/:id/result`, `POST .../result/approve`, `POST .../result/reject`, `GET /seasons`, `GET /users/:id/rating-history`), 목록·상세·프로필 응답 확장, 오류 코드 7개, 승인 한 트랜잭션(잠금 내전 → 시즌 생성 → 사용자, now = 잠금 직후), `rating_history.k_factor`, 마이그레이션 `20261030120000_s3`(부분 고유 인덱스 `scrim_results_one_active_per_scrim`), env 4개. web `/scrims/[id]` 밸런스 3안·팀 확정·직접 수정·결과 입력(승리 팀/순위)·승인 대기·제출 취소·승인·반려·ELO 변동 표, `/scrims` 종료 카드 결과, `/members/[id]` 레이팅 카드·Recharts 그래프·최근 내전, 훅 8개, 목 백엔드(계산은 `@gcd/core` import).
+
+**리더 직접 실행:** typecheck 4개 Done / `-r test` 2회 연속 통과: shared 71·core 238·web 162·api 379 passed / 33 skipped(DB e2e) / `-r build` 4개 Done
+
+**QA:** core pass(minor 3), backend pass(minor 4), web pass(minor 8), S3 교차 r1 fail(major 1: core 성능 테스트 병렬 부하 실패) → r2 pass(minor 2). 보고서 `_workspace/03_qa-verifier_{core,backend,web,s3,s3_r2}.md`. D136 api ↔ 목 무작위 대조 11,800건 불일치 0.
+
+**결함 처리:** backend 1–3(now 시점 D128, 트랜잭션 timeout D129, 깨진 placements D130) → backend 수정. web 1–8 → frontend 수정(목 S2 복사본 4개도 core import로). core 1 → D134(포지션 ≤ 5 전제), core 3 → 리더 수정. 교차 major 1 → 리더 수정(워밍업 + 상한 1000ms, D137). 교차 minor 2–5 → 목·api·계약 수정(D136 등). r2 N2(계약 문구) → 리더 수정.
+
+**남은 결함:**
+- core 2: 수동 시즌이 월말 임의 시각에 끝나면 자동 시즌 날짜가 밀림 — **사용자 결정: S4에서 정한다**
+
+**사후 수정(사용자 요청, 2026-10-30, D138):** r2 N1 → 프로필 개인 순위 승패의 기준 참가자를 승인 때 반영된 사용자(rating_history)로 고정(승인 뒤 노쇼 표시 무시, 이력 없으면 현재 status). backend 4 → 프로필 최근 내전 조회를 최신 승인 결과 10개(`PROFILE_RECENT_SCRIMS_SCAN_LIMIT`)로 묶고 그중 5개 표시(내 참가 행 목록은 전체 조회). 테스트 api +2·web +1. 리더 직접 수정·실행: typecheck 4개 Done, `-r test` 2회 shared 71·core 238·web 163·api 381 passed / 33 skipped, `-r build` 4개 Done. QA 재검증 없음
+
+**미실행·미확인:** DB e2e 33건(S3 6건: 동시 승인, 사용자 잠금 직렬화, 시즌 동시 생성, 부분 고유 인덱스, advisory SQL), 마이그레이션 실제 적용, 브라우저 렌더(목 모드 화면 확인 포함)
+
+**사용자 결정:** 없음(지침에 따라 기본값 진행). 확인 필요였던 Q1 시즌 없음 → 승인 시 3개월 시즌 자동 생성(D116), Q2 개인 순위 승패 = 상위 절반 승리(D105)는 architect 추천안 채택
+
+**리더 결정·기본값:** slice.md 기본값 1–10, D103–D137(계약). web에 `@gcd/core` workspace 의존성 추가, `recharts 3.10.1`·`react-is 19.2.9` 추가(lockfile 변경)
+
+**명세 문서와 어긋난 부분(문서 갱신 필요):** `_workspace/03_qa-verifier_s3.md` 「명세 문서 갱신 필요 목록」 10항목(결과 제출 취소·반려 경로, 시즌 자동 생성, 개인 순위 ELO 식, 팀 구성 저장 API 등)
+
+**다음:** S4 티어·ELO 랭킹, 랭킹 캐시 작업, 홈 대시보드 요약

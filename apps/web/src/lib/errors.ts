@@ -50,6 +50,14 @@ export const ERROR_MESSAGES: Record<AppErrorCode, string> = {
   SCRIM_CAPACITY_BELOW_JOINED: '정원을 지금 참가 확정된 인원보다 적게 줄일 수 없어요.',
   SCRIM_CANNOT_START: '아직 시작할 수 없어요. 시작에 필요한 인원이 모였는지 확인해 주세요.',
   SCRIM_NO_SHOW_NOT_ALLOWED: '지금은 노쇼를 표시할 수 없어요. 진행 중·종료된 내전의 참가자에게만, 표시 기한 안에 표시할 수 있어요.',
+  // S3 팀 구성·결과(409는 훅이 상세를 다시 조회하므로 「새로 고쳤어요」로 안내)
+  SCRIM_TEAMS_NOT_EDITABLE: '지금은 팀 구성을 바꿀 수 없어요. 결과가 제출됐거나 내전 상태가 바뀌었어요. 화면을 새로 고쳤어요.',
+  SCRIM_BALANCE_UNAVAILABLE: '지금은 자동 밸런스를 쓸 수 없어요. 참가 인원이 맞지 않거나 자동 밸런스를 끈 내전이에요. 「팀 직접 구성」으로 나눠 주세요.',
+  SCRIM_RESULT_NOT_ALLOWED: '경기가 진행 중일 때만 결과를 입력할 수 있어요.',
+  SCRIM_RESULT_EXISTS: '이미 제출됐거나 승인된 결과가 있어요. 화면을 새로 고쳤어요.',
+  SCRIM_TEAMS_REQUIRED: '결과를 입력하기 전에 블루·오렌지 두 팀을 먼저 구성해 주세요.',
+  SCRIM_RESULT_NOT_PENDING: '결과가 이미 처리됐거나 바뀌었어요. 화면을 새로 고쳤어요.',
+  SCRIM_RESULT_SELF_REVIEW: '내가 제출한 결과는 승인하거나 반려할 수 없어요. 다른 운영진이 처리해야 해요.',
   NETWORK_ERROR: '서버에 연결하지 못했어요. 네트워크를 확인하고 다시 시도해 주세요.',
   INVALID_RESPONSE: '서버 응답 형식이 예상과 달라요. 운영진에게 알려 주세요.',
 };

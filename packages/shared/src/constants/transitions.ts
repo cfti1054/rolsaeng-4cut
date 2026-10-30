@@ -17,8 +17,9 @@ export type TransitionMap<S extends string> = Readonly<Record<S, readonly S[]>>;
  * scrims.status (S2 계약 6절에서 확정)
  * recruiting → full(마지막 자리 참, 정원 축소) | playing(방장·운영진 시작, 또는 자동 마감 시 시작 조건 충족) | cancelled
  * full → recruiting(취소·정원 확대로 자리 생김 + 대기열 없음) | playing | cancelled
- * playing → finished(결과 승인 시, S3)
+ * playing → finished(운영진 결과 승인 시, S3 계약 5-5. 결과 제출·반려·제출 취소는 내전 상태를 바꾸지 않는다)
  * recruiting → playing은 S2에서 추가했다(롤체·스팀은 정원 미달이어도 시작할 수 있음, D78).
+ * S3에서 맵은 바뀌지 않았다. finished는 종착(승인 취소·되돌리기는 S6).
  */
 export const SCRIM_STATUS_TRANSITIONS: TransitionMap<ScrimStatus> = {
   recruiting: ['full', 'playing', 'cancelled'],
@@ -46,8 +47,10 @@ export const SCRIM_PLAYER_STATUS_TRANSITIONS: TransitionMap<ScrimPlayerStatus> =
 
 /**
  * scrim_results.status
- * pending → approved(운영진, 제출자 본인 제외) | rejected(운영진)
+ * pending → approved(운영진, 제출자 본인 제외) | rejected(운영진, 제출자 본인 제외)
  * 반려 후 재입력은 새 행(pending)으로 만든다. approved·rejected는 종착 상태.
+ * 제출 취소(DELETE /scrims/{id}/result)는 전이가 아니라 pending 행 삭제다(S3 계약 5-4).
+ * 한 내전에 pending·approved 행은 합쳐 최대 1개(부분 고유 인덱스 scrim_results_one_active_per_scrim).
  */
 export const SCRIM_RESULT_STATUS_TRANSITIONS: TransitionMap<ScrimResultStatus> = {
   pending: ['approved', 'rejected'],

@@ -161,8 +161,10 @@ export function formatHms(sec: number): string {
 
 export type BadgeTone = 'accent' | 'orange' | 'cyan' | 'violet' | 'neutral';
 
-/** 목록 카드 상태 배지(계약 8절): 내 상태 우선, 그 외 status·join_closed */
-export function scrimCardBadge(s: Pick<ScrimSummary, 'status' | 'join_closed' | 'my_status'>): { label: string; tone: BadgeTone } {
+/** 목록 카드 상태 배지(계약 8절): 내 상태 우선, 그 외 status·join_closed. S3: 진행 중 + 결과 pending → 「승인 대기」 */
+export function scrimCardBadge(
+  s: Pick<ScrimSummary, 'status' | 'join_closed' | 'my_status'> & { result_status?: ScrimSummary['result_status'] },
+): { label: string; tone: BadgeTone } {
   if (s.my_status === 'joined' && isOpenStatus(s.status)) return { label: '참가 중', tone: 'cyan' };
   if (s.my_status === 'waitlist' && isOpenStatus(s.status)) return { label: '대기 중', tone: 'cyan' };
   switch (s.status) {
@@ -171,7 +173,7 @@ export function scrimCardBadge(s: Pick<ScrimSummary, 'status' | 'join_closed' | 
     case 'full':
       return s.join_closed ? { label: '시작 대기', tone: 'violet' } : { label: '정원 마감', tone: 'orange' };
     case 'playing':
-      return { label: '진행 중', tone: 'cyan' };
+      return s.result_status === 'pending' ? { label: '승인 대기', tone: 'violet' } : { label: '진행 중', tone: 'cyan' };
     case 'finished':
       return { label: '종료', tone: 'neutral' };
     case 'cancelled':
@@ -179,15 +181,29 @@ export function scrimCardBadge(s: Pick<ScrimSummary, 'status' | 'join_closed' | 
   }
 }
 
-/** 상세 헤더 배지(계약 6절 표) */
-export function scrimDetailBadge(s: Pick<ScrimDetail, 'status' | 'join_closed'>): { label: string; tone: BadgeTone } {
+/**
+ * 종료 탭 카드 결과 줄(계약 S3 9절): 팀 → 「블루팀 승리」/「오렌지팀 승리」, 개인 순위 → 「1위 {닉네임}」.
+ * finished && outcome일 때만, 그 외 null
+ */
+export function scrimOutcomeLine(s: Pick<ScrimSummary, 'status' | 'outcome'>): { text: string; team: 'blue' | 'orange' | null } | null {
+  if (s.status !== 'finished' || !s.outcome) return null;
+  if (s.outcome.winner_team) return { text: s.outcome.winner_team === 'blue' ? '블루팀 승리' : '오렌지팀 승리', team: s.outcome.winner_team };
+  if (s.outcome.winner) return { text: `1위 ${s.outcome.winner.nickname}`, team: null };
+  return null;
+}
+
+/** 상세 헤더 배지(S2 계약 6절 표 + S3 8절: 팀 구성 완료·승인 대기) */
+export function scrimDetailBadge(
+  s: Pick<ScrimDetail, 'status' | 'join_closed'> & { balance?: ScrimDetail['balance']; result_status?: ScrimDetail['result_status'] },
+): { label: string; tone: BadgeTone } {
   switch (s.status) {
     case 'recruiting':
       return s.join_closed ? { label: '시작 대기', tone: 'violet' } : { label: '모집 중', tone: 'accent' };
     case 'full':
+      if (s.balance) return { label: '팀 구성 완료 · 시작 대기', tone: 'violet' };
       return s.join_closed ? { label: '시작 대기', tone: 'violet' } : { label: '정원 마감 · 팀 구성 중', tone: 'orange' };
     case 'playing':
-      return { label: '경기 진행 중', tone: 'cyan' };
+      return s.result_status === 'pending' ? { label: '결과 승인 대기', tone: 'violet' } : { label: '경기 진행 중', tone: 'cyan' };
     case 'finished':
       return { label: '종료', tone: 'neutral' };
     case 'cancelled':
@@ -252,12 +268,67 @@ export function capacityPips(joined: number, capacity: number): boolean[] {
 export const SCRIM_STEP_LABELS = ['모집', '팀 구성', '경기 진행', '결과 승인'] as const;
 export type StepState = 'done' | 'current' | 'todo';
 
-/** 진행 단계(계약 6절). cancelled면 null(단계 대신 「취소된 내전」) */
-export function scrimSteps(status: ScrimStatus): StepState[] | null {
-  const current = { recruiting: 0, full: 1, playing: 2, finished: 4 } as const;
-  if (status === 'cancelled') return null;
-  const c = current[status];
-  return SCRIM_STEP_LABELS.map((_, i) => (i < c ? 'done' : i === c ? 'current' : 'todo'));
+export interface ScrimStep {
+  label: string;
+  state: StepState;
+  /** 단계 아래 보조 문구(「시작 대기」「결과 반려됨」「승인 대기」 등) */
+  note: string | null;
+}
+
+/**
+ * 진행 단계(S3 계약 8절 표, S2 6절 표 대체). cancelled면 null(단계 대신 「취소된 내전」).
+ * - recruiting: 1단계 진행 중(join_closed면 「시작 대기」)
+ * - full: 팀 게임은 2단계 진행 중(balance 있으면 「팀 구성 완료 · 시작 대기」, 없으면 「정원 마감 · 팀 구성 중」).
+ *   개인 순위 게임은 2단계 이름이 「참가 확정」이고 완료로 표시(「시작 대기」)
+ * - playing: 3단계 진행 중(rejected면 「결과 반려됨」), pending이면 4단계 진행 중 「승인 대기」
+ * - finished: 모두 완료
+ */
+export function scrimSteps(
+  s: Pick<ScrimDetail, 'status' | 'join_closed' | 'result_status' | 'balance'> & { game: Pick<ScrimDetail['game'], 'has_teams'> },
+): ScrimStep[] | null {
+  if (s.status === 'cancelled') return null;
+  const teams = s.game.has_teams;
+  const labels = [SCRIM_STEP_LABELS[0], teams ? SCRIM_STEP_LABELS[1] : '참가 확정', SCRIM_STEP_LABELS[2], SCRIM_STEP_LABELS[3]];
+  const notes: (string | null)[] = [null, null, null, null];
+  /** 이 index 앞은 완료, 이 index는 진행 중(null이면 진행 중 단계 없음) */
+  let done = 0;
+  let current: number | null = 0;
+  switch (s.status) {
+    case 'recruiting':
+      if (s.join_closed) notes[0] = '시작 대기';
+      break;
+    case 'full':
+      done = 1;
+      if (teams) {
+        current = 1;
+        notes[1] = s.balance ? '팀 구성 완료 · 시작 대기' : '정원 마감 · 팀 구성 중';
+      } else {
+        done = 2;
+        current = null;
+        notes[1] = '시작 대기';
+      }
+      break;
+    case 'playing':
+      if (s.result_status === 'pending') {
+        done = 3;
+        current = 3;
+        notes[3] = '승인 대기';
+      } else {
+        done = 2;
+        current = 2;
+        if (s.result_status === 'rejected') notes[2] = '결과 반려됨';
+      }
+      break;
+    case 'finished':
+      done = 4;
+      current = null;
+      break;
+  }
+  return labels.map((label, i) => ({
+    label,
+    state: i < done ? 'done' : i === current ? 'current' : 'todo',
+    note: notes[i] ?? null,
+  }));
 }
 
 export const CANCEL_REASON_TEXT: Record<ScrimCancelReason, string> = {

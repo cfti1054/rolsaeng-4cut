@@ -23,6 +23,7 @@ import {
   scrimDetailBadge,
   scrimNeedLine,
   scrimOptionTags,
+  scrimOutcomeLine,
   scrimShareText,
   scrimSteps,
   startBlockedReason,
@@ -136,12 +137,48 @@ describe('카드 표시', () => {
 });
 
 describe('상세 표시', () => {
-  it('진행 단계(계약 6절)', () => {
-    expect(scrimSteps('recruiting')).toEqual(['current', 'todo', 'todo', 'todo']);
-    expect(scrimSteps('full')).toEqual(['done', 'current', 'todo', 'todo']);
-    expect(scrimSteps('playing')).toEqual(['done', 'done', 'current', 'todo']);
-    expect(scrimSteps('finished')).toEqual(['done', 'done', 'done', 'done']);
-    expect(scrimSteps('cancelled')).toBeNull();
+  it('진행 단계(S3 계약 8절 표)', () => {
+    const balance = {
+      blue: { size: 5, skill_sum: 0, skill_avg: 0, rating_avg: 0, position_cost: 0, elo_preview: null },
+      orange: { size: 5, skill_sum: 0, skill_avg: 0, rating_avg: 0, position_cost: 0, elo_preview: null },
+      blue_win_probability: 0.5,
+      power_diff: 0,
+      position_cost: 0,
+      unassigned_user_ids: [],
+    };
+    const team = { has_teams: true };
+    const st = (x: Partial<Parameters<typeof scrimSteps>[0]>) => {
+      const r = scrimSteps({ status: 'recruiting', join_closed: false, result_status: null, balance: null, game: team, ...x });
+      return r && r.map((s) => s.state);
+    };
+    const notes = (x: Partial<Parameters<typeof scrimSteps>[0]>) =>
+      scrimSteps({ status: 'recruiting', join_closed: false, result_status: null, balance: null, game: team, ...x })!.map((s) => s.note);
+    expect(st({})).toEqual(['current', 'todo', 'todo', 'todo']);
+    expect(notes({ join_closed: true })[0]).toBe('시작 대기');
+    expect(st({ status: 'full' })).toEqual(['done', 'current', 'todo', 'todo']);
+    expect(notes({ status: 'full' })[1]).toBe('정원 마감 · 팀 구성 중');
+    expect(notes({ status: 'full', balance })[1]).toBe('팀 구성 완료 · 시작 대기');
+    expect(st({ status: 'playing' })).toEqual(['done', 'done', 'current', 'todo']);
+    expect(notes({ status: 'playing', result_status: 'rejected' })[2]).toBe('결과 반려됨');
+    expect(st({ status: 'playing', result_status: 'pending' })).toEqual(['done', 'done', 'done', 'current']);
+    expect(notes({ status: 'playing', result_status: 'pending' })[3]).toBe('승인 대기');
+    expect(st({ status: 'finished', result_status: 'approved' })).toEqual(['done', 'done', 'done', 'done']);
+    expect(st({ status: 'cancelled' })).toBeNull();
+    // 개인 순위 게임: 2단계 「참가 확정」, full이면 완료
+    const solo = scrimSteps({ status: 'full', join_closed: false, result_status: null, balance: null, game: { has_teams: false } })!;
+    expect(solo.map((s) => s.label)[1]).toBe('참가 확정');
+    expect(solo.map((s) => s.state)).toEqual(['done', 'done', 'todo', 'todo']);
+  });
+
+  it('S3 배지: 진행 중 + 승인 대기, 종료 카드 결과 줄', () => {
+    expect(scrimCardBadge({ status: 'playing', join_closed: true, my_status: null, result_status: 'pending' }).label).toBe('승인 대기');
+    expect(scrimCardBadge({ status: 'playing', join_closed: true, my_status: null, result_status: 'rejected' }).label).toBe('진행 중');
+    expect(scrimDetailBadge({ status: 'playing', join_closed: true, result_status: 'pending' }).label).toBe('결과 승인 대기');
+    expect(scrimOutcomeLine({ status: 'finished', outcome: { winner_team: 'orange', winner: null } })).toEqual({ text: '오렌지팀 승리', team: 'orange' });
+    expect(
+      scrimOutcomeLine({ status: 'finished', outcome: { winner_team: null, winner: { id: '5c0f0000-0000-4000-8000-000000000001', nickname: '체스왕', avatar_url: null } } }),
+    ).toEqual({ text: '1위 체스왕', team: null });
+    expect(scrimOutcomeLine({ status: 'cancelled', outcome: null })).toBeNull();
   });
 
   it('헤더 배지', () => {

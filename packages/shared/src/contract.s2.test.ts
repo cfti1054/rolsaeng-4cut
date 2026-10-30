@@ -58,6 +58,9 @@ const detail = {
   join_closed: false,
   my_status: 'joined',
   created_at: T,
+  // S3 추가 필드
+  result_status: null,
+  outcome: null,
   rules: null,
   started_at: null,
   cancelled_at: null,
@@ -73,6 +76,10 @@ const detail = {
       position: null,
       team: null,
       no_show_marked_at: null,
+      // S3 추가 필드
+      position_preference: null,
+      skill: 1000,
+      is_new: true,
     },
   ],
   waitlist: [{ order: 1, user: { ...user, id: ID2, nickname: '칼바람러' }, preferred_positions: ['mid'], joined_at: T }],
@@ -88,6 +95,12 @@ const detail = {
     can_cancel: true,
     can_start: false,
     can_mark_no_show: false,
+    // S3 추가 필드
+    can_edit_teams: false,
+    can_balance: false,
+    can_submit_result: false,
+    can_withdraw_result: false,
+    can_review_result: false,
   },
   balance: null,
   result: null,
@@ -105,7 +118,8 @@ describe('S2 errors', () => {
       'SCRIM_NO_SHOW_NOT_ALLOWED',
     ] as const;
     for (const c of s2) expect(ErrorCode.options).toContain(c);
-    expect(ErrorCode.options).toHaveLength(36);
+    // 전체 개수는 슬라이스마다 늘어난다(S3: 43, contract.s3.test.ts)
+    expect(ErrorCode.options.length).toBeGreaterThanOrEqual(36);
     expect(ERROR_HTTP_STATUS.SCRIM_BANNED).toBe(403);
     expect(ERROR_HTTP_STATUS.SCRIM_JOIN_CLOSED).toBe(409);
     expect(Object.keys(ERROR_HTTP_STATUS).sort()).toEqual([...ErrorCode.options].sort());
@@ -232,7 +246,7 @@ describe('scrim requests', () => {
 });
 
 describe('scrim responses', () => {
-  it('ScrimDetail parse, S3 자리는 null만', () => {
+  it('ScrimDetail parse, balance·result 자리는 null 허용(S3에서 객체로 넓힘)', () => {
     expect(ScrimDetail.parse(detail).waitlist[0]?.order).toBe(1);
     expect(ScrimDetail.safeParse({ ...detail, balance: {} }).success).toBe(false);
     expect(ScrimDetail.safeParse({ ...detail, my_status: 'cancelled' }).success).toBe(false);

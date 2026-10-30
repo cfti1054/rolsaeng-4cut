@@ -13,7 +13,7 @@ import {
 } from '@gcd/shared';
 import type { FetchLike } from '../client';
 import { emptyS1State, handleS1, MockS1State, type MockS1Options } from './game-accounts';
-import { emptyS2State, handleS2, MockS2State, type MockS2Options } from './scrims';
+import { emptyS2State, handleS2, isS2Path, mockProfileScrim, MockS2State, type MockS2Options } from './scrims';
 
 /**
  * [목] 계약(_workspace/01_architect_contract.md 4·5절)을 흉내 내는 가짜 API.
@@ -196,17 +196,27 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
         error: (code, message, o) => error(code, message, o?.details, o?.retryAfterSec),
         opts: opts.s1 ?? {},
       });
+      // S3: 프로필 scrim 블록은 내전 목 저장소(S2 상태)로 채운다
+      const profileId = method === 'GET' ? /^\/users\/([^/]+)\/profile$/.exec(path)?.[1] : undefined;
+      if (res && res.status === 200 && profileId) {
+        const profile = (await res.json()) as Record<string, unknown>;
+        const scrim = mockProfileScrim(
+          {
+            me: r,
+            now: now(),
+            state: load().s2 ?? emptyS2State(),
+            save: (s2) => save({ ...load(), s2 }),
+            opts: opts.s2,
+          },
+          decodeURIComponent(profileId),
+        );
+        return json(200, { ...profile, scrim });
+      }
       if (res) return res;
     }
 
-    // S2 내전·게임·노쇼 제한
-    if (
-      path === ApiPath.games ||
-      path === ApiPath.steamApps ||
-      path === ApiPath.scrims ||
-      path.startsWith('/scrims/') ||
-      path === ApiPath.myScrimRestriction
-    ) {
+    // S2 내전·게임·노쇼 제한, S3 시즌·레이팅 그래프
+    if (isS2Path(path)) {
       const r = authorize(init);
       if (r instanceof Response) return r;
       const res = handleS2({

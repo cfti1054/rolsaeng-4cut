@@ -7,11 +7,15 @@ import {
   type GameAccount,
   type GameAccountSyncRequest,
   type RankSnapshot,
+  type Rating,
+  type RatingHistory,
   type RecentMatch,
   type RefreshToken,
   type RiotLinkVerification,
   type Scrim,
   type ScrimPlayer,
+  type ScrimResult,
+  type Season,
   type SteamPlaytime,
   type User,
 } from '@prisma/client';
@@ -28,6 +32,9 @@ import { FakeTable, type Row, matchWhere } from './fake-table';
  * $queryRaw는 두 문장만 흉내 낸다: 내전 행 잠금(SELECT … FROM scrims WHERE id = ? FOR UPDATE → 행 또는 [])과
  * pg_try_advisory_xact_lock(→ [{ ok: advisoryAvailable }]). 호출은 rawCalls에 기록(잠금 순서 검사용).
  * 트랜잭션 안에서 다시 $transaction을 부르면(자동 마감처럼 바깥 잠금 트랜잭션 + 건별 트랜잭션) 같은 흐름으로 바로 실행한다.
+ * S3: scrim_results(부분 고유 scrim_results_one_active_per_scrim (scrim_id) WHERE status IN (pending, approved)),
+ * seasons, ratings(고유 (user_id, game_id, season_id)), rating_history(고유 (scrim_id, user_id)). createMany skipDuplicates 지원.
+ * 시즌·사용자 advisory lock()은 호출만 기록한다(순서 검사용).
  * 고유 제약: game_accounts (game_id, external_id), 부분 고유 인덱스 (user_id, game_id) WHERE is_primary(문 단위 검사).
  * FK: game_accounts 삭제 시 rank_snapshots·recent_matches·steam_playtime Cascade, sync_requests SetNull.
  *
@@ -124,6 +131,51 @@ export class FakePrisma {
       noShowMarkedAt: null,
       noShowMarkedById: null,
       updatedAt: undefined,
+    }),
+    [{ target: ['scrim_id', 'user_id'], fields: ['scrimId', 'userId'] }],
+  );
+
+  // ---- S3 테이블 ----
+  scrimResult = new FakeTable<ScrimResult & Row>(
+    () => ({
+      scrimId: undefined,
+      status: 'pending',
+      winnerTeam: null,
+      placements: null,
+      submittedById: undefined,
+      approvedById: null,
+      approvedAt: null,
+      rejectReason: null,
+      rejectedById: null,
+      rejectedAt: null,
+      updatedAt: undefined,
+    }),
+    [
+      {
+        target: 'scrim_results_one_active_per_scrim',
+        fields: ['scrimId'],
+        where: (r) => r.status === 'pending' || r.status === 'approved',
+      },
+    ],
+  );
+
+  season = new FakeTable<Season & Row>(() => ({ name: undefined, startsAt: undefined, endsAt: undefined }));
+
+  rating = new FakeTable<Rating & Row>(
+    () => ({ userId: undefined, gameId: undefined, seasonId: undefined, elo: 1000, wins: 0, losses: 0, updatedAt: undefined }),
+    [{ target: ['user_id', 'game_id', 'season_id'], fields: ['userId', 'gameId', 'seasonId'] }],
+  );
+
+  ratingHistory = new FakeTable<RatingHistory & Row>(
+    () => ({
+      userId: undefined,
+      scrimId: undefined,
+      scrimResultId: undefined,
+      gameId: undefined,
+      seasonId: undefined,
+      eloBefore: undefined,
+      eloAfter: undefined,
+      kFactor: undefined,
     }),
     [{ target: ['scrim_id', 'user_id'], fields: ['scrimId', 'userId'] }],
   );
@@ -225,6 +277,10 @@ export class FakePrisma {
       this.steamPlaytime,
       this.scrim,
       this.scrimPlayer,
+      this.scrimResult,
+      this.season,
+      this.rating,
+      this.ratingHistory,
     ] as unknown as FakeTable[];
   }
 

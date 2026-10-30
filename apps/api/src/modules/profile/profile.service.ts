@@ -17,13 +17,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { type AccountRow, GameAccountViews, primaryRiotRows } from '../game-accounts/game-account-views.service';
 import { SyncEnqueuer } from '../game-accounts/sync-enqueuer.service';
 import { DEV_DISCORD_ID_PREFIX, discordAvatarUrl } from '../users/me.mapper';
+import { ProfileScrimService } from './profile-scrim.service';
 
 /** 최근 실패가 이 시간 안이면 프로필 조회로 전적 갱신을 다시 넣지 않는다(D50) */
 export const PROFILE_REFRESH_ERROR_BACKOFF_MS = 30 * 60 * 1000;
 
 /**
  * GET /users/:id/profile (계약 S1 8절). 대표 라이엇 계정 기준 티어·주 포지션·최근 전적.
- * scrim·badges는 S1에서 항상 null(D39). 외부 식별자는 응답 스키마 parse로 걸러진다(D38).
+ * scrim은 S3부터 항상 객체(ProfileScrim, D119), badges는 null(D39). 외부 식별자는 응답 스키마 parse로 걸러진다(D38).
  */
 @Injectable()
 export class ProfileService {
@@ -33,6 +34,7 @@ export class ProfileService {
     private readonly prisma: PrismaService,
     private readonly views: GameAccountViews,
     private readonly enqueuer: SyncEnqueuer,
+    private readonly scrimBlock: ProfileScrimService,
     @Inject(APP_CLOCK) private readonly clock: Clock,
     @Inject(DATA_DRAGON) private readonly ddragon: DataDragon,
   ) {}
@@ -87,7 +89,7 @@ export class ProfileService {
       main_position: mainPosition,
       recent_matches: recent,
       sync_quota: isSelf ? await this.views.syncQuota(userId, now) : null,
-      scrim: null,
+      scrim: await this.scrimBlock.forUser(userId, now),
       badges: null,
     });
   }
