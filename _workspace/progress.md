@@ -122,9 +122,11 @@
 **결함 처리:** backend 1–3(now 시점 D128, 트랜잭션 timeout D129, 깨진 placements D130) → backend 수정. web 1–8 → frontend 수정(목 S2 복사본 4개도 core import로). core 1 → D134(포지션 ≤ 5 전제), core 3 → 리더 수정. 교차 major 1 → 리더 수정(워밍업 + 상한 1000ms, D137). 교차 minor 2–5 → 목·api·계약 수정(D136 등). r2 N2(계약 문구) → 리더 수정.
 
 **남은 결함:**
-- core 2: 수동 시즌이 월말 임의 시각에 끝나면 자동 시즌 날짜가 밀림 — **사용자 결정: S4에서 정한다**
+- ~~core 2: 수동 시즌이 월말 임의 시각에 끝나면 자동 시즌 날짜가 밀림~~ → 2026-10-30 처리(아래 「core 2 처리」)
 
 **사후 수정(사용자 요청, 2026-10-30, D138):** r2 N1 → 프로필 개인 순위 승패의 기준 참가자를 승인 때 반영된 사용자(rating_history)로 고정(승인 뒤 노쇼 표시 무시, 이력 없으면 현재 status). backend 4 → 프로필 최근 내전 조회를 최신 승인 결과 10개(`PROFILE_RECENT_SCRIMS_SCAN_LIMIT`)로 묶고 그중 5개 표시(내 참가 행 목록은 전체 조회). 테스트 api +2·web +1. 리더 직접 수정·실행: typecheck 4개 Done, `-r test` 2회 shared 71·core 238·web 163·api 381 passed / 33 skipped, `-r build` 4개 Done. QA 재검증 없음
+
+**core 2 처리(사용자 결정, 2026-10-30, D139):** `planAutoSeason` 공백 건너뛰기를 직전 끝 이후 첫 KST 달 1일 00:00으로 맞춘 뒤 달력 월로 건너뛰게 변경. 바로 이은 구간이 승인 시각을 포함하면 직전 끝에서 시작(이전과 같음). 계약 6절·7-5·D139 갱신. core 테스트 +3(QA 재현 1/31 10:00 → 8/15 승인 = 8/1 시작 등)과 무작위 테스트 불변식(시작 = 직전 끝 또는 KST 달 1일) 추가. 리더 직접 실행(Node 22): core 241 passed, api 381 passed / 33 skipped, core typecheck Done. QA 재검증 없음
 
 **미실행·미확인:** DB e2e 33건(S3 6건: 동시 승인, 사용자 잠금 직렬화, 시즌 동시 생성, 부분 고유 인덱스, advisory SQL), 마이그레이션 실제 적용, 브라우저 렌더(목 모드 화면 확인 포함)
 

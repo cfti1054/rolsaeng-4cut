@@ -124,6 +124,37 @@ describe('planAutoSeason (D116)', () => {
     );
   });
 
+  describe('직전 시즌이 월말 임의 시각에 끝남(D139)', () => {
+    const manual = season('m', '2026-11-01T00:00:00', '2027-01-31T10:00:00');
+
+    it('바로 이은 구간이 at을 포함하면 직전 끝에서 시작', () => {
+      expect(planAutoSeason({ seasons: [manual], at: kst('2027-02-15T00:00:00'), lengthMonths: LEN })).toEqual({
+        name: '시즌 2',
+        startsAt: kst('2027-01-31T10:00:00'),
+        endsAt: kst('2027-04-30T10:00:00'),
+      });
+    });
+
+    it('공백 건너뛰기는 KST 달 1일 00:00에 맞춰 날짜가 밀리지 않는다', () => {
+      expect(planAutoSeason({ seasons: [manual], at: kst('2027-08-15T00:00:00'), lengthMonths: LEN })).toEqual({
+        name: '시즌 2',
+        startsAt: kst('2027-08-01T00:00:00'),
+        endsAt: kst('2027-11-01T00:00:00'),
+      });
+    });
+
+    it('바로 이은 구간 끝 직후: 정렬한 첫 구간이 at을 포함하면 그 구간', () => {
+      expect(planAutoSeason({ seasons: [manual], at: kst('2027-04-30T12:00:00'), lengthMonths: LEN })).toMatchObject({
+        startsAt: kst('2027-02-01T00:00:00'),
+        endsAt: kst('2027-05-01T00:00:00'),
+      });
+      expect(planAutoSeason({ seasons: [manual], at: kst('2027-05-10T00:00:00'), lengthMonths: LEN })).toMatchObject({
+        startsAt: kst('2027-05-01T00:00:00'),
+        endsAt: kst('2027-08-01T00:00:00'),
+      });
+    });
+  });
+
   it('미래 시즌과 겹치지 않게 끝을 자른다', () => {
     const future = season('f', '2026-12-15T00:00:00', '2027-03-15T00:00:00');
     expect(planAutoSeason({ seasons: [future], at: kst('2026-11-03T00:00:00'), lengthMonths: LEN })).toEqual({
@@ -151,7 +182,7 @@ describe('planAutoSeason (D116)', () => {
     expect(() => planAutoSeason({ seasons: [], at: new Date(), lengthMonths: 1.5 })).toThrow(RangeError);
   });
 
-  it('무작위: 결과는 항상 at을 포함하고 기존 시즌과 겹치지 않는다', () => {
+  it('무작위: 결과는 항상 at을 포함하고 기존 시즌과 겹치지 않으며, 시작은 직전 끝 또는 KST 달 1일', () => {
     const rnd = mulberry32(42);
     const base = kst('2026-01-01T00:00:00').getTime();
     const DAY = 86_400_000;
@@ -174,6 +205,12 @@ describe('planAutoSeason (D116)', () => {
         const overlap = plan.startsAt < s.endsAt && s.startsAt < plan.endsAt;
         expect(overlap).toBe(false);
       }
+      const prevEnd = Math.max(
+        -Infinity,
+        ...seasons.map((s) => s.endsAt.getTime()).filter((e) => e <= at.getTime()),
+      );
+      const st = plan.startsAt.getTime();
+      expect(st === prevEnd || st === kstMonthStart(plan.startsAt).getTime()).toBe(true);
       expect(plan.name).toBe(`시즌 ${seasons.length + 1}`);
       checked++;
     }

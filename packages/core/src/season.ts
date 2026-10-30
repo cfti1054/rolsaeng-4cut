@@ -71,7 +71,8 @@ export function addKstMonths(d: Date, months: number): Date {
 /**
  * 자동 시즌 계획(6절 1–4). at을 포함하는 시즌이 이미 있으면 RangeError.
  * 1. prev = endsAt ≤ at 중 endsAt 최대. start = prev ? prev.endsAt : kstMonthStart(at)
- * 2. end = addKstMonths(start, lengthMonths). end ≤ at이면 start = end로 넘겨 반복(빈 시즌은 만들지 않음)
+ * 2. end = addKstMonths(start, lengthMonths). end ≤ at이면 start를 직전 끝 이후 첫 KST 달 1일 00:00으로 맞춘 뒤
+ *    start = end로 넘겨 반복(빈 시즌은 만들지 않음, D139)
  * 3. next = startsAt > at 중 startsAt 최소. end > next.startsAt이면 end = next.startsAt
  * 4. name = autoSeasonName(seasons.length + 1)
  */
@@ -101,6 +102,11 @@ export function planAutoSeason(input: {
 
   let start = prevEnd !== null ? new Date(prevEnd) : kstMonthStart(at);
   let end = addKstMonths(start, lengthMonths);
+  if (end.getTime() <= t) {
+    const monthStart = kstMonthStart(start);
+    if (monthStart.getTime() !== start.getTime()) start = addKstMonths(monthStart, 1);
+    end = addKstMonths(start, lengthMonths);
+  }
   while (end.getTime() <= t) {
     start = end;
     end = addKstMonths(start, lengthMonths);

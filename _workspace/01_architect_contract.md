@@ -11,6 +11,7 @@
 | 2026-10-30 | S3 최초 작성: 엔드포인트 신규 8개(밸런스·팀 저장·결과 제출·제출 취소·승인·반려·시즌 목록·레이팅 그래프) + 기존 3개 응답 확장(목록·상세·프로필), 오류 코드 7개(전체 43개), 스키마 증분(마이그레이션 `20261030120000_s3`), core 함수 23개, 환경 변수 4개, 결정 D103–D127 | architect |
 | 2026-10-30 | 구현·QA 반영(리더): D128–D135. 5-5 now 시점, 11절 시즌 잠금 조건, 5-1 새 참가 팀 초기화, 4-1 최근 결과 동점·조회 방식, 5-3 쓰기 횟수, 9절 결과 표 NEW 제거·최근 내전 게임 이름, 7-4 포지션 ≤ 5 전제·홀수 동점 사전순, 오류 목록 보강 | 리더 |
 | 2026-10-30 | 본문 동기화(교차 QA 결함 5): D128–D135를 2절 INTERNAL_ERROR, 4-1 결과 정렬·조회 방식, 5-0 트랜잭션 옵션, 5-1 새 참가, 5-5 now·시즌 잠금 순서(7a/7b, `lockIfMayCreate`·`resolveForApproval`), 7-4 5·6번, 8절 표, 9절 최근 내전·노쇼 무효화, 10절 파일 위치, 11절에 반영. 리더 결정 D136(프로필 최근 내전 개인 순위 승패 = 반영 기준, 4-1)·D137(7-4 성능 목표와 테스트 상한 1000ms) 추가. 코드 변경 없음 | architect |
+| 2026-10-30 | core 2 처리(사용자 결정): D139. 6절 2번 공백 건너뛰기를 KST 달 1일 00:00 정렬로 변경, 6절 예 추가, 7-5 planAutoSeason 규칙 갱신. core `planAutoSeason`·테스트 수정 | 리더 |
 
 ---
 
@@ -225,10 +226,11 @@ S2 참가(새 참가 확정·재참가, D131), 5-3(참가 취소: joined → can
 - 반영 시즌 = **승인 시각이 속한 시즌**: `starts_at ≤ now < ends_at`. 여럿이면 starts_at 최신, 같으면 id 문자열 작은 것.
 - 시즌이 없을 때(행이 하나도 없거나, 승인 시각이 어느 구간에도 없음): 승인 트랜잭션이 자동으로 만든다(`planAutoSeason`):
   1. prev = ends_at ≤ at인 시즌 중 ends_at 최대. start = prev ? prev.ends_at : `kstMonthStart(at)`(at의 KST 달 1일 00:00).
-  2. end = `addKstMonths(start, lengthMonths)`. end ≤ at이면 start = end로 넘겨 반복(빈 기간은 빈 시즌을 만들지 않고 건너뛴다 — 만드는 행은 at을 포함하는 1개뿐).
+  2. end = `addKstMonths(start, lengthMonths)`. end ≤ at이면(공백 건너뛰기, D139) start를 **직전 끝 이후 첫 KST 달 1일 00:00**으로 맞춘다(직전 끝이 이미 1일 00:00이면 그대로). 그 뒤 end = `addKstMonths(start, lengthMonths)`, end ≤ at이면 start = end로 넘겨 반복(빈 기간은 빈 시즌을 만들지 않고 건너뛴다 — 만드는 행은 at을 포함하는 1개뿐). 직전 끝에서 바로 이은 구간이 at을 포함하면 정렬하지 않는다.
   3. next = starts_at > at인 시즌 중 starts_at 최소. end > next.starts_at이면 end = next.starts_at(겹치지 않게).
   4. name = `autoSeasonName(기존 행 수 + 1)` → 「시즌 N」.
   - 예: 시즌 없음, at = 2026-11-03 KST → 2026-11-01 00:00 KST ~ 2027-02-01 00:00 KST 「시즌 1」. 그 시즌이 끝난 뒤 2027-03-10 승인 → 2027-02-01 ~ 2027-05-01 「시즌 2」.
+  - 예(D139): 직전 시즌 끝 2027-01-31 10:00 KST(수동 시즌). 2027-02-15 승인 → 2027-01-31 10:00 ~ 2027-04-30 10:00(바로 이어 붙임). 2027-08-15 승인 → 2027-08-01 00:00 ~ 2027-11-01 00:00(정렬 후 건너뛰기. 이전 규칙은 2027-07-30 10:00 시작으로 밀렸다).
 - 조회 경로(상세 skill·밸런스·프로필·그래프·`/seasons`)는 시즌을 만들지 않는다. 현재 시즌이 없으면 seasonElo = null(→ 실력값 = 시드)로 계산한다.
 - 시즌이 바뀌면(새 시즌 첫 반영) 그 시즌 ratings 행을 시드로 새로 만든다(D103). 이전 시즌 값 이월·소프트 리셋은 S4 이후. K 판정 경기 수는 시즌과 무관(D106)이라 시즌이 바뀌어도 신규 K로 돌아가지 않는다.
 - `addKstMonths`: KST 달력 기준 월 더하기, 일이 그 달 말일을 넘으면 말일로 자르고 시각(KST)은 유지.
@@ -327,7 +329,7 @@ export type ValidationIssue = { path: string; message: string };
 | latestStartedSeason | `<T extends SeasonLike>(seasons: readonly T[], at: Date) => T \| null` | startsAt ≤ at 중 startsAt 최신(같으면 id ASC). 그래프 기본 시즌 대체용 |
 | kstMonthStart | `(d: Date) => Date` | d의 KST 달 1일 00:00:00.000 KST |
 | addKstMonths | `(d: Date, months: number) => Date` | 6절 마지막 줄 |
-| planAutoSeason | `(input: { seasons: readonly SeasonLike[]; at: Date; lengthMonths: number }) => { name: string; startsAt: Date; endsAt: Date }` | 6절 1–4. 결과는 항상 startsAt ≤ at < endsAt, 기존 시즌과 겹치지 않음(테스트로 보인다). name = shared `autoSeasonName(seasons.length + 1)`. resolveSeasonAt(seasons, at) ≠ null인 입력이면 RangeError |
+| planAutoSeason | `(input: { seasons: readonly SeasonLike[]; at: Date; lengthMonths: number }) => { name: string; startsAt: Date; endsAt: Date }` | 6절 1–4(2번 공백 건너뛰기는 KST 달 1일 정렬, D139). 결과는 항상 startsAt ≤ at < endsAt, 기존 시즌과 겹치지 않음(테스트로 보인다). name = shared `autoSeasonName(seasons.length + 1)`. resolveSeasonAt(seasons, at) ≠ null인 입력이면 RangeError |
 
 ---
 
@@ -553,6 +555,7 @@ architect(완료)
 | D136 | 프로필 최근 내전의 개인 순위 게임 승패는 레이팅 반영과 같은 기준: 그 내전 참가자 현재 status로 `selectRatedParticipants`(노쇼·순위 없음 제외 후 1..M 재순위) → `isPlacementWin(재순위, M)`(상위 절반 승, D105). 대상에서 빠지거나 skip이면 unassigned. rated=false 내전도 같은 기준. `placement` 필드는 제출 순위 그대로(4-1 ProfileScrim recent) | 교차 QA 결함 3: 제출 순위 전체 인원 기준이면 제출 뒤 노쇼가 빠졌을 때 프로필 칩 LOSS · 상세 ELO 표 win · delta +3 · ratings.wins +1로 엇갈린다. rated 여부로 기준을 나누면 같은 순위가 내전마다 다르게 보인다 |
 | D137 | 7-4 「16명 < 200ms」는 성능 목표(단독 실행 기준). 단위 테스트는 1회 워밍업 뒤 측정하고 병렬 부하를 감안한 회귀 상한 1000ms로 단언한다 | 교차 QA 결함 1: 벽시계 단언이 `pnpm -r test` 병렬 부하에서 210–265ms로 실패(단독 23–49ms)해 api·web 테스트가 돌지 않았다. 상한은 지수적 회귀(D134 전제 위반)를 잡기에 충분하다 |
 | D138 | (a) 프로필 개인 순위 승패의 기준 참가자는 승인 때 레이팅이 반영된 사용자(rating_history 행)로 고정한다 — 승인 뒤 노쇼 표시로 순위가 바뀌지 않는다. 이력이 없으면(rated=false·skip) D136대로 현재 status. (b) 프로필 최근 내전은 최신 승인 결과 `PROFILE_RECENT_SCRIMS_SCAN_LIMIT`(10)개만 조회해(결과·내전·이력·명단 읽기를 묶음) 그중 최신 5개를 내린다. 내 참가 행 목록은 전체를 읽는다(가벼운 행) | 교차 QA r2 N1: 승인 뒤 노쇼 표시로 프로필만 WIN으로 뒤집히고 ELO 표·delta는 LOSS 그대로. 사용자 요청: 이력이 많아져도 최근 10개 기준 |
+| D139 | 자동 시즌의 공백 건너뛰기(6절 2번)는 직전 끝 이후 첫 KST 달 1일 00:00으로 시작을 맞춘 뒤 달력 월 단위로 건너뛴다. 직전 끝에서 바로 이은 구간이 at을 포함하면 직전 끝에서 시작한다(겹침·틈 없음). `addKstMonths`의 말일 자르기, 미래 시즌 앞 자르기(3번)는 그대로 | core QA 결함 2(core 2): 직전 시즌이 월말 임의 시각에 끝나면 `addKstMonths` 연쇄로 1/31 10:00 → 4/30 → 7/30처럼 날짜가 밀렸다. 사용자 결정 |
 
 ---
 
