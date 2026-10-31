@@ -4,7 +4,9 @@ import {
   type RatedPlayer,
   computePlacementEloUpdates,
   computeTeamEloUpdates,
+  seasonStartElo,
   selectRatedParticipants,
+  tierSeedRating,
   validatePlacementUsers,
 } from '@gcd/core';
 import {
@@ -24,7 +26,8 @@ import type { AuthUser } from '../../common/decorators/current-user';
 import { APP_CONFIG, type AppConfig } from '../../config/env';
 import { PrismaService } from '../../prisma/prisma.service';
 import { countRatedGames } from '../ratings/rating-inputs.service';
-import { lockUserRatings } from '../ratings/rating-locks';
+import { loadPreviousRatings } from '../ratings/rating-carry';
+import { lockSeasonForRating, lockUserRatings } from '../ratings/rating-locks';
 import { loadTierSeeds } from '../ratings/rating-seed';
 import { SeasonsService } from '../ratings/seasons.service';
 import { readPlacements } from './scrim-result-json';
@@ -147,7 +150,8 @@ export class ScrimResultsService {
   /**
    * POST /scrims/:id/result/approve — 운영진(@Roles는 컨트롤러). 한 트랜잭션(READ COMMITTED):
    * 내전 행 잠금 → (rated && 대상 있음) 시즌 생성 advisory(필요할 수 있을 때만) → 사용자 advisory(user_id 오름차순) →
-   * now 확정 → 시즌 판정·자동 생성 → ratings 시드·갱신 + rating_history → 결과 조건부 update → playing → finished.
+   * now 확정 → 시즌 판정·자동 생성 → 시즌 행 FOR SHARE(closed_at 검사, S4 7c) → ratings 시작값(이전 시즌 소프트 리셋 또는 시드, S4 6-1)·갱신 +
+   * rating_history → 결과 조건부 update → playing → finished.
    *
    * now(리더 결정, QA minor 1): 모든 잠금을 얻은 **직후** 한 번 정한다(approved_at = rating_history.created_at = 시즌 판정).
    * 잠금 대기 전에 정하면 같은 사용자를 먼저 반영한 다른 승인보다 이른 created_at이 찍혀 그래프(created_at 순) 연결이 끊긴다.
@@ -194,18 +198,31 @@ export class ScrimResultsService {
           // 7b. now 기준 시즌(없으면 생성)
           const season = await this.seasons.resolveForApproval(tx, now, holdsCreateLock);
 
-          // 9. ratings 행 확보(없으면 시드로 INSERT … ON CONFLICT DO NOTHING) + 경기 수(반영 전)
+          // 7c. 종료 작업과의 경합 방어(S4 6-2, D141). 커밋까지 유지. 닫힌 시즌이면 전체 롤백
+          await lockSeasonForRating(tx, season.id);
+
+          // 9. ratings 행 확보(없으면 S4 6-1 시작값으로 INSERT … ON CONFLICT DO NOTHING) + 경기 수(반영 전)
+          // 이전 시즌 행은 8단계 사용자 잠금 아래에서 읽으므로 같은 사용자의 직전 시즌 승인이 커밋한 값을 본다
           const existing = await tx.rating.findMany({ where: { userId: { in: locked }, gameId: game.id, seasonId: season.id } });
           const missing = locked.filter((u) => !existing.some((r) => r.userId === u));
           if (missing.length > 0) {
-            const seeds = await loadTierSeeds(tx, game, missing);
+            const carried = await loadPreviousRatings(tx, game, season.startsAt, missing);
+            const seeds = await loadTierSeeds(tx, game, missing.filter((u) => !carried.has(u)));
             await tx.rating.createMany({
-              data: missing.map((userId) => ({
-                userId,
-                gameId: game.id,
-                seasonId: season.id,
-                elo: seeds.get(userId) as number,
-              })),
+              data: missing.map((userId) => {
+                const prev = carried.get(userId);
+                return {
+                  userId,
+                  gameId: game.id,
+                  seasonId: season.id,
+                  elo: seasonStartElo({
+                    previousElo: prev?.elo ?? null,
+                    tierSeed: seeds.get(userId) ?? tierSeedRating(null),
+                    ratio: this.config.seasonSoftResetRatio,
+                  }),
+                  carriedFromSeasonId: prev?.seasonId ?? null,
+                };
+              }),
               skipDuplicates: true,
             });
           }

@@ -2,7 +2,8 @@
 // 게임 커뮤니티 대시보드 — 전체 스키마 (S0에서 일괄 생성)
 // 명세: 게임 커뮤니티 대시보드 개발 문서.md 5장 + _workspace/00_input/slice.md 결정 사항
 // 계약: _workspace/S0/01_architect_contract.md 6절(S0 전체), _workspace/S1/01_architect_contract.md 3절(S1 변경),
-//       _workspace/S2/01_architect_contract.md 3절(S2 변경), _workspace/01_architect_contract.md 3절(S3 변경)
+//       _workspace/S2/01_architect_contract.md 3절(S2 변경), _workspace/S3/01_architect_contract.md 3절(S3 변경),
+//       _workspace/01_architect_contract.md 3절(S4 변경)
 //
 // 규칙
 // - 모든 테이블: id uuid(@default(uuid())), created_at.
@@ -193,25 +194,25 @@ model RefreshToken {
 
 /// 게임 종류. 새 게임은 행만 추가(설계 원칙 3). 시드: packages/shared GAME_SEED
 model Game {
-  id              String   @id @default(uuid()) @db.Uuid
-  code            String   @unique
-  name            String
-  hasPositions    Boolean  @default(false) @map("has_positions")
+  id                String   @id @default(uuid()) @db.Uuid
+  code              String   @unique
+  name              String
+  hasPositions      Boolean  @default(false) @map("has_positions")
   /// 두 팀 대결 여부. false면 개인 순위(롤체)
-  hasTeams        Boolean  @default(true) @map("has_teams")
+  hasTeams          Boolean  @default(true) @map("has_teams")
   /// 선택 가능한 포지션 코드, 표시 순서대로
-  positions       String[] @default([])
-  sortOrder       Int      @default(0) @map("sort_order")
+  positions         String[] @default([])
+  sortOrder         Int      @default(0) @map("sort_order")
   /// S2. 내전 정원 범위(방장 포함). 허용 값 = min부터 step 간격으로 max까지(롤 2–10, 2 단위). 시드: shared GAME_SEED
-  capacityMin     Int      @default(2) @map("capacity_min")
-  capacityMax     Int      @default(16) @map("capacity_max")
-  capacityDefault Int      @default(8) @map("capacity_default")
-  capacityStep    Int      @default(1) @map("capacity_step")
+  capacityMin       Int      @default(2) @map("capacity_min")
+  capacityMax       Int      @default(16) @map("capacity_max")
+  capacityDefault   Int      @default(8) @map("capacity_default")
+  capacityStep      Int      @default(1) @map("capacity_step")
   /// true면 정원이 꽉 차야 시작(롤), false면 2명 이상
-  startRequiresFull Boolean @default(false) @map("start_requires_full")
+  startRequiresFull Boolean  @default(false) @map("start_requires_full")
   /// true면 내전 작성 때 스팀 게임(app id)을 반드시 고른다(D98)
-  requiresSteamApp Boolean @default(false) @map("requires_steam_app")
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  requiresSteamApp  Boolean  @default(false) @map("requires_steam_app")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   gameAccounts    GameAccount[]
   scrims          Scrim[]
@@ -375,37 +376,46 @@ model SteamPlaytime {
 // -----------------------------------------------------------------------------
 
 /// 랭킹 시즌 구간. 문서 5장
+/// S4: closed_at = 시즌 종료 처리(최종 순위·뱃지) 커밋 시각. 값이 있으면 그 시즌 ratings는 더 바뀌지 않는다.
+///     종료 처리는 이 행 FOR NO KEY UPDATE, 승인 반영은 FOR SHARE로 서로 기다린다(S4 계약 6-3).
 model Season {
-  id        String   @id @default(uuid()) @db.Uuid
+  id        String    @id @default(uuid()) @db.Uuid
   name      String
-  startsAt  DateTime @map("starts_at") @db.Timestamptz(3)
-  endsAt    DateTime @map("ends_at") @db.Timestamptz(3)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  startsAt  DateTime  @map("starts_at") @db.Timestamptz(3)
+  endsAt    DateTime  @map("ends_at") @db.Timestamptz(3)
+  closedAt  DateTime? @map("closed_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  ratings       Rating[]
-  ratingHistory RatingHistory[]
-  standings     SeasonStanding[]
-  userBadges    UserBadge[]
+  ratings        Rating[]         @relation("RatingSeason")
+  /// S4. 이 시즌 값에서 이월된 다음 시즌 행들
+  carriedRatings Rating[]         @relation("RatingCarriedFrom")
+  ratingHistory  RatingHistory[]
+  standings      SeasonStanding[]
+  userBadges     UserBadge[]
 
   @@index([startsAt, endsAt])
   @@map("seasons")
 }
 
 /// 시즌별 내전 레이팅 현재값. 문서 5장. elo는 정수(계산 후 반올림)
+/// S4: 행은 그 시즌 첫 반영 때 한 번만 만든다. 시작값 = 이전 시즌 행이 있으면 소프트 리셋, 없으면 티어 시드(S4 계약 6-1)
 model Rating {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  gameId    String   @map("game_id") @db.Uuid
-  seasonId  String   @map("season_id") @db.Uuid
-  elo       Int      @default(1000)
-  wins      Int      @default(0)
-  losses    Int      @default(0)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                  String   @id @default(uuid()) @db.Uuid
+  userId              String   @map("user_id") @db.Uuid
+  gameId              String   @map("game_id") @db.Uuid
+  seasonId            String   @map("season_id") @db.Uuid
+  elo                 Int      @default(1000)
+  wins                Int      @default(0)
+  losses              Int      @default(0)
+  /// S4. 시작값의 출처 시즌(소프트 리셋). 티어 시드로 시작했으면 null. 감사용
+  carriedFromSeasonId String?  @map("carried_from_season_id") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  game   Game   @relation(fields: [gameId], references: [id])
-  season Season @relation(fields: [seasonId], references: [id])
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game              Game    @relation(fields: [gameId], references: [id])
+  season            Season  @relation("RatingSeason", fields: [seasonId], references: [id])
+  carriedFromSeason Season? @relation("RatingCarriedFrom", fields: [carriedFromSeasonId], references: [id], onDelete: SetNull)
 
   @@unique([userId, gameId, seasonId])
   @@index([gameId, seasonId, elo(sort: Desc)])
@@ -443,6 +453,7 @@ model RatingHistory {
 }
 
 /// 시즌 종료 최종 순위 스냅샷(문서 7-3 「최종 순위를 스냅샷으로 저장」). 명세 공백 보완
+/// S4: 그 시즌 RANKING_ELO_MIN_GAMES 이상 치른 멤버만 저장한다(rank 1부터). 미만인 멤버의 최종값은 ratings 행에 남는다
 model SeasonStanding {
   id        String   @id @default(uuid()) @db.Uuid
   seasonId  String   @map("season_id") @db.Uuid
@@ -461,6 +472,31 @@ model SeasonStanding {
   @@unique([seasonId, gameId, userId])
   @@index([seasonId, gameId, rank])
   @@map("season_standings")
+}
+
+/// S4 랭킹 캐시(문서 7-3 「5분 단위로 캐시」, 9장). Redis 유무와 관계없이 이 표 하나만 쓴다(D146).
+/// cache_key: `rankings:tier:{game}` | `rankings:elo:{game}:{season_id}` (S4 계약 7-1)
+/// payload·computed_at = 마지막 성공값. 갱신 실패는 last_failed_at만 남기고 값을 건드리지 않는다
+/// baseline_*: 순위 변동(+/−) 기준. KST 주가 바뀔 때만 교체(D153)
+model RankingCache {
+  id                  String    @id @default(uuid()) @db.Uuid
+  cacheKey            String    @unique @map("cache_key")
+  /// shared TierRankingCachePayload | EloRankingCachePayload
+  payload             Json
+  /// 마지막 성공 계산 시각(응답 synced_at)
+  computedAt          DateTime  @map("computed_at") @db.Timestamptz(3)
+  /// 마지막 실패 시각. 성공하면 null
+  lastFailedAt        DateTime? @map("last_failed_at") @db.Timestamptz(3)
+  /// 마지막 실패 사유(로그용, 응답에 노출하지 않음)
+  lastError           String?   @map("last_error")
+  /// baseline_ranks가 기준으로 삼는 KST 주 시작 시각
+  baselinePeriodStart DateTime  @map("baseline_period_start") @db.Timestamptz(3)
+  /// { user_id: rank } shared RankingBaselineRanks. 기준 자료가 없으면 {}
+  baselineRanks       Json      @default("{}") @map("baseline_ranks")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("ranking_caches")
 }
 
 // -----------------------------------------------------------------------------
@@ -616,6 +652,7 @@ model ActivityLog {
 }
 
 /// 업적 정의. 문서 5장
+/// S4 시드: shared SEASON_BADGE_SEED — 시즌 최종 순위 뱃지 `season_{game}_top{1|2|3}` (게임마다 3행, seed.ts)
 model Badge {
   id          String   @id @default(uuid()) @db.Uuid
   code        String   @unique
@@ -631,6 +668,7 @@ model Badge {
 }
 
 /// 업적 획득 기록. 문서 5장 + season_id(시즌 보상 뱃지 구분, 선택)
+/// S4: 시즌 뱃지는 (user, badge, season) 유일 키가 이중 지급의 마지막 방어선. earned_at = 시즌 ends_at
 model UserBadge {
   id        String   @id @default(uuid()) @db.Uuid
   userId    String   @map("user_id") @db.Uuid

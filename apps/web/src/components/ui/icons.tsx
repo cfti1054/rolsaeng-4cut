@@ -150,6 +150,16 @@ export function AlertIcon(p: IconProps) {
   );
 }
 
+export function InfoIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5" />
+      <path d="M12 8h.01" />
+    </svg>
+  );
+}
+
 export function RefreshIcon(p: IconProps) {
   return (
     <svg {...base({ strokeWidth: 2, ...p })}>

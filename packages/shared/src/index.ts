@@ -16,3 +16,6 @@ export * from './steam-apps';
 export * from './seasons';
 export * from './scrim-results';
 export * from './ratings';
+export * from './badges';
+export * from './rankings';
+export * from './dashboard';

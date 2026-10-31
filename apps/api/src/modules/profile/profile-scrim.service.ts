@@ -9,13 +9,14 @@ import {
   ProfileScrim,
 } from '@gcd/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { RankingsReader } from '../rankings/rankings-reader.service';
 import { ratingSummary } from '../ratings/rating-history.service';
 import { SeasonsService, seasonRef } from '../ratings/seasons.service';
 import { readPlacements } from '../scrims/scrim-result-json';
 
 /**
  * 프로필 내전 블록(계약 S3 4-1 ProfileScrim, D119). S3부터 항상 객체. 조회는 시즌을 만들지 않는다.
- * 쿼리: 시즌 1 + ratings 1 + 게임 1 + 내 참가 행 1 + 승인 결과 1 + 내전 1 + 이력 1(N+1 없음).
+ * 쿼리: 시즌 1 + ratings 1 + 게임 1 + 내 참가 행 1 + 승인 결과 1 + 내전 1 + 이력 1(N+1 없음). rank는 게임별 랭킹 캐시 읽기(계산 없음, S4 4-4).
  * 승인 결과·내전·이력·명단 조회는 최신 승인 결과 PROFILE_RECENT_SCRIMS_SCAN_LIMIT(10)개로 묶는다. 내 참가 행(가벼운 행)만 전체를 읽는다.
  */
 @Injectable()
@@ -23,6 +24,7 @@ export class ProfileScrimService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly seasons: SeasonsService,
+    private readonly rankings: RankingsReader,
   ) {}
 
   async forUser(userId: string, now: Date): Promise<ProfileScrim> {
@@ -39,11 +41,16 @@ export class ProfileScrimService {
     if (season) {
       const rows = await this.prisma.rating.findMany({ where: { userId, seasonId: season.id } });
       const byGame = new Map(rows.map((r) => [r.gameId, r]));
-      ratings = games.flatMap((g) => {
-        const r = byGame.get(g.id);
-        const code = codeOf(g.id);
-        return r && code ? [{ game: code, ...ratingSummary(r) }] : [];
-      });
+      const seasonId = season.id;
+      const cards = await Promise.all(
+        games.map(async (g) => {
+          const r = byGame.get(g.id);
+          const code = codeOf(g.id);
+          if (!r || !code) return null;
+          return { game: code, ...ratingSummary(r), rank: await this.rankings.eloRankOf(code, seasonId, userId) };
+        }),
+      );
+      ratings = cards.filter((c) => c !== null);
     }
 
     // 최근 내전: 내 참가 행(joined·no_show) 중 승인된 결과가 있는(= finished) 내전, approved_at DESC 후보 10개 중 최대 5

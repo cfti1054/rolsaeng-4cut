@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SyncQuota } from '@gcd/shared';
-import { buildSyncQuota, formatKstMidnight, kstDayWindow } from './index';
+import { buildSyncQuota, formatKstMidnight, kstDayWindow, kstWeekWindow } from './index';
 
 const iso = (s: string) => new Date(s);
 
@@ -65,6 +65,62 @@ describe('kstDayWindow', () => {
 
   it('Invalid Date → RangeError', () => {
     expect(() => kstDayWindow(new Date('nope'))).toThrow(RangeError);
+  });
+});
+
+describe('kstWeekWindow', () => {
+  const MON = '2026-10-25T15:00:00.000Z'; // 2026-10-26(월) 00:00 KST
+  const NEXT_MON = '2026-11-01T15:00:00.000Z'; // 2026-11-02(월) 00:00 KST
+
+  it('평일 → 그 주 월요일 00:00 KST ~ 다음 월요일', () => {
+    const w = kstWeekWindow(iso('2026-10-30T12:00:00+09:00')); // 금요일
+    expect(w.start.toISOString()).toBe(MON);
+    expect(w.end.toISOString()).toBe(NEXT_MON);
+  });
+
+  it('일요일 23:59:59.999 KST는 아직 지난주, 월요일 00:00 KST(UTC 일요일 15:00)는 새 주', () => {
+    expect(kstWeekWindow(iso('2026-11-01T23:59:59.999+09:00')).start.toISOString()).toBe(MON);
+    expect(kstWeekWindow(iso('2026-11-01T14:59:59.999Z')).start.toISOString()).toBe(MON);
+    const monday = iso('2026-11-01T15:00:00.000Z');
+    expect(monday.getUTCDay()).toBe(0); // UTC로는 일요일
+    expect(kstWeekWindow(monday).start.toISOString()).toBe(NEXT_MON);
+    expect(kstWeekWindow(monday).end.toISOString()).toBe('2026-11-08T15:00:00.000Z');
+  });
+
+  it('요일 7개 모두 같은 주', () => {
+    for (let d = 26; d <= 31; d++) {
+      expect(kstWeekWindow(iso(`2026-10-${d}T09:30:00+09:00`)).start.toISOString()).toBe(MON);
+    }
+    expect(kstWeekWindow(iso('2026-11-01T09:30:00+09:00')).start.toISOString()).toBe(MON);
+  });
+
+  it('월·연 경계를 넘는 주', () => {
+    // 2026-12-31(목) → 12-28(월) 시작, 2027-01-03(일)까지
+    const w = kstWeekWindow(iso('2027-01-03T23:00:00+09:00'));
+    expect(w.start.toISOString()).toBe('2026-12-27T15:00:00.000Z');
+    expect(w.end.toISOString()).toBe('2027-01-03T15:00:00.000Z');
+  });
+
+  it('1970년 이전(음수 일 번호)도 월요일', () => {
+    const w = kstWeekWindow(iso('1969-12-28T12:00:00+09:00')); // 일요일
+    expect(w.start.toISOString()).toBe('1969-12-21T15:00:00.000Z');
+    expect(new Date(w.start.getTime() + 9 * 3_600_000).getUTCDay()).toBe(1);
+  });
+
+  it('start ≤ now < end, 길이 7일, start는 KST 월요일 자정', () => {
+    for (let i = 0; i < 400; i++) {
+      const now = new Date(iso('2026-01-01T00:00:00Z').getTime() + i * 11 * 3_600_000 + i);
+      const w = kstWeekWindow(now);
+      expect(w.end.getTime() - w.start.getTime()).toBe(7 * 86_400_000);
+      expect(w.start.getTime()).toBeLessThanOrEqual(now.getTime());
+      expect(now.getTime()).toBeLessThan(w.end.getTime());
+      expect(new Date(w.start.getTime() + 9 * 3_600_000).getUTCDay()).toBe(1);
+      expect(formatKstMidnight(w.start)).toMatch(/T00:00:00\.000\+09:00$/);
+    }
+  });
+
+  it('Invalid Date → RangeError', () => {
+    expect(() => kstWeekWindow(new Date('nope'))).toThrow(RangeError);
   });
 });
 

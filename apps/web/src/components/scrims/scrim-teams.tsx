@@ -34,10 +34,10 @@ import { RowErrors, SectionHead, scrimErrorTextRest } from './scrim-bits';
 
 type ToastFn = (t: { message: string; tone: 'success' | 'error' }) => void;
 
-/** 블루/오렌지 색은 기존 blue·orange 토큰 클래스만(hex 금지, D53) */
+/** 팀 색. 레드팀(API 값 orange)은 경고색과 섞이지 않게 팀 전용 토큰을 쓴다(D174). hex 금지(D53) */
 export const TEAM_TONE: Record<ScrimTeam, { border: string; bg: string; head: string; ink: string; dot: string; soft: string }> = {
   blue: { border: 'border-blue/35', bg: 'bg-blue/6', head: 'bg-blue', ink: 'text-blue-ink', dot: 'bg-blue', soft: 'bg-blue/12' },
-  orange: { border: 'border-orange/35', bg: 'bg-orange/6', head: 'bg-orange', ink: 'text-orange-ink', dot: 'bg-orange', soft: 'bg-orange/12' },
+  orange: { border: 'border-team-red/35', bg: 'bg-team-red/6', head: 'bg-team-red', ink: 'text-team-red-ink', dot: 'bg-team-red', soft: 'bg-team-red/12' },
 };
 
 /** 계약 S3 9절 오류 처리: 상태가 바뀐 경우 토스트로 알리고 상세는 훅이 다시 조회한다 */
@@ -85,7 +85,7 @@ export function NewBadge() {
   );
 }
 
-/** 팀 카드(목업 ScrimDetail BLUE/ORANGE) */
+/** 팀 카드(목업 ScrimDetail 양 팀) */
 function TeamCard({
   team,
   avg,
@@ -155,12 +155,12 @@ function TeamCard({
 function OddsBar({ blue, powerDiff, positionCost, showCost }: { blue: number; powerDiff: number; positionCost: number; showCost: boolean }) {
   const orange = 1 - blue;
   return (
-    <div className="flex items-center gap-3.5 rounded-2xl bg-surface-2 px-4 py-3.5" aria-label={`블루 기대 승률 ${percent1(blue)}, 오렌지 기대 승률 ${percent1(orange)}`}>
+    <div className="flex items-center gap-3.5 rounded-2xl bg-surface-2 px-4 py-3.5" aria-label={`블루 기대 승률 ${percent1(blue)}, 레드 기대 승률 ${percent1(orange)}`}>
       <span className="w-16 shrink-0 font-display text-lg font-bold text-blue-ink">{percent1(blue)}</span>
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <div aria-hidden="true" className="flex h-2.5 gap-0.5 overflow-hidden rounded-[5px]">
           <span className="bg-blue" style={{ width: `${blue * 100}%` }} />
-          <span className="flex-1 bg-orange" />
+          <span className="flex-1 bg-team-red" />
         </div>
         <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs text-muted">
           <span>블루 기대 승률</span>
@@ -173,10 +173,10 @@ function OddsBar({ blue, powerDiff, positionCost, showCost }: { blue: number; po
               </>
             )}
           </span>
-          <span>오렌지 기대 승률</span>
+          <span>레드 기대 승률</span>
         </div>
       </div>
-      <span className="w-16 shrink-0 text-right font-display text-lg font-bold text-orange-ink">{percent1(orange)}</span>
+      <span className="w-16 shrink-0 text-right font-display text-lg font-bold text-team-red-ink">{percent1(orange)}</span>
     </div>
   );
 }
@@ -446,7 +446,7 @@ function TeamEditor({
   const set = (userId: string, next: { team: ScrimTeam | null; position: string | null }) => setDraft({ ...draft, [userId]: next });
   const choices: { value: ScrimTeam | null; label: string }[] = [
     { value: 'blue', label: '블루' },
-    { value: 'orange', label: '오렌지' },
+    { value: 'orange', label: '레드' },
     { value: null, label: '미배정' },
   ];
 
@@ -455,7 +455,7 @@ function TeamEditor({
       <p className="m-0 text-[13px] text-muted">
         참가자마다 팀{usePositions ? '과 포지션' : ''}을 고르세요. 미배정인 참가자는 레이팅에 반영되지 않아요.{' '}
         <span className="font-display text-blue-ink">BLUE {count('blue')}</span> ·{' '}
-        <span className="font-display text-orange-ink">ORANGE {count('orange')}</span>
+        <span className="font-display text-team-red-ink">{TEAM_LABEL.orange.tag} {count('orange')}</span>
       </p>
       <ul className="m-0 flex list-none flex-col gap-1 p-0">
         {joined.map((p) => {

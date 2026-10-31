@@ -3,9 +3,11 @@ import {
   RiotTier,
   SCRIM_ELO_K_BASE_DEFAULT,
   SCRIM_ELO_K_NEW_DEFAULT,
+  SCRIM_ELO_LOSS_RATIO_DEFAULT,
   SCRIM_ELO_NEW_PLAYER_GAMES_DEFAULT,
 } from '@gcd/shared';
 import {
+  applyLossRatio,
   computePlacementEloUpdates,
   computeTeamEloUpdates,
   computeWinRate,
@@ -27,6 +29,8 @@ const policy: EloPolicy = {
   kBase: SCRIM_ELO_K_BASE_DEFAULT,
   kNew: SCRIM_ELO_K_NEW_DEFAULT,
   newPlayerGames: SCRIM_ELO_NEW_PLAYER_GAMES_DEFAULT,
+  // 이 파일의 기존 수치 테스트는 배율 1로 값이 그대로임을 보인다. 배율 적용은 맨 아래 D169 절
+  lossRatio: 1,
 };
 /** 신규 K가 걸리지 않게 경기 수 충분 */
 const vet = (userId: string, elo: number): RatedPlayer => ({ userId, elo, gamesPlayed: 50 });
@@ -44,7 +48,10 @@ function mulberry32(seed: number): () => number {
 
 describe('정책 기본값', () => {
   it('K 32 / 신규 40 / 기준 10경기', () => {
-    expect(policy).toEqual({ kBase: 32, kNew: 40, newPlayerGames: 10 });
+    expect(policy).toEqual({ kBase: 32, kNew: 40, newPlayerGames: 10, lossRatio: 1 });
+  });
+  it('패배 배율 기본값 0.5', () => {
+    expect(SCRIM_ELO_LOSS_RATIO_DEFAULT).toBe(0.5);
   });
 });
 
@@ -81,8 +88,8 @@ describe('eloKFactor', () => {
     expect(eloKFactor(11, policy)).toBe(32);
   });
   it('정책 값을 그대로 쓴다(env 조정)', () => {
-    expect(eloKFactor(4, { kBase: 20, kNew: 24, newPlayerGames: 5 })).toBe(24);
-    expect(eloKFactor(5, { kBase: 20, kNew: 24, newPlayerGames: 5 })).toBe(20);
+    expect(eloKFactor(4, { kBase: 20, kNew: 24, newPlayerGames: 5, lossRatio: 1 })).toBe(24);
+    expect(eloKFactor(5, { kBase: 20, kNew: 24, newPlayerGames: 5, lossRatio: 1 })).toBe(20);
   });
   it('음수·소수 경기 수 → RangeError', () => {
     expect(() => eloKFactor(-1, policy)).toThrow(RangeError);
@@ -322,13 +329,13 @@ describe('computeWinRate', () => {
 
 describe('previewTeamElo', () => {
   it('1400 대 1300, K 32 → 블루 +12/−20, 오렌지 +20/−12', () => {
-    expect(previewTeamElo({ blueAvg: 1400, orangeAvg: 1300, k: 32 })).toEqual({
+    expect(previewTeamElo({ blueAvg: 1400, orangeAvg: 1300, k: 32, lossRatio: 1 })).toEqual({
       blue: { win: 12, lose: -20 },
       orange: { win: 20, lose: -12 },
     });
   });
   it('동일 → ±16', () => {
-    expect(previewTeamElo({ blueAvg: 1000, orangeAvg: 1000, k: 32 })).toEqual({
+    expect(previewTeamElo({ blueAvg: 1000, orangeAvg: 1000, k: 32, lossRatio: 1 })).toEqual({
       blue: { win: 16, lose: -16 },
       orange: { win: 16, lose: -16 },
     });
@@ -400,5 +407,160 @@ describe('selectRatedParticipants (D115)', () => {
     ).toEqual({ kind: 'skip' });
     expect(selectRatedParticipants({ hasTeams: false, players, placements: null })).toEqual({ kind: 'skip' });
     expect(selectRatedParticipants({ hasTeams: false, players: [], placements: [] })).toEqual({ kind: 'skip' });
+  });
+});
+
+describe('패배 배율 (19-1, D169–D171)', () => {
+  const half: EloPolicy = { ...policy, lossRatio: 0.5 };
+  const withKBase = (kBase: number, lossRatio: number): EloPolicy => ({ ...policy, kBase, lossRatio });
+  /** 팀 1:1 결과: [승자 delta, 패자 delta] */
+  const duel = (winnerElo: number, loserElo: number, p: EloPolicy) => {
+    const r = computeTeamEloUpdates({ blue: [vet('w', winnerElo)], orange: [vet('l', loserElo)], winner: 'blue', policy: p });
+    return r.map((u) => u.delta);
+  };
+  const placements = (elos: readonly number[], p: EloPolicy) =>
+    computePlacementEloUpdates({
+      players: elos.map((elo, i) => ({ ...vet(`p${i + 1}`, elo), placement: i + 1 })),
+      policy: p,
+    });
+
+  describe('applyLossRatio', () => {
+    it('음수에만 곱한다', () => {
+      expect(applyLossRatio(-16, 0.5)).toBe(-8);
+      expect(applyLossRatio(16, 0.5)).toBe(16);
+      expect(applyLossRatio(0, 0.5)).toBe(0);
+    });
+    it('ratio 1 → 그대로, ratio 0 → 0(−0 없음)', () => {
+      expect(applyLossRatio(-7.68, 1)).toBe(-7.68);
+      expect(applyLossRatio(-7.68, 0)).toBe(0);
+      expect(applyLossRatio(7.68, 0)).toBe(7.68);
+    });
+    it('반올림하지 않는다', () => {
+      expect(applyLossRatio(-5, 0.5)).toBe(-2.5);
+    });
+    it('범위 밖 ratio는 변동 부호와 무관하게 RangeError', () => {
+      for (const ratio of [-0.01, 1.01, Number.NaN, Number.POSITIVE_INFINITY, undefined as unknown as number]) {
+        expect(() => applyLossRatio(-16, ratio)).toThrow(RangeError);
+        expect(() => applyLossRatio(16, ratio)).toThrow(RangeError);
+      }
+    });
+    it('유한하지 않은 변동 RangeError', () => {
+      expect(() => applyLossRatio(Number.NaN, 0.5)).toThrow(RangeError);
+    });
+  });
+
+  it.each([
+    ['1000 vs 1000, K 32', 1000, 1000, 32, [16, -16], [16, -8]],
+    ['1500 vs 1300, K 32, 높은 팀 승', 1500, 1300, 32, [8, -8], [8, -4]],
+    ['1500 vs 1300, K 32, 낮은 팀 승', 1300, 1500, 32, [24, -24], [24, -12]],
+    ['1500 vs 1300, K 40, 높은 팀 승', 1500, 1300, 40, [10, -10], [10, -5]],
+  ] as const)('검증 값: %s', (_name, winner, loser, k, ratio1, ratioHalf) => {
+    expect(duel(winner, loser, withKBase(k, 1))).toEqual(ratio1);
+    expect(duel(winner, loser, withKBase(k, 0.5))).toEqual(ratioHalf);
+  });
+
+  it('검증 값: 개인 4명 동일 1000, K 32', () => {
+    const elos = [1000, 1000, 1000, 1000];
+    expect(placements(elos, policy).map((u) => u.delta)).toEqual([16, 5, -5, -16]);
+    expect(placements(elos, half).map((u) => u.delta)).toEqual([16, 5, -3, -8]);
+  });
+
+  it('검증 값: 개인 1000·1400·1000·1000, K 32. 2위는 win인데 내려가므로 배율을 받는다(D170)', () => {
+    const elos = [1000, 1400, 1000, 1000];
+    expect(placements(elos, policy).map((u) => u.delta)).toEqual([20, -8, -1, -12]);
+    const r = placements(elos, half);
+    expect(r.map((u) => u.delta)).toEqual([20, -4, 0, -6]);
+    expect(r[1]).toMatchObject({ outcome: 'win', delta: -4, eloAfter: 1396 });
+    expect(r.map((u) => u.outcome)).toEqual(['win', 'win', 'loss', 'loss']);
+  });
+
+  it('반올림 전에 곱한다: 변동 −4.5 × 0.5 = −2.25 → −2(먼저 반올림하면 −3)', () => {
+    expect(duel(1000, 1000, withKBase(9, 0.5))).toEqual([5, -2]);
+    expect(previewTeamElo({ blueAvg: 1000, orangeAvg: 1000, k: 9, lossRatio: 0.5 }).blue).toEqual({ win: 5, lose: -2 });
+  });
+
+  it('참가자별 K: 신규는 kNew 기준으로 줄어든다', () => {
+    const r = computeTeamEloUpdates({
+      blue: [vet('b', 1000)],
+      orange: [
+        { userId: 'new', elo: 1000, gamesPlayed: 3 },
+        { userId: 'old', elo: 1000, gamesPlayed: 50 },
+      ],
+      winner: 'blue',
+      policy: half,
+    });
+    expect(r.map((u) => [u.userId, u.delta, u.kFactor])).toEqual([
+      ['b', 16, 32],
+      ['new', -10, 40],
+      ['old', -8, 32],
+    ]);
+  });
+
+  it('ratio 0: 진 쪽 변동 0, outcome은 패배 그대로', () => {
+    const zero = withKBase(32, 0);
+    const team = computeTeamEloUpdates({ blue: [vet('b', 1000)], orange: [vet('o', 1000)], winner: 'blue', policy: zero });
+    expect(team.map((u) => [u.delta, u.outcome])).toEqual([
+      [16, 'win'],
+      [0, 'loss'],
+    ]);
+    expect(team[1]!.eloAfter).toBe(1000);
+    expect(Object.is(team[1]!.delta, 0)).toBe(true);
+    const solo = placements([1000, 1000, 1000, 1000], zero);
+    expect(solo.map((u) => [u.delta, u.outcome])).toEqual([
+      [16, 'win'],
+      [5, 'win'],
+      [0, 'loss'],
+      [0, 'loss'],
+    ]);
+  });
+
+  it('범위 밖 lossRatio는 팀·개인·미리보기 모두 RangeError', () => {
+    const bad = withKBase(32, 1.5);
+    expect(() => duel(1000, 1000, bad)).toThrow(RangeError);
+    expect(() => placements([1000, 1000], bad)).toThrow(RangeError);
+    expect(() => previewTeamElo({ blueAvg: 1000, orangeAvg: 1000, k: 32, lossRatio: 1.5 })).toThrow(RangeError);
+  });
+
+  it('previewTeamElo: lose만 줄고 win은 그대로, 실제 반영과 같다', () => {
+    expect(previewTeamElo({ blueAvg: 1500, orangeAvg: 1300, k: 32, lossRatio: 0.5 })).toEqual({
+      blue: { win: 8, lose: -12 },
+      orange: { win: 24, lose: -4 },
+    });
+    const preview = previewTeamElo({ blueAvg: 1500, orangeAvg: 1300, k: 32, lossRatio: 0.5 });
+    expect(duel(1500, 1300, half)).toEqual([preview.blue.win, preview.orange.lose]);
+    expect(duel(1300, 1500, half)).toEqual([preview.orange.win, preview.blue.lose]);
+  });
+
+  it('ratio 1은 배율 도입 전 식과 정확히 같고, ratio r은 반올림 전 곱과 같다(무작위)', () => {
+    const rnd = mulberry32(2026);
+    for (let t = 0; t < 3000; t++) {
+      const count = 2 + Math.floor(rnd() * 7);
+      const elos = Array.from({ length: count }, () => 600 + Math.floor(rnd() * 1800));
+      const r = rnd();
+      const raw = elos.map(
+        (e, i) =>
+          (32 / (count - 1)) *
+          elos.reduce((sum, o, j) => (i === j ? sum : sum + (i < j ? 1 : 0) - expectedScore(e, o)), 0),
+      );
+      expect(placements(elos, policy).map((u) => u.delta)).toEqual(raw.map((x) => roundHalfAwayFromZero(x)));
+      expect(placements(elos, withKBase(32, r)).map((u) => u.delta)).toEqual(
+        raw.map((x) => roundHalfAwayFromZero(x < 0 ? x * r : x)),
+      );
+
+      const [a, b] = [elos[0]!, elos[1]!];
+      const eA = expectedScore(a, b);
+      const legacy = [roundHalfAwayFromZero(32 * (1 - eA)), roundHalfAwayFromZero(32 * (0 - (1 - eA)))];
+      expect(duel(a, b, policy)).toEqual(legacy);
+      expect(previewTeamElo({ blueAvg: a, orangeAvg: b, k: 32, lossRatio: 1 })).toEqual({
+        blue: { win: roundHalfAwayFromZero(32 * (1 - eA)), lose: roundHalfAwayFromZero(-32 * eA) },
+        orange: { win: roundHalfAwayFromZero(32 * eA), lose: roundHalfAwayFromZero(-32 * (1 - eA)) },
+      });
+    }
+  });
+
+  it('배율은 결과의 eloBefore·eloAfter·delta로만 나타나고 별도 필드가 없다(D172)', () => {
+    const [w, l] = computeTeamEloUpdates({ blue: [vet('b', 1000)], orange: [vet('o', 1000)], winner: 'blue', policy: half });
+    expect(l).toEqual({ userId: 'o', eloBefore: 1000, eloAfter: 992, delta: -8, kFactor: 32, outcome: 'loss', placement: null });
+    expect(w).toMatchObject({ eloAfter: 1016, delta: 16 });
   });
 });

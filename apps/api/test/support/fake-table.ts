@@ -5,8 +5,9 @@ import { Prisma } from '@prisma/client';
  * fake-prisma용 일반 인메모리 테이블(S1 모델: games, game_accounts, riot_link_verifications,
  * game_account_sync_requests, rank_snapshots, recent_matches, steam_playtime).
  *
- * 지원하는 where: 필드 = 값/null/Date, { equals, in, notIn, not, gt, gte, lt, lte }, AND/OR/NOT.
- * 관계 필터(예: game: { code })는 지원하지 않는다(예외). data의 { increment } 지원. select·include는 무시.
+ * 지원하는 where: 필드 = 값/null/Date, { equals, in, notIn, not, gt, gte, lt, lte, startsWith }, AND/OR/NOT.
+ * 관계 필터(예: game: { code })는 지원하지 않는다(예외). 단 조건이 빈 객체인 `user: {}`(S4 rankableUserWhere = 「사용자 행 존재」)는
+ * 통과시킨다(사용자 삭제 Cascade가 없는 환경이라 항상 참). data의 { increment } 지원. select·include는 무시.
  * 고유 제약은 문이 끝날 때 검사하고(PostgreSQL 비지연 제약과 같게 문 단위), 위반 시 그 문을 되돌리고 P2002를 던진다.
  */
 export type Row = Record<string, unknown>;
@@ -52,6 +53,9 @@ function matchField(v: unknown, cond: unknown): boolean {
       case 'lte':
         if (v === null || v === undefined || cmp(v, arg) > 0) return false;
         break;
+      case 'startsWith':
+        if (typeof v !== 'string' || !v.startsWith(String(arg))) return false;
+        break;
       case 'contains': {
         if (typeof v !== 'string') return false;
         const insensitive = c.mode === 'insensitive';
@@ -76,7 +80,10 @@ export function matchWhere(row: Row, where: Where | undefined): boolean {
     if (k === 'AND') return (cond as Where[]).every((w) => matchWhere(row, w));
     if (k === 'OR') return (cond as Where[]).some((w) => matchWhere(row, w));
     if (k === 'NOT') return !matchWhere(row, cond as Where);
-    if (!(k in row)) throw new Error(`fake-table: 모르는 필드 또는 관계 필터 ${k}`);
+    if (!(k in row)) {
+      if (k === 'user' && Object.keys(cond as object).length === 0) return true;
+      throw new Error(`fake-table: 모르는 필드 또는 관계 필터 ${k}`);
+    }
     return matchField(row[k], cond);
   });
 }

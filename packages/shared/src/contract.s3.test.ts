@@ -256,7 +256,7 @@ describe('S3 responses', () => {
       player_count: 2,
       partitions_evaluated: 1,
       used_positions: true,
-      rating_policy: { k_base: 32, k_new: 40, new_player_games: 10, full_weight_games: 10 },
+      rating_policy: { k_base: 32, k_new: 40, new_player_games: 10, loss_ratio: 0.5, full_weight_games: 10 },
     });
     expect(r.options[0]?.total_cost).toBe(150);
     expect(BalanceScrimResponse.safeParse({ ...r, options: [] }).success).toBe(false);
@@ -276,7 +276,7 @@ describe('S3 responses', () => {
     };
     const scrim = {
       season,
-      ratings: [{ game: 'lol', elo: 1421, wins: 17, losses: 11, games: 28, win_rate: 0.607 }],
+      ratings: [{ game: 'lol', elo: 1421, wins: 17, losses: 11, games: 28, win_rate: 0.607, rank: 3 }],
       recent: [
         {
           scrim_id: ID,

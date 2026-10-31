@@ -82,7 +82,7 @@ describe('S3 목: 상세 확장 필드·밸런스·팀 저장', () => {
     expect(r.partitions_evaluated).toBe(126);
     expect(r.options).toHaveLength(3);
     expect(r.used_positions).toBe(true);
-    expect(r.rating_policy).toEqual({ k_base: 32, k_new: 40, new_player_games: 10, full_weight_games: 10 });
+    expect(r.rating_policy).toEqual({ k_base: 32, k_new: 40, new_player_games: 10, loss_ratio: 0.5, full_weight_games: 10 });
     const costs = r.options.map((o) => o.total_cost);
     expect([...costs].sort((a, b) => a - b)).toEqual(costs);
     const o = r.options[0]!;
@@ -93,6 +93,21 @@ describe('S3 목: 상세 확장 필드·밸런스·팀 저장', () => {
     expect(saved.balance).not.toBeNull();
     expect(saved.balance!.power_diff).toBe(o.power_diff);
     expect(saved.players.filter((p) => p.team === 'blue')).toHaveLength(5);
+  });
+
+  it('목은 패배 배율을 반영한다: 미리보기 패배가 승리 몫의 절반, 승인하면 진 쪽이 덜 잃어 합이 양수', async () => {
+    const t = setup({ username: 'admin_kim', role: 'admin' });
+    await t.ready;
+    const open = await t.find('open', '주말 협곡 2판 연속');
+    const o = (await t.balance(open.id).catch(() => null))?.options[0];
+    if (o) expect(Math.abs(Math.abs(o.blue.elo_preview!.lose) - o.orange.elo_preview!.win / 2)).toBeLessThanOrEqual(1);
+    const s = await t.find('playing', '승인 대기 협곡 내전');
+    const d = await t.get(s.id);
+    const done = await t.approve(s.id, d.result!.id);
+    const changes = done.result!.rating_changes;
+    expect(changes.length).toBeGreaterThan(0);
+    expect(changes.some((c) => c.delta < 0)).toBe(true);
+    expect(changes.reduce((sum, c) => sum + c.delta, 0)).toBeGreaterThan(0);
   });
 
   it('팀 저장 검증: 포지션 누락 VALIDATION_FAILED, 남의 내전 FORBIDDEN, 개인 순위 게임 TEAMS_NOT_EDITABLE', async () => {
@@ -430,6 +445,7 @@ describe('D136 경계: 개인 순위 반영 대상 2명 미만(skip)', () => {
         elo_before: 1000,
         elo_after: 1000,
         delta: 0,
+        outcome: 'loss',
         k_factor: 40,
         created_at: result.approved_at!,
       });

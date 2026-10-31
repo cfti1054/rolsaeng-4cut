@@ -35,7 +35,7 @@ export function percent1(p: number): string {
 
 export const TEAM_LABEL: Record<ScrimTeam, { tag: string; ko: string }> = {
   blue: { tag: 'BLUE', ko: '블루팀' },
-  orange: { tag: 'ORANGE', ko: '오렌지팀' },
+  orange: { tag: 'RED', ko: '레드팀' },
 };
 
 export const PREFERENCE_LABEL: Record<PositionPreference, string> = {
@@ -56,7 +56,8 @@ export function balanceSubtitle(r: Pick<BalanceScrimResponse, 'partitions_evalua
 /** 실력값 설명. 정책 값(밸런스 응답)이 없으면 숫자 없는 문구(D124) */
 export function skillFormulaText(policy: RatingPolicyView | null | undefined): string {
   if (!policy) return '실력값은 내전 레이팅과 티어로 계산해요.';
-  return `실력값 = w × 내전 레이팅 + (1 − w) × 티어 시드, w = 내전 경기 수 ÷ ${policy.full_weight_games} (최대 1). K = ${policy.k_base}, 신규 멤버 K = ${policy.k_new}.`;
+  const base = `실력값 = w × 내전 레이팅 + (1 − w) × 티어 시드, w = 내전 경기 수 ÷ ${policy.full_weight_games} (최대 1). K = ${policy.k_base}, 신규 멤버 K = ${policy.k_new}.`;
+  return policy.loss_ratio === 1 ? base : `${base} 패배 점수는 ${Math.round(policy.loss_ratio * 100)}%만 반영해요.`;
 }
 
 /** 팀 카드 바닥 「승리 +12 · 패배 −20」. elo_preview null이면 null(문구 생략) */

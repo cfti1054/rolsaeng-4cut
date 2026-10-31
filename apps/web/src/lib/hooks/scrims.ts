@@ -41,6 +41,7 @@ import {
 } from '@/lib/api/scrims';
 import { isOpenStatus } from '@/lib/scrims';
 import { gameAccountKeys } from './game-accounts';
+import { dashboardKeys, rankingKeys } from './rankings';
 import { ratingKeys } from './ratings';
 
 /**
@@ -130,18 +131,22 @@ export function useMyScrimRestriction() {
 export function applyScrimDetail(qc: QueryClient, detail: ScrimDetail): void {
   qc.setQueryData(scrimKeys.detail(detail.id), detail);
   void qc.invalidateQueries({ queryKey: scrimKeys.lists });
+  // 홈 다음 내전·모집 목록(인원, my_status)은 내전 값이라 바로 다시 받는다
+  void qc.invalidateQueries({ queryKey: dashboardKeys.summary });
 }
 
 /** S3 결과 승인 등으로 레이팅·최근 내전이 바뀔 때: 상세 교체 + 목록·프로필·레이팅 그래프(['users', …]) 무효화 */
 export function applyScrimResultDetail(qc: QueryClient, detail: ScrimDetail): void {
   applyScrimDetail(qc, detail);
   void qc.invalidateQueries({ queryKey: gameAccountKeys.profiles });
+  // 서버 랭킹은 5분 캐시라 값이 늦을 수 있다(계약 10절, 정상)
+  void qc.invalidateQueries({ queryKey: rankingKeys.all });
 }
 
 /**
  * 상태 변경 실패 공통 처리.
  * - SCRIM_BANNED: 해제 시각을 다시 받아 온다(계약 2절)
- * - 409·404·403: 화면이 서버와 달라졌을 수 있으니 상세를 다시 조회
+ * - 409·404·403: 화면이 서버와 달라졌을 수 있으니 상세·목록·홈 요약을 다시 조회
  */
 export function handleScrimMutationError(qc: QueryClient, id: string | null, err: unknown): void {
   if (!isApiError(err)) return;
@@ -149,6 +154,7 @@ export function handleScrimMutationError(qc: QueryClient, id: string | null, err
   if (id && [403, 404, 409].includes(err.status)) {
     void qc.invalidateQueries({ queryKey: scrimKeys.detail(id) });
     void qc.invalidateQueries({ queryKey: scrimKeys.lists });
+    void qc.invalidateQueries({ queryKey: dashboardKeys.summary });
   }
 }
 

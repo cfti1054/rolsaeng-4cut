@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { GAME_SEED } from '@gcd/shared';
 import {
   Prisma,
+  type Badge,
   type Game,
   type GameAccount,
   type GameAccountSyncRequest,
@@ -16,8 +17,10 @@ import {
   type ScrimPlayer,
   type ScrimResult,
   type Season,
+  type SeasonStanding,
   type SteamPlaytime,
   type User,
+  type UserBadge,
 } from '@prisma/client';
 import { FakeTable, type Row, matchWhere } from './fake-table';
 
@@ -35,6 +38,9 @@ import { FakeTable, type Row, matchWhere } from './fake-table';
  * S3: scrim_results(부분 고유 scrim_results_one_active_per_scrim (scrim_id) WHERE status IN (pending, approved)),
  * seasons, ratings(고유 (user_id, game_id, season_id)), rating_history(고유 (scrim_id, user_id)). createMany skipDuplicates 지원.
  * 시즌·사용자 advisory lock()은 호출만 기록한다(순서 검사용).
+ * S4: season_standings(고유 (season_id, game_id, user_id)), badges(고유 code), user_badges(고유 (user_id, badge_id, season_id)).
+ * $queryRaw 추가: 시즌 행 FOR SHARE·FOR NO KEY UPDATE(행 또는 []), 티어 랭킹 DISTINCT ON(계정별 최신 스냅샷).
+ * ranking_caches는 RankingCacheStore 인터페이스 뒤에 있어 여기 없다(test/support/memory-ranking-cache.ts).
  * 고유 제약: game_accounts (game_id, external_id), 부분 고유 인덱스 (user_id, game_id) WHERE is_primary(문 단위 검사).
  * FK: game_accounts 삭제 시 rank_snapshots·recent_matches·steam_playtime Cascade, sync_requests SetNull.
  *
@@ -159,10 +165,35 @@ export class FakePrisma {
     ],
   );
 
-  season = new FakeTable<Season & Row>(() => ({ name: undefined, startsAt: undefined, endsAt: undefined }));
+  season = new FakeTable<Season & Row>(() => ({ name: undefined, startsAt: undefined, endsAt: undefined, closedAt: null }));
+
+  // ---- S4 테이블 ----
+  seasonStanding = new FakeTable<SeasonStanding & Row>(
+    () => ({ seasonId: undefined, gameId: undefined, userId: undefined, rank: undefined, elo: undefined, wins: undefined, losses: undefined }),
+    [{ target: ['season_id', 'game_id', 'user_id'], fields: ['seasonId', 'gameId', 'userId'] }],
+  );
+
+  badge = new FakeTable<Badge & Row>(
+    () => ({ code: undefined, name: undefined, description: null, condition: undefined }),
+    [{ target: ['code'], fields: ['code'] }],
+  );
+
+  userBadge = new FakeTable<UserBadge & Row>(
+    () => ({ userId: undefined, badgeId: undefined, seasonId: null, earnedAt: new Date() }),
+    [{ target: ['user_id', 'badge_id', 'season_id'], fields: ['userId', 'badgeId', 'seasonId'] }],
+  );
 
   rating = new FakeTable<Rating & Row>(
-    () => ({ userId: undefined, gameId: undefined, seasonId: undefined, elo: 1000, wins: 0, losses: 0, updatedAt: undefined }),
+    () => ({
+      userId: undefined,
+      gameId: undefined,
+      seasonId: undefined,
+      elo: 1000,
+      wins: 0,
+      losses: 0,
+      carriedFromSeasonId: null,
+      updatedAt: undefined,
+    }),
     [{ target: ['user_id', 'game_id', 'season_id'], fields: ['userId', 'gameId', 'seasonId'] }],
   );
 
@@ -281,6 +312,9 @@ export class FakePrisma {
       this.season,
       this.rating,
       this.ratingHistory,
+      this.seasonStanding,
+      this.badge,
+      this.userBadge,
     ] as unknown as FakeTable[];
   }
 
@@ -335,6 +369,38 @@ export class FakePrisma {
           game_id: r.gameId,
         },
       ] as T;
+    }
+    if (/FROM\s+seasons\s+WHERE\s+id\s*=.*FOR\s+SHARE/s.test(sql)) {
+      const r = this.season.rows.find((x) => x.id === values[0]);
+      return (r ? [{ closed_at: r.closedAt }] : []) as T;
+    }
+    if (/FROM\s+seasons\s+WHERE\s+id\s*=.*FOR\s+NO\s+KEY\s+UPDATE/s.test(sql)) {
+      const r = this.season.rows.find((x) => x.id === values[0]);
+      return (r ? [{ id: r.id, ends_at: r.endsAt, closed_at: r.closedAt }] : []) as T;
+    }
+    if (/SELECT\s+DISTINCT\s+ON\s+\(rs\.game_account_id\)/.test(sql)) {
+      const [gameId, queue] = values;
+      const accounts = new Set(
+        this.gameAccount.rows.filter((a) => a.gameId === gameId && a.isPrimary && a.verified).map((a) => a.id),
+      );
+      const latest = new Map<string, RankSnapshot & Row>();
+      for (const s of this.rankSnapshot.rows) {
+        if (!accounts.has(s.gameAccountId) || s.queue !== queue) continue;
+        const cur = latest.get(s.gameAccountId);
+        const newer =
+          !cur ||
+          s.capturedAt.getTime() > cur.capturedAt.getTime() ||
+          (s.capturedAt.getTime() === cur.capturedAt.getTime() && s.createdAt.getTime() > cur.createdAt.getTime());
+        if (newer) latest.set(s.gameAccountId, s);
+      }
+      return [...latest.values()].map((s) => ({
+        game_account_id: s.gameAccountId,
+        tier: s.tier,
+        division: s.division,
+        lp: s.lp,
+        wins: s.wins,
+        losses: s.losses,
+      })) as T;
     }
     throw new Error(`fake-prisma: 지원하지 않는 $queryRaw ${sql}`);
   }

@@ -172,7 +172,7 @@ describe('POST /scrims/:id/balance', () => {
     expect(body.player_count).toBe(4);
     expect(body.partitions_evaluated).toBe(3);
     expect(body.used_positions).toBe(false);
-    expect(body.rating_policy).toEqual({ k_base: 24, k_new: 30, new_player_games: 5, full_weight_games: 10 });
+    expect(body.rating_policy).toEqual({ k_base: 24, k_new: 30, new_player_games: 5, loss_ratio: 1, full_weight_games: 10 });
     expect(body.options.map((o) => o.rank)).toEqual(body.options.map((_, i) => i + 1));
     const costs = body.options.map((o) => o.total_cost);
     expect(costs).toEqual([...costs].sort((x, y) => x - y));
@@ -769,7 +769,7 @@ describe('GET /seasons, GET /users/:id/rating-history, 프로필 scrim', () => {
     };
     const ph = await prof(host.userId);
     expect(ph.scrim?.season).toMatchObject({ name: '시즌 1' });
-    expect(ph.scrim?.ratings).toEqual([{ game: 'lol', elo: 1020, wins: 1, losses: 0, games: 1, win_rate: 1 }]);
+    expect(ph.scrim?.ratings).toEqual([{ game: 'lol', elo: 1020, wins: 1, losses: 0, games: 1, win_rate: 1, rank: null }]);
     expect(ph.scrim?.recent).toEqual([
       {
         scrim_id: id,

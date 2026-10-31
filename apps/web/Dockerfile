@@ -22,8 +22,9 @@ COPY packages/shared/package.json packages/shared/
 COPY packages/core/package.json packages/core/
 RUN pnpm install --frozen-lockfile --prod=false --filter "web..."
 
-# 2) 소스 복사 → 빌드. 웹은 @gcd/shared를 TS 소스로 가져오므로 shared를 따로 빌드하지 않는다
+# 2) 소스 복사 → 빌드. 웹은 @gcd/shared·@gcd/core를 TS 소스로 가져오므로 따로 빌드하지 않는다
 COPY packages/shared ./packages/shared
+COPY packages/core ./packages/core
 COPY apps/web ./apps/web
 
 # 기본값은 로컬용이다. Railway에서는 같은 이름의 서비스 변수로 덮어쓴다

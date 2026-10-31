@@ -48,3 +48,10 @@ export const ELO_SCALE = 400;
 export const POSITION_PREFERENCE_COST = { first: 0, second: 1, other: 3 } as const;
 /** 총 비용 = 전력 차 + λ × 포지션 비용 (D108, 메인 기본값 5) */
 export const BALANCE_POSITION_COST_WEIGHT = 50;
+
+// -----------------------------------------------------------------------------
+// S4 시즌 전환 상수(계약 S4 6-1). 비율은 환경 변수로 조정하므로 인자로 받는다(기본값은 @gcd/shared SEASON_SOFT_RESET_RATIO_DEFAULT).
+// -----------------------------------------------------------------------------
+
+/** 소프트 리셋 기준점(문서 7-3 식의 1000) */
+export const SEASON_SOFT_RESET_CENTER = 1000;

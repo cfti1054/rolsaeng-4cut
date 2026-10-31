@@ -13,7 +13,8 @@ import {
 } from '@gcd/shared';
 import type { FetchLike } from '../client';
 import { emptyS1State, handleS1, MockS1State, type MockS1Options } from './game-accounts';
-import { emptyS2State, handleS2, isS2Path, mockProfileScrim, MockS2State, type MockS2Options } from './scrims';
+import { isRankingPath, MOCK_RANKING_SCENARIO_KEY, MockRankingScenario } from './rankings';
+import { emptyS2State, handleS2, isS2Path, mockProfileBadges, mockProfileScrim, MockS2State, type MockS2Options } from './scrims';
 
 /**
  * [목] 계약(_workspace/01_architect_contract.md 4·5절)을 흉내 내는 가짜 API.
@@ -58,6 +59,7 @@ export interface MockBackendOptions {
 export const MOCK_TAKEN_NICKNAMES = ['미드고정', '정글차이', 'admin'];
 
 const TOKEN_PREFIX = 'mock-access.';
+const RANKING_LOADING_MS = 60_000;
 
 export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike; discordSignIn: () => Me } {
   const now = opts.now ?? (() => Date.now());
@@ -117,6 +119,10 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
     const url = new URL(input, 'http://mock.local');
     const path = url.pathname.replace(API_PREFIX, '');
     const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : undefined;
+
+    if (opts.s2?.rankings?.scenario?.() === 'me_error' && ((method === 'POST' && path === ApiPath.authRefresh) || (method === 'GET' && path === ApiPath.me))) {
+      return error('INTERNAL_ERROR', '목 오류 상태');
+    }
 
     if (method === 'POST' && path === ApiPath.authRefresh) {
       const user = load().user;
@@ -200,17 +206,17 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
       const profileId = method === 'GET' ? /^\/users\/([^/]+)\/profile$/.exec(path)?.[1] : undefined;
       if (res && res.status === 200 && profileId) {
         const profile = (await res.json()) as Record<string, unknown>;
-        const scrim = mockProfileScrim(
-          {
-            me: r,
-            now: now(),
-            state: load().s2 ?? emptyS2State(),
-            save: (s2) => save({ ...load(), s2 }),
-            opts: opts.s2,
-          },
-          decodeURIComponent(profileId),
-        );
-        return json(200, { ...profile, scrim });
+        const s2Ctx = {
+          me: r,
+          now: now(),
+          state: load().s2 ?? emptyS2State(),
+          save: (s2: MockS2State) => save({ ...load(), s2 }),
+          opts: opts.s2,
+        };
+        const scrim = mockProfileScrim(s2Ctx, decodeURIComponent(profileId));
+        // S4: 시드가 방금 만들어졌을 수 있으므로 저장소를 다시 읽는다
+        const badges = mockProfileBadges({ ...s2Ctx, state: load().s2 ?? emptyS2State() }, decodeURIComponent(profileId));
+        return json(200, { ...profile, scrim, badges });
       }
       if (res) return res;
     }
@@ -241,6 +247,10 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
   return {
     async fetch(input, init) {
       if (opts.latencyMs) await new Promise((r) => setTimeout(r, opts.latencyMs));
+      // S4 로딩 상태 확인용: 랭킹·요약만 오래 걸리게 한다
+      if (opts.s2?.rankings?.scenario?.() === 'loading' && isRankingPath(new URL(input, 'http://mock.local').pathname.replace(API_PREFIX, ''))) {
+        await new Promise((r) => setTimeout(r, RANKING_LOADING_MS));
+      }
       return handle(input, init);
     },
     /**
@@ -303,6 +313,8 @@ export function browserMockBackend() {
     },
     accessTtlSec: Number(process.env.NEXT_PUBLIC_API_MOCK_ACCESS_TTL_SEC) || 900,
     s1: { origin: () => window.location.origin },
+    // localStorage 값으로 랭킹·요약 상태를 바꿔 본다(mock/rankings.ts, 새로고침이면 적용)
+    s2: { rankings: { scenario: () => MockRankingScenario.safeParse(window.localStorage.getItem(MOCK_RANKING_SCENARIO_KEY)).data ?? null } },
     latencyMs: 250,
   });
 }

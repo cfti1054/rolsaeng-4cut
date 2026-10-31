@@ -21,7 +21,8 @@ export default defineConfig({
     environment: 'node',
     // AppModule의 JobsModule.forRoot()이 모듈을 읽을 때 cron·작업 소비자를 등록하지 않게(S1). 큐는 테스트가 목으로 바꾼다
     // S2: 내전 자동 마감 cron도 끈다(테스트는 ScrimAutoCloser.runOnce를 직접 부른다)
-    env: { SYNC_JOBS_ENABLED: 'false', SCRIM_JOBS_ENABLED: 'false' },
+    // S4: 시즌 종료·랭킹 캐시 cron도 끈다(테스트는 SeasonCloser·RankingRefresher.runOnce를 직접 부른다)
+    env: { SYNC_JOBS_ENABLED: 'false', SCRIM_JOBS_ENABLED: 'false', RANKING_JOBS_ENABLED: 'false' },
     // 파일마다 첫 테스트가 Nest·Prisma 모듈을 처음 읽느라 5초를 넘길 수 있다(Windows 콜드 스타트)
     testTimeout: 30_000,
   },

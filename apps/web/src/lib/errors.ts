@@ -55,7 +55,7 @@ export const ERROR_MESSAGES: Record<AppErrorCode, string> = {
   SCRIM_BALANCE_UNAVAILABLE: '지금은 자동 밸런스를 쓸 수 없어요. 참가 인원이 맞지 않거나 자동 밸런스를 끈 내전이에요. 「팀 직접 구성」으로 나눠 주세요.',
   SCRIM_RESULT_NOT_ALLOWED: '경기가 진행 중일 때만 결과를 입력할 수 있어요.',
   SCRIM_RESULT_EXISTS: '이미 제출됐거나 승인된 결과가 있어요. 화면을 새로 고쳤어요.',
-  SCRIM_TEAMS_REQUIRED: '결과를 입력하기 전에 블루·오렌지 두 팀을 먼저 구성해 주세요.',
+  SCRIM_TEAMS_REQUIRED: '결과를 입력하기 전에 블루·레드 두 팀을 먼저 구성해 주세요.',
   SCRIM_RESULT_NOT_PENDING: '결과가 이미 처리됐거나 바뀌었어요. 화면을 새로 고쳤어요.',
   SCRIM_RESULT_SELF_REVIEW: '내가 제출한 결과는 승인하거나 반려할 수 없어요. 다른 운영진이 처리해야 해요.',
   NETWORK_ERROR: '서버에 연결하지 못했어요. 네트워크를 확인하고 다시 시도해 주세요.',

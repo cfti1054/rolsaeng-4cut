@@ -46,6 +46,10 @@ export const ApiPath = {
   // S3 시즌·레이팅 그래프
   seasons: '/seasons',
   userRatingHistory: '/users/:id/rating-history',
+  // S4 랭킹·홈 요약
+  rankingsTier: '/rankings/tier',
+  rankingsElo: '/rankings/elo',
+  dashboardSummary: '/dashboard/summary',
 } as const;
 export type ApiPath = (typeof ApiPath)[keyof typeof ApiPath];
 

@@ -174,7 +174,7 @@ describe('상세 표시', () => {
     expect(scrimCardBadge({ status: 'playing', join_closed: true, my_status: null, result_status: 'pending' }).label).toBe('승인 대기');
     expect(scrimCardBadge({ status: 'playing', join_closed: true, my_status: null, result_status: 'rejected' }).label).toBe('진행 중');
     expect(scrimDetailBadge({ status: 'playing', join_closed: true, result_status: 'pending' }).label).toBe('결과 승인 대기');
-    expect(scrimOutcomeLine({ status: 'finished', outcome: { winner_team: 'orange', winner: null } })).toEqual({ text: '오렌지팀 승리', team: 'orange' });
+    expect(scrimOutcomeLine({ status: 'finished', outcome: { winner_team: 'orange', winner: null } })).toEqual({ text: '레드팀 승리', team: 'orange' });
     expect(
       scrimOutcomeLine({ status: 'finished', outcome: { winner_team: null, winner: { id: '5c0f0000-0000-4000-8000-000000000001', nickname: '체스왕', avatar_url: null } } }),
     ).toEqual({ text: '1위 체스왕', team: null });

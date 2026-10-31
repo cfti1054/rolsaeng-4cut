@@ -1,88 +1,108 @@
-# QA: S3 packages/core (rating.ts, balance.ts, season.ts, config.ts, index.ts) — 판정: pass
+# QA: S4 packages/core — 판정: pass
 
-대상: `packages/core/src/rating.ts`, `balance.ts`, `season.ts`, `config.ts`, `index.ts` + 각 테스트
-기준: 계약 `_workspace/01_architect_contract.md` 6절, 7-1~7-5, 13절 logic·qa 항목, D103–D108·D115·D116 / 문서 7-1·7-2
-구현 보고서: `_workspace/02_domain-logic-dev_report.md`
-사용한 도구: Read, Grep, Glob, Bash, Write(이 보고서와 스크래치 스크립트만). 코드 수정 없음.
+대상: `packages/core/src/{ranking,season,time,config,index}.ts`와 테스트.
+기준: 계약 9절, 6-1, 9-2, 7-7, 문서 7-3, `qa-boundary-check` 스킬.
+blocker 0, major 0, minor 3. 코드 수정·커밋 없음.
 
 ## 실행한 명령과 결과
 
 | 명령 | 결과 |
 | --- | --- |
-| `corepack pnpm --filter core typecheck` | `tsc -p tsconfig.json --noEmit` 출력 없음(오류 0) |
-| `corepack pnpm --filter core test` | time 20, no-show 24, rating 33, profile 15, scrim 52, season 17, riot 44, balance 33 → **Test Files 8 passed (8), Tests 238 passed (238)** |
-| dist 신선도 | `dist/{rating,balance,season,config,index}.js` 11:40:20 > `src/*.ts` 최신 11:35:47. api 런타임이 읽는 dist에 S3 export 존재 |
-| 순수성 grep | 대상 4파일에 `Date.now`·`Math.random`·`new Date()`(인자 없음)·`process.` 없음. 의존은 `@gcd/shared`만(package.json) |
-| 독립 재현 스크립트(dist 대상) | `C:\Users\cfti1\AppData\Local\Temp\claude\c--Users-cfti1-Documents-GitHub-rolsaeng-4cut\42dbd1e3-68d5-43b6-8e9d-c229b0cff450\scratchpad\s3core.cjs` → **checks 164,451, failures 0** |
-| 성능 보조 측정 | `...\scratchpad\perf2.cjs`(아래 결함 1) |
+| `packages/core`에서 `vitest run`(저장소 `vitest.config.ts`) | 실행 불가. Node 20.11에서 `ERR_REQUIRE_ESM`. 코드 결함이 아니라 환경 문제 |
+| `vitest run --config <스크래치패드 임시 .mjs>`(같은 내용) | 9개 파일, 340개 전부 통과. 임시 설정은 저장소 밖에 두고 실행 후 삭제 |
+| `tsc -p tsconfig.json --noEmit` | exit 0 |
+| `tsc -p tsconfig.build.json --outDir <스크래치패드>` | exit 0. `dist`와 비교하면 `.js`·`.d.ts` 동일, `.js.map`은 `sources` 경로만 다름. `dist`는 현재 소스와 일치 |
+| 계약 시그니처 타입 대조(스크래치 복사본, 타입 동등 검사 + 제네릭 호출 결과) | exit 0. 16개 함수 일치 |
+| 값 재현 스크립트 `node qa-values.cjs`(`dist/index.js` 호출) | 단정 64건 통과, 전수 검사 위반 0 |
+| 뮤테이션(스크래치 복사본, 단순화 후 코드 기준) | 53건 중 50건 검출, 3건 생존(아래) |
 
-다른 패키지 빌드·테스트는 지시대로 실행하지 않았다.
-
-### 독립 재현 내용 (계약 식을 스크립트에 따로 구현해 대조)
-
-- **검증 수치(7-3)**: 1000 대 1000 K32 → +16/−16. 팀 평균 1400 대 1300 → E = 0.6401, 블루 승 +12·오렌지 −12, 블루 패 −20·오렌지 +20. `previewTeamElo` 같은 값. K 경계 0·9 → 40, 10 → 32, 사용자 정책(5경기 경계) 동작. 4명 동일 1000 순위 → +16/+5/−5/−16, outcome win/win/loss/loss.
-- **반올림**: ±2.5 → ±3, ±0.5 → ±1, ±1.49 → ±1, −0.4·−0 → +0(−0 아님), ±2.4999999999999996 → ±3, 1.4999999985 → 1, 1.4999999995 → 2(1e-9 가산 규칙 그대로). K33·E=0.5 → −17/+17 대칭.
-- **팀 ELO 무작위 20,000건**: 팀 1–8명, 무작위 정책·경기 수·elo. 출력 전체(eloBefore/After·delta·kFactor·outcome·순서) 참조 구현과 일치. 같은 K·같은 인원이면 delta 합 = 0(위반 0). 같은 K면 블루 1인 delta = −오렌지 1인 delta(반올림 대칭).
-- **개인 순위 무작위 20,000건**: M 2–16, 비연속·뒤섞인 placement. 쌍대 ELO 참조 구현과 전부 일치(재매김 rank, K/(M−1), D105 outcome). 같은 K면 |Σdelta| ≤ M/2. 2명 순위 = 1:1 팀 ELO(200건). M = 1·placement 중복·빈 팀 RangeError.
-- **D105 상위 절반**: M 2–16 모두 승리 수 = ⌊M/2⌋, 8명 1–4위, 3명 1위만.
-- **시드 표**: 10티어 + UNRANKED·null·undefined 일치. `RATING_SEED_BY_TIER` 키 = shared `RiotTier.options`. 상수 1000/400/50/{0,1,3} 일치.
-- **승률**: 0경기 null, 2/3 → 0.667, x.xxx5 경계 6건(1333/2000 등) 반올림 일치.
-- **selectRatedParticipants 5,000건**(팀·개인 각각): 상태 4종·팀 null 혼합·명단 밖 user 포함. 참조 구현과 일치(skip 조건, 입력 순서, 재매김).
-- **balanceTeams 브루트포스 1,500건**: n 2–12(포지션 사용 2–10), 실력값을 거칠게 만들어 동점 다수 유발, 빈·1개·중복 선호. 기준 구현은 2^n 마스크(블루 = bit0 포함, 크기 ⌊n/2⌋·⌈n/2⌉) × 팀별 전체 순열 포지션 배정. 상위 3안의 나누기·members 순서(포지션 순 / skill DESC → userId ASC)·포지션·preference·positionCost·skillSum·powerDiff·totalCost·blueWinProbability·ratingAvg 모두 일치. `partitionsEvaluated`도 일치. `evaluateTeams`(1안 입력) 값 = balanceTeams 1안. 같은 입력 2회 결과 동일(결정성).
-- **나누기 수 표**: n = 2…16 전부 짝수 C(n,n/2)/2, 홀수 C(n,⌊n/2⌋)와 일치(9명 126, 16명 6435).
-- **블루·크기·서로 다른 안 300건**: 블루에 항상 players[0], 팀 크기 ⌊n/2⌋:⌈n/2⌉, 3안 나누기 서로 다름, totalCost 오름차순.
-- **computeSkill 5,000건**: w = min(g/10, 1), seasonElo null → 시드. 일치.
-- **시즌**: KST 자정 경계(UTC 15:00 → 11월, 1ms 전 → 10월), 1/31+1 = 2/28(윤년 2/29), KST·UTC 날짜가 다른 시각(KST 1/31 23:30, KST 3/31 08:00) 말일 자르기·KST 시각 유지. `addKstMonths`(±30개월)·`kstMonthStart` 무작위 20,000건 참조 구현과 일치. 계약 예 「시즌 1」 2026-11-01 ~ 2027-02-01 KST, 「시즌 2」 2027-02-01 ~ 2027-05-01 KST 일치. **planAutoSeason 무작위 약 20,000건**(기존 시즌 0–5개, 길이 1–6개월): 6절 1–4 참조 구현과 이름·시작·끝 전부 일치, at 포함·기존 시즌과 겹침 0. 이미 시즌 안이면 RangeError. `resolveSeasonAt` 반열림·동률 id ASC, `latestStartedSeason` 일치.
-
-## 계약 대조
-
-| 항목 | 결과 | 근거 |
-| --- | --- | --- |
-| 7-1 상수 | 일치(값·타입 `Readonly<Record<RiotTier, number>>`) | config.ts:30-49 |
-| 7-2 타입 10개 | 일치 | rating.ts:9-21, balance.ts:16-40, season.ts:8 |
-| 함수 23개 시그니처 | 23개 모두 7-3~7-5와 동일. `selectRatedParticipants` 반환은 별칭 `RatedParticipantsSelection`(같은 유니온) | rating.ts:36-228, balance.ts:67-365, season.ts:32-111 |
-| index export | 23개 함수 + 7-2 타입 + 별칭 1개. S1·S2 export 유지 | index.ts:44-83 |
-| D104 팀 ELO | 팀 평균(반올림 전), 참가자별 K, delta 반올림, 하한 없음, 출력 blue→orange | rating.ts:77-112 |
-| D105 개인 순위 | 모든 쌍 1:1, K/(M−1), 상위 절반 승 | rating.ts:115-162 |
-| D106 K 판정 | gamesPlayed 인자(반영 전), `< newPlayerGames` → kNew | rating.ts:42-45 |
-| D107 실력값 | 정수 반올림 | balance.ts:67-75 |
-| D108 밸런스 | 나누기·블루 고정·전력 차·λ 50·동점 순서·상위 3안·members 순서 | balance.ts:194-270 |
-| D115 반영 대상 | joined && team / joined && 순위, skip 조건 | rating.ts:199-229 |
-| D116 시즌 | 6절 1–4, 반열림, KST 달 1일, 말일 자르기 | season.ts:46-111 |
-| 순수성 | 시각은 Date 인자, K는 EloPolicy 인자, 난수 없음 | 위 grep |
-| 표시 반올림 위치 | core는 반올림 전 값(7-4 7번) | balance.ts:261-268 |
-
-## 13절 logic 테스트 목록 대 테스트
-
-| 항목 | 위치 |
-| --- | --- |
-| 7-3 검증 예(+16/−16, +12/−20, 0.640, K 9/10, 4명 순위) | rating.test.ts:78-81, :98, :145-151, :326 등 |
-| 반올림 x.5 양쪽 부호·부동소수 | rating.test.ts:110-118 |
-| 10명 126·3안·오름차순, 16명 6435 < 200ms, 10명 포지션 < 200ms, n별 나누기 수 | balance.test.ts:170, :191, :201, :211 |
-| 브루트포스 대조 | balance.test.ts:158(200회 루프 포함) 및 무작위 60건 |
-| 시즌 KST 경계·말일·계약 예·무작위 겹침 없음 | season.test.ts:32-47, :136 |
-
-13절 목록은 모두 테스트에 있다.
+재현 스크립트: `/private/tmp/claude-501/-Users-cfti1054-Documents-GitHub-rolsaeng-4cut/e233e4b2-3bf7-462c-b6b6-38b3cca3cb01/scratchpad/qa-values.cjs`
 
 ## 결함
 
-blocker 0, major 0, minor 3.
-
-| # | 심각도 | 위치(파일:줄) | 기대 | 실제 | 재현 |
+| # | 심각도 | 위치 | 기대 | 실제 | 재현 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | minor | packages/core/src/balance.ts:93-127 (`bestPositionAssignment` DFS), :219-232 | 밸런스는 2–16명 어떤 games 행에서도 요청 시간 안에 끝난다(D108 「16명 전수 가능」). games.positions는 DB 데이터라 이후 포지션 수가 늘 수 있다 | 포지션 배정이 순열 DFS(P(p,k))라 선호가 한쪽에 몰리면 가지치기가 거의 안 된다. 포지션 6개·12명 46ms, 7개·14명 1.0초, **8개·16명 71초**(이벤트 루프 차단). 현재 카탈로그에서 포지션이 있는 게임은 롤(5개, 최대 10명, 5ms)뿐이라 지금은 도달 불가 | `perf2.cjs`·`s3core.cjs` 성능 항목: 16명, positions 8개, 전원 preferred ['a','b'] → `balanceTeams` 71,125ms. 포지션 수가 5를 넘는 게임을 추가하기 전에 비트마스크 DP(k × 2^p)나 헝가리안으로 바꾸거나 계약에 「포지션 수 ≤ 5」 전제를 적을 것 |
-| 2 | minor | packages/core/src/season.ts:102-107 (보고서 해석 6) | 자동 시즌이 「KST 달 1일」 경계에 맞춰 이어진다(D116 문구 「KST 달 1일 시작(또는 직전 시즌 끝)」) | 직전 시즌이 월말 임의 시각에 끝난 경우(수동 시즌) 공백 건너뛰기가 `addKstMonths` 연쇄라 날짜가 밀린다: 끝 2027-01-31 10:00 KST → 4/30 10:00 → 7/30 10:00 … 계약 6절 문구를 그대로 따른 결과라 위반은 아니다 | `planAutoSeason({seasons:[{…, endsAt: KST 2027-01-31 10:00}], at: KST 2027-08-15, lengthMonths: 3})` → startsAt 2027-07-30 10:00 KST. 수동 시즌 관리(S4·S6) 때 architect가 정할 것 |
-| 3 | minor | packages/core/src/config.ts:5, :19 | 머리 주석이 현재 상수를 설명 | 「S1: KST 기간 계산 상수만. 레이팅·밸런스·노쇼 값은 S2–S4에서 추가」, 「노쇼 3회/30일/1일」 — S3 상수가 이미 같은 파일에 있어 주석이 낡았다(동작 영향 없음) | 파일 열람 |
+| 1 | minor | `packages/core/src/ranking.ts:24-25`, `:28-29` | 보고서 표: 모르는 tier·division은 RangeError | Object 프로토타입 키는 `undefined` 검사를 통과해 NaN 반환. 타입 위반 입력이고 현재 호출 경로에서는 `RankValue` parse가 먼저 걸러 도달하지 않음 | `tierScore({tier:'constructor',division:null,lp:0})` → NaN. `tierScore({tier:'GOLD',division:'constructor',lp:0})` → NaN |
+| 2 | minor | `packages/core/src/ranking.ts:71`, `:94-96` | 반환 타입 `T & {...}`대로 입력 필드 유지 | 호출자 행에 `value` 필드가 있으면 내부 정렬 키와 충돌해 조용히 사라짐. 현재 호출자 행에는 `value`가 없음 | `buildEloRanking({rows:[{userId:'a',elo:1,wins:5,losses:0,value:'caller'}],minGames:5})` → 결과에 `value` 없음 |
+| 3 | minor(테스트) | `packages/core/src/season.ts:205`, `season.test.ts`의 `computeSeasonBadges` | 보고서의 「rank 0 포함, 1·2·3이 아닌 행 제외」가 테스트로 고정됨 | 코드 동작은 맞지만 테스트에 rank 0·음수·소수 입력이 없음 | `places.includes(s.rank)` → `s.rank <= 3` 변형이 전체 테스트를 통과. 동작 자체는 직접 확인: rank 0, −1, 1.5, 4 모두 제외 |
 
-## 계약 변경 요청 R1·R2 평가
+## 직접 재현
 
-| # | 평가 | 근거 |
+### 소프트 리셋 (6-1, ratio 0.5)
+
+| 입력 | 결과 | 입력(음수 방향) | 변동분 | 결과 |
+| --- | --- | --- | --- | --- |
+| 1421 | 1211 | 999 | −0.5 → −1 | 999 |
+| 1512 | 1256 | 997 | −1.5 → −2 | 998 |
+| 1000 | 1000 | 995 | −2.5 → −3 | 997 |
+| 1001 | 1001 | 579 | −210.5 → −211 | 789 |
+| 800 | 900 | 1 | −499.5 → −500 | 500 |
+| 1500 | 1250 | −1 | −500.5 → −501 | 499 |
+
+- ratio 0 → 1000(−0 아님), ratio 1 → 그대로.
+- 전수 대조: ratio 0.000–1.000(0.001 간격) × elo −2000–5000, 총 7,008,001건. BigInt 정확 계산과 불일치 0, 1000 기준 대칭 위반 0.
+- ratio가 −0.01, 1.01, NaN, Infinity, 문자열, null, undefined면 RangeError.
+
+### 동점 결정성
+
+- 2/3 vs 4/6: 승률 동률이라 경기 수에서 4/6이 앞선다(양방향 부호 확인).
+- value → 승률 → 경기 수 → userId 각 단계 값 확인.
+- 표본 전수: 반대칭 위반 0, 추이성 위반 0/573,800.
+- 0경기를 승률 0으로 둔 기준 비교기와 차이 0. 보고서의 「별도 분기 없이 같은 순서」 주장이 맞다.
+- 300행을 섞어 buildEloRanking·computeSeasonStandings·buildTierRanking 각 200회 실행, 결과 차이 0. 순위는 1부터 연속.
+- win_rate·games·rank·score는 shared 스키마 해당 필드를 통과.
+
+### 그 밖의 계약 값
+
+- 9-2 tierScore 검증 값 10개 일치. 디비전 순서 단조 증가.
+- 7-7 표 3행 일치. `rank_change`는 기준 1·현재 3 → −2, 기준 없음 → null, 변동 없음 → 0.
+- `isRankingStale`: 660초 false, 660.001초 true. 실패가 성공보다 늦으면 true, 같으면 false.
+- `kstWeekWindow`: 60,000개 시각에서 월요일 00:00 KST·7일·구간 포함 위반 0. 일요일 23:59:59.999 KST ↔ 월요일 00:00(UTC 일요일 15:00) 경계 일치.
+- `selectSeasonsToClose`: 유예 −1ms 제외, 경계 포함.
+- `seasonDaysLeft`: 마지막 날 0, 끝난 뒤 0, 전날 1.
+- `seasonProgress`: 1/3 → 0.333, 구간 역전도 NaN 없음.
+- `index.ts`: 16개 함수 모두 export. `assertValidDate`는 공개되지 않음.
+
+## 보고서의 추가 동작 대조
+
+backend는 작업 중이므로 아래 호출부 내용은 지금 시점의 입력 형태 확인이며 backend 판정이 아니다.
+
+| 추가 동작 | 판단 | 근거 |
 | --- | --- | --- |
-| R1 홀수 인원 블루 index 수열 비교 = 일반 사전순(접두가 같으면 짧은 쪽 먼저) | **수용 권장**. 구현(balance.ts:55-61)이 그 규칙이고, 독립 브루트포스(같은 규칙)와 동점 다수 입력에서 일치. 결과: 전원 동점이면 블루가 작은 팀이 된다. 결정성에는 문제 없음. 계약 7-4 5번에 한 줄 추가하면 frontend 목 백엔드(core import)·backend가 같은 순서를 보장받는다 |
-| R2 evaluateTeams members = 입력 순서 | **수용 권장**. 계약 7-4 6번은 balanceTeams 규칙이고 evaluateTeams에는 순서 규칙·positions 인자가 없어 구현 해석이 유일하게 가능한 단순안. backend가 상세 슬롯 순서(5-3 저장 순서)로 넘기면 화면 순서가 저장 순서와 같다. 포지션 순 표시가 필요하면 화면에서 `game.positions`로 정렬. backend QA 때 넘기는 순서를 확인할 것 |
+| buildEloRanking `minGames` RangeError | 계약 유지 | `RANKING_ELO_MIN_GAMES`는 `posInt`(`apps/api/src/config/env.ts:135`)라 정상 설정에서 발생하지 않음. 잘못된 값은 기동 시 env 검증에서 막힘 |
+| tierScore 음수·비정수 LP, 모르는 값 RangeError | 호출 조건 유지. 단 결함 1 | 불량 행 1개가 있으면 buildTierRanking 전체가 RangeError(재현함). 7-2의 「형식 불량 제외」가 전제. 현재 호출부는 `RankValue` parse로 거른 뒤 호출 |
+| 마스터 이상 디비전 무시 | D152와 일치 | MASTER I 10 → 2810. `MASTER V`도 RangeError 없이 2800(디비전을 보지 않으므로 계약과 충돌 없음). 다만 현재 호출부의 `RankValue`는 마스터+디비전 행을 제외하므로 이 경로에서는 쓰이지 않는 방어 코드다. `toRankValue`가 null로 저장하므로 정상 데이터에는 해당 없음 |
+| GOLD + division null | 계약식 그대로 | 1200 + LP로 계산, RangeError 없음. `RankValue`에서는 불량 행 |
+| seasonStartElo 시드 경로 ratio 검사 | 계약 유지 | `SEASON_SOFT_RESET_RATIO`는 0–1 검증(`env.ts:131-133`). `previousElo: undefined`도 RangeError로 막힘 |
+| selectSeasonsToClose `graceMs` RangeError | 계약 유지 | 호출값은 `SEASON_CLOSE_GRACE_SEC × 1000` 상수 |
+| computeSeasonBadges rank 1·2·3만 | 6-4와 일치 | 9-3의 「rank ≤ 3」보다 좁지만 `SeasonBadgePlace` 타입과 맞음. standings는 1부터 시작해 정상 경로에서 차이 없음 |
+| rollRankBaseline 해석 1: 지난 기준 + payload null → `{이번 주, {}}` | 계약과 충돌 없음 | 7-7 표에 없는 경우. 7-2가 parse 실패를 null로 정했고 「기준 자료가 없으면 `—`」와 일치. 지난 기준을 이번 주에 재사용하지 않음 |
+| 해석 2: 저장 기준 없음 + payload 있음 → `{이번 주, {}}` | 계약과 충돌 없음 | `baseline_period_start`는 NOT NULL이라 실제 경로는 `baseline_ranks` parse 실패뿐. 그 주는 전부 `—`가 되고 다음 계산부터 고정 |
+| 해석 3: 저장 기준이 weekStart보다 새로움 → 그대로 | 계약과 충돌 없음 | 새 기준이 있으면 그 행의 `computed_at`이 현재 계산의 `now`보다 늦으므로 7-1 조건부 쓰기에서 버려진다. 결과는 저장되지 않음 |
 
-## 참고 (core 범위 밖, 다른 대상 검증 때 확인할 것)
+## 뮤테이션 생존 3건
 
-- 보고서 해석 4: `balanceTeams`의 userId 중복 RangeError가 backend에서 SCRIM_BALANCE_UNAVAILABLE로 나간다. scrim_players (scrim_id, user_id) 유일이라 정상 경로에선 생기지 않음.
-- backend QA: 승인 경로가 `selectRatedParticipants` → `computeTeamEloUpdates`/`computePlacementEloUpdates`를 호출하고 delta·k_factor를 재계산하지 않는지, gamesPlayed가 시즌 무관 (user, game) 이력 수인지(D106), `previewTeamElo`에 `ratingAvg`·`kBase`를 넘기는지(5-2 6번), `planAutoSeason`에 시즌 전체 목록을 넘기는지(이름 = 행 수 + 1).
-- 표시 반올림(skill_avg 등 정수, blue_win_probability 소수 셋째)은 backend 직렬화 책임(7-4 7번).
+| 변형 | 분류 |
+| --- | --- |
+| `places.includes(s.rank)` → `s.rank <= 3` | 테스트 공백, 결함 3 |
+| `if (t >= end)` → `if (t > end)` (`seasonProgress`) | 동등 변형. t = end면 다음 식도 1 |
+| `{ ...(previousRanks ?? {}) }` → `previousRanks ?? {}` | 입력 객체 별칭 여부만 달라짐. 계약 위반 아님, 현재 호출부는 결과를 변경하지 않음. `결과는 입력과 별개 객체` 테스트는 stored 경로만 다룸 |
+
+보고서의 「단순화 뒤 뮤테이션 미실행」 공백은 이번 재실행으로 메워졌다.
+
+## 명세·계약 테스트 대조
+
+9절 필수 테스트 전부 존재: 6-1 검증 값·표 5경우, 반올림 대칭, 연속 빈 시즌 리셋 1회, 겹친 시즌 결정성, 유예 경계 ±1ms, 동점 4단계, 입력 순서 섞기, 승률 교차 곱, 7-7 표, KST 주 경계, D-day.
+
+`formulas.md` 3·5·7절과 일치. 문서 7-3의 소프트 리셋 식, 5경기 조건, 티어 점수 식과 일치.
+
+## 미실행
+
+- 저장소 `vitest.config.ts`와 `pnpm --filter core test`: Node 22 이상이 이 PC에 없어 실행 못 함. 임시 설정 결과이며 Node 22 결과가 아니다.
+- `pnpm -r typecheck`, `pnpm -r test`, web build, `prisma validate`: 범위 밖. backend·frontend 동시 작업 중.
+- backend·frontend가 core를 올바르게 쓰는지의 판정. 호출 입력 형태만 읽었다.
+- 실제 DB 경로: 해당 없음(core는 I/O 없음).
+
+## 이전 결함 재확인
+
+S4 core 첫 검증이라 해당 없음.

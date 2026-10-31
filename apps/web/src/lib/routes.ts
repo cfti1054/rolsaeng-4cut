@@ -16,6 +16,13 @@ export interface ScrimsPageQuery {
   status?: ScrimListStatus;
 }
 
+/** /rankings 쿼리 */
+export interface RankingsPageQuery {
+  tab?: 'tier' | 'elo';
+  game?: GameCode;
+  season?: string;
+}
+
 /**
  * 웹 라우트. 링크는 반드시 이 함수들로 만든다(nextjs-dashboard-ui 1절).
  */
@@ -27,7 +34,8 @@ export const routes = {
   scrim: (id: string) => `/scrims/${encodeURIComponent(id)}`,
   /** 스팀 팝업 완료 페이지(S2 9-2). API 콜백이 302로 보낸다. 웹이 직접 만드는 건 목뿐 */
   steamLinkComplete: (q: SteamLinkCompletePageQuery = {}) => withQuery(STEAM_LINK_COMPLETE_PATH, q),
-  rankings: () => '/rankings',
+  /** tab·game·season은 필터 선택(기본 탭·시즌은 주소에 쓰지 않는다) */
+  rankings: (q: RankingsPageQuery = {}) => withQuery('/rankings', { tab: q.tab === 'elo' ? undefined : q.tab, game: q.game, season: q.season }),
   member: (id: string) => `/members/${encodeURIComponent(id)}`,
   /** 스팀 콜백 결과는 API가 302로 붙여 준다(steam=linked / steam_error). 웹이 직접 만들 일은 목뿐 */
   settings: (q: SettingsPageQuery = {}) => withQuery('/settings', q),

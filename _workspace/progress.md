@@ -137,3 +137,54 @@
 **명세 문서와 어긋난 부분(문서 갱신 필요):** `_workspace/03_qa-verifier_s3.md` 「명세 문서 갱신 필요 목록」 10항목(결과 제출 취소·반려 경로, 시즌 자동 생성, 개인 순위 ELO 식, 팀 구성 저장 API 등)
 
 **다음:** S4 티어·ELO 랭킹, 랭킹 캐시 작업, 홈 대시보드 요약
+
+## S4 티어·ELO 랭킹, 랭킹 캐시, 홈 대시보드, 시즌 종료 처리 — 2026-10-31 — 판정: pass (DB e2e·실제 docker build·실서버 미확인)
+
+**구현:** core 16개 함수(`ranking.ts`, `season.ts`·`time.ts` 추가: 티어 점수, 랭킹 정렬, 소프트 리셋, 이월 판정, 종료 시즌 선택, 최종 순위, 뱃지, D-day). api `GET /rankings/tier`, `GET /rankings/elo`, `GET /dashboard/summary`, 프로필 `badges`·`scrim.ratings[].rank`, 오류 코드 추가 없음. `ranking_caches` 표 + 5분 작업(Redis 무관 한 경로, 빈 캐시 첫 요청 동기 계산, 실패 시 마지막 값 + stale, 공용 payload, 내 순위는 요청마다), 순위 변동 기준 = 이번 KST 주 시작 순위. 시즌 종료 작업(standings·뱃지·`closed_at` 한 트랜잭션, `ends_at` + 60초 이후, try lock + 유일 키로 멱등), 소프트 리셋은 새 시즌 첫 레이팅 행을 만들 때 승인 경로에서만 계산(종료 작업은 ratings를 쓰지 않음), 승인 7c단계 시즌 행 FOR SHARE. 마이그레이션 `20261030180000_s4`(`seasons.closed_at`, `ratings.carried_from_season_id`, `ranking_caches`), badges 시드, env 3개. web `/rankings`(티어·ELO, 게임·시즌 필터, 상위 3명, YOU 행, stale·최종 순위), 홈(다음 내전, 통계, 모집 중, TOP 5, 최근 결과), 사이드바·모바일 시즌 카드, 프로필 뱃지, 훅 3개, 목 백엔드.
+
+**리더 직접 실행:** `-r typecheck` 4개 Done / 전체 테스트 2회 동일: shared 91·core 347·web 225·api 470 passed / 42 skipped(DB e2e) / `-r build` 4개 Done(exit 0). 이 PC는 Node 20.11이라 테스트는 저장소 `vitest.config.ts`가 아니라 같은 내용의 임시 `.mjs` 설정(저장소 밖)으로 실행. Node 22 실행 없음. 마이그레이션 = prisma migrate diff 출력(주석 제외) 일치 확인
+
+**QA:** core pass(minor 3), backend fail(blocker 1, minor 3), web pass(minor 10), 교차 fail(blocker 1, minor 5) → r2 pass(minor 3, 계약 문서). 보고서 `_workspace/03_qa-verifier_{core,backend,web,s4,s4_r2}.md`
+
+**결함 처리:**
+- backend blocker: 마이그레이션 SQL에 prisma CLI 경고 두 줄이 섞임(`migrate deploy` 실패 → API 컨테이너 기동 불가) → 리더 수정, diff 일치 확인
+- 교차 blocker: `apps/web/Dockerfile`이 `packages/core` 소스를 복사하지 않아 웹 이미지 빌드 실패(S3부터로 추정, S3 HEAD 직접 빌드는 안 함) → 리더 수정, COPY 재현 빌드 exit 0·대조군 exit 1(실제 docker build 아님)
+- 기존 결함 발견: `ScheduleModule.forRoot()` 다중 호출로 cron 중복 등록(HEAD AppModule 8개, 기대 4). 공유 모듈 `common/shared-schedule.ts`로 수정, env 8조합 회귀 테스트. 등록 수 기준이며 S2·S3 배포의 실제 실행 횟수는 미측정. 그동안 동기화·자동 마감이 2번 돌았을 수 있음
+- core minor 3, backend 테스트 2, web minor 10 + 교차 minor 4, softResetText → 수정. 계약 C1–C15·N1–N3 반영
+
+**남은 결함:**
+- 교차 5 / backend 4: 빈 캐시 첫 계산 실패 시 `/dashboard/summary` 전체 500(시즌 카드 포함), `games`가 비면 `top_rankers` null(Q8 결정 대기, 시드된 DB에서는 후자 없음)
+
+**미실행·미확인:**
+- DB e2e 42건(S4 신규 9건), `migrate deploy`, 실제 SQL 전부(`ON CONFLICT … WHERE`, `DISTINCT ON`, `FOR SHARE`, `FOR NO KEY UPDATE`), 잠금 대기·교착, 6-5 시나리오 3·5·6 동시 실행. QA의 embedded-postgres 설치는 권한 거부로 미실행(우회 안 함)
+- 실제 `docker build`, Railway 로그, 실제 API + DB + 브라우저 연결(브라우저 확인은 목 모드만), 실제 cron 발화, 다른 탭 계정 전환 브라우저 실행
+
+**사용자 결정:** 시즌 종료 처리(최종 순위, 뱃지, 소프트 리셋)를 S4에 포함
+
+**확인 필요(계약 17절, 현재 추천안으로 구현):** Q1 신규 고티어 시드 > 기존 멤버 리셋 값, Q2 시즌 공백 허용, Q3 경계 대기 결과는 다음 시즌 반영, Q4 나간 멤버 랭킹·뱃지(`users.left_at`을 S5에), Q5 5경기 미만도 리셋, Q6 ELO 주간·월간 없음(시즌만), Q7 뱃지 1–3위(목업은 TOP 10), Q8 요약 부분 실패
+
+**리더 결정·기본값:** slice.md 기본값 1–5, D140–D168(계약). 뱃지 월은 `earned_at − 1ms`의 KST 월(표시만). 대시보드 요약 500은 null 의미 결정이 필요해 이번에 수정 안 함
+
+**명세 문서와 어긋난 부분(문서 갱신 필요):** `_workspace/03_qa-verifier_s4.md` 「명세 문서 갱신 필요 목록」 22건
+
+**다음:** Docker 환경에서 DB e2e·마이그레이션 검증 후 S5 봇 API, 활동·플레이타임 랭킹, 스팀 플레이타임
+
+## S4 후속 변경(사용자 요청) — 2026-10-31 — 판정: pass (DB e2e·실서버 미확인, 마지막 수정은 QA 재검증 대신 리더가 QA 스크립트로 확인)
+
+**구현:** (1) 패배 배율: core `EloPolicy.lossRatio`·`applyLossRatio`, 음수 변동에만 반올림 전 적용, 개인 순위는 합산 변동의 부호 기준, env `SCRIM_ELO_LOSS_RATIO`(기본 0.5, 0–1), `rating_policy` 응답 2곳 확장, 이미 승인된 경기는 재계산 안 함. (2) 호칭: 화면의 오렌지팀 → 레드팀, ORANGE → RED, `--team-red`·`--team-red-ink` 토큰. DB enum·API 값 `orange`와 코드 식별자는 유지. (3) ⓘ: `InfoTip`·`EloInfo`·`lib/elo-info.ts`, 위치 `/rankings` ELO 탭·프로필 내전 레이팅 카드, 호버·포커스·탭·Esc, 숫자는 `/dashboard/summary`의 `rating_policy`, 값이 없으면 숫자 없는 문구. 홈 「반영 ±N」 → 「최대 N점 변동」(D179). 결정 D169–D181(계약 19절)
+
+**리더 직접 실행:** `-r typecheck` 4개 Done(exit 0) / 전체 테스트 2회 동일: shared 92·core 366·web 242·api 488 passed / 42 skipped(DB e2e) / `-r build` exit 0. N1·N2 수정 뒤 web typecheck·test·build 재실행. 임시 vitest 설정(저장소 밖), Node 20.11. 첫 전체 실행에서 web은 임시 설정 로드 실패로 돌지 않았고, 설정을 고쳐 별도로 2회 실행
+
+**브라우저(리더, 목 production, Chrome):** 마우스 호버·고정, 창 이탈·복귀, 키보드 6개 조건, 터치(390, 라이트) 정상, 콘솔 오류 0
+
+**QA:** followup fail(major 2, minor 5) → r2 fail(major 1, minor 2) → 리더 수정, 재현 스크립트로 확인. 보고서 `_workspace/03_qa-verifier_s4_followup{,_r2}.md`
+
+**결함 처리:** ⓘ 터치 영역 44px, 키보드로 넘치는 패널 읽기(D180), 패배 배율 0·1 문구(D181), 목 승패 집계, 내전 상세 390px 넘침(S3 기존 결함), 패널 안 마우스 클릭이 키보드 포커스로 처리되던 회귀, 창 이탈 시 패널 닫힘·포커스 유실, 문서 정정(설명서 전력 차 식 포함)
+
+**남은 결함:** 극단 배율 표시(0.001 → 「0%만」 등, 기본 0.5에서는 안 나옴, 수정 안 함). Q8은 이전과 같음
+
+**미실행·미확인:** S4 항목과 같음(DB e2e 42건, migrate deploy, 실제 SQL, docker build, 실제 API 연결). ratio 0·1 문구의 브라우저 표시, Safari·Firefox, 실제 터치 기기, 스크린 리더
+
+**배포 순서:** 웹이 `loss_ratio`를 필수로 읽으므로 API를 먼저 배포한다. 새 웹 + 옛 API면 요약 parse 실패
+
+**확인 필요:** Q9 패배 배율로 랭킹이 경기 수도 반영, Q10 ⓘ 이유 문구 「지는 부담을 줄여 내전에 편하게 참여하도록」. 시작 점수 전원 1000 안은 결정 대기(`_workspace/ELO_설명서.md` 9-1)

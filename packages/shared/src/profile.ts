@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ProfileBadge } from './badges';
 import { IsoDateTime, Uuid } from './common/primitives';
 import { UserRole } from './constants/enums';
 import { GameCode } from './constants/games';
@@ -91,8 +92,8 @@ export type ProfileRecentMatches = z.infer<typeof ProfileRecentMatches>;
 
 /**
  * 프로필 응답.
- * - 아직 없는 기능 자리(D39): scrim(S3 내전 레이팅·그래프·승률·최근 내전), badges(P2)는 S1에서 항상 null.
- *   이후 슬라이스에서 `객체 | null`로 넓힌다. null의 뜻은 언제나 「표시할 데이터 없음」 → 웹은 빈 상태를 그린다.
+ * - 기능 자리(D39): scrim(S3), badges(S4)는 슬라이스마다 `객체 | null`로 넓혔다.
+ *   null의 뜻은 언제나 「표시할 데이터 없음」 → 웹은 빈 상태를 그린다.
  * - sync_quota: 본인 프로필(is_self=true)일 때만 값, 다른 사람이면 null.
  */
 export const GetUserProfileResponse = z.object({
@@ -110,8 +111,11 @@ export const GetUserProfileResponse = z.object({
    * S3부터 backend는 항상 객체를 넣는다. nullable은 D39 확장 규칙(넓히기만)과 S1 목 호환 때문에 남긴다.
    */
   scrim: ProfileScrim.nullable(),
-  /** P2 자리(뱃지) */
-  badges: z.null(),
+  /**
+   * S4 획득 뱃지(earned_at 내림차순, 같으면 id 오름차순). backend는 S4부터 항상 배열을 넣는다(없으면 []).
+   * nullable은 D39 확장 규칙과 이전 목 호환 때문에 남긴다.
+   */
+  badges: z.array(ProfileBadge).nullable(),
 });
 export type GetUserProfileResponse = z.infer<typeof GetUserProfileResponse>;
 

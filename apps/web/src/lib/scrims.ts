@@ -15,6 +15,7 @@ import type {
 } from '@gcd/shared';
 import { SCRIM_MIN_PLAYERS_TO_START } from '@gcd/shared';
 import { GAME_SCRIM_META, positionLabel } from './games';
+import { TEAM_LABEL } from './scrim-results';
 
 /**
  * 내전 화면 로직(순수 함수, 단위 테스트 대상). 계약 S2 6·8절.
@@ -182,12 +183,12 @@ export function scrimCardBadge(
 }
 
 /**
- * 종료 탭 카드 결과 줄(계약 S3 9절): 팀 → 「블루팀 승리」/「오렌지팀 승리」, 개인 순위 → 「1위 {닉네임}」.
+ * 종료 탭 카드 결과 줄(계약 S3 9절): 팀 → 「블루팀 승리」/「레드팀 승리」, 개인 순위 → 「1위 {닉네임}」.
  * finished && outcome일 때만, 그 외 null
  */
 export function scrimOutcomeLine(s: Pick<ScrimSummary, 'status' | 'outcome'>): { text: string; team: 'blue' | 'orange' | null } | null {
   if (s.status !== 'finished' || !s.outcome) return null;
-  if (s.outcome.winner_team) return { text: s.outcome.winner_team === 'blue' ? '블루팀 승리' : '오렌지팀 승리', team: s.outcome.winner_team };
+  if (s.outcome.winner_team) return { text: `${TEAM_LABEL[s.outcome.winner_team].ko} 승리`, team: s.outcome.winner_team };
   if (s.outcome.winner) return { text: `1위 ${s.outcome.winner.nickname}`, team: null };
   return null;
 }

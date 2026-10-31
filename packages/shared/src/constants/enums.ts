@@ -20,7 +20,9 @@ export type ScrimPlayerStatus = z.infer<typeof ScrimPlayerStatus>;
 export const ScrimCancelReason = z.enum(['host', 'admin', 'not_started']);
 export type ScrimCancelReason = z.infer<typeof ScrimCancelReason>;
 
-/** scrim_players.team, scrim_results.winner_team — 목업의 블루팀/오렌지팀 */
+/**
+ * scrim_players.team, scrim_results.winner_team. 값 `orange`는 DB enum·API 값으로 유지하고 화면에서만 「레드팀」·`RED`로 부른다(D174).
+ */
 export const ScrimTeam = z.enum(['blue', 'orange']);
 export type ScrimTeam = z.infer<typeof ScrimTeam>;
 

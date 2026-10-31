@@ -54,6 +54,11 @@ export const SCRIM_ELO_K_BASE_DEFAULT = 32;
 export const SCRIM_ELO_K_NEW_DEFAULT = 40;
 /** 「신규」 기준: 그 게임의 승인된 rated 내전 경기 수(모든 시즌 합계)가 이 값 미만(SCRIM_ELO_NEW_PLAYER_GAMES) */
 export const SCRIM_ELO_NEW_PLAYER_GAMES_DEFAULT = 10;
+/**
+ * 점수가 내려갈 때 곱하는 패배 배율(SCRIM_ELO_LOSS_RATIO, 0 이상 1 이하). 1이면 승패가 같은 크기다.
+ * 화면 문구는 응답 rating_policy.loss_ratio를 쓴다(D169, D176).
+ */
+export const SCRIM_ELO_LOSS_RATIO_DEFAULT = 0.5;
 /** 밸런스 실력값 가중치 w = min(경기 수 ÷ 이 값, 1)(문서 7-2 1번). 설정값 아님(core 상수와 같은 값) */
 export const BALANCE_FULL_WEIGHT_GAMES = 10;
 /** 밸런스 결과 안 최대 개수(문서 7-2 4번) */
@@ -163,7 +168,7 @@ export const PositionPreference = z.enum(['first', 'second', 'other']);
 export type PositionPreference = z.infer<typeof PositionPreference>;
 
 /**
- * 한 팀 승패 시 예상 ELO 변동(팀 평균 레이팅 기준, K = rating_policy.k_base). 표시용 근사값이다 —
+ * 한 팀 승패 시 예상 ELO 변동(팀 평균 레이팅 기준, K = rating_policy.k_base, lose에는 패배 배율 적용). 표시용 근사값이다 —
  * 실제 반영은 참가자별 K(신규 40)로 계산한다. rated=false 내전이면 null.
  */
 export const EloPreview = z.object({

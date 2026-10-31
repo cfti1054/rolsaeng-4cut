@@ -29,9 +29,13 @@ export const RatingSummary = z.object({
 });
 export type RatingSummary = z.infer<typeof RatingSummary>;
 
-/** 게임별 현재 시즌 레이팅 카드 1개 */
+/**
+ * 게임별 현재 시즌 레이팅 카드 1개.
+ * rank(S4, D127 후속): 그 게임 ELO 랭킹 캐시의 순위. 경기 수 미달·캐시에 아직 없음이면 null. 목업 「#3 ELO」
+ */
 export const ProfileGameRating = RatingSummary.extend({
   game: GameCode,
+  rank: z.number().int().min(1).nullable(),
 });
 export type ProfileGameRating = z.infer<typeof ProfileGameRating>;
 

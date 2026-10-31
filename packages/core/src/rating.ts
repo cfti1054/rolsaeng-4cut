@@ -5,8 +5,8 @@ import { ELO_SCALE, RATING_SEED_BY_TIER, RATING_SEED_DEFAULT } from './config';
 // S3 내전 ELO(문서 7-1, 계약 S3 7-3). I/O 없음. K 값은 EloPolicy 인자(env)로 받는다.
 // =============================================================================
 
-/** K 정책(env SCRIM_ELO_K_BASE / K_NEW / NEW_PLAYER_GAMES) */
-export type EloPolicy = { kBase: number; kNew: number; newPlayerGames: number };
+/** K 정책(env SCRIM_ELO_K_BASE / K_NEW / NEW_PLAYER_GAMES)과 패배 배율(env SCRIM_ELO_LOSS_RATIO, D169) */
+export type EloPolicy = { kBase: number; kNew: number; newPlayerGames: number; lossRatio: number };
 /** 반영 대상 1명: 현재 시즌 elo, (user, game) rating_history 수(이번 경기 반영 전) */
 export type RatedPlayer = { userId: string; elo: number; gamesPlayed: number };
 export type EloUpdate = {
@@ -59,6 +59,20 @@ export function roundHalfAwayFromZero(x: number): number {
   return x < 0 ? -r : r;
 }
 
+/**
+ * 패배 배율(D169): 변동이 음수일 때만 lossRatio를 곱한다. 반드시 반올림 전 값에 쓴다.
+ * lossRatio ∉ [0, 1]이면 변동 부호와 무관하게 RangeError. ratio 1이면 입력 그대로다.
+ */
+export function applyLossRatio(rawDelta: number, lossRatio: number): number {
+  assertFiniteNumber(rawDelta, 'rawDelta');
+  if (typeof lossRatio !== 'number' || !(lossRatio >= 0 && lossRatio <= 1)) {
+    throw new RangeError(`lossRatio: 0 이상 1 이하여야 함 (${lossRatio})`);
+  }
+  if (rawDelta >= 0) return rawDelta;
+  const scaled = rawDelta * lossRatio;
+  return scaled === 0 ? 0 : scaled; // −0 방지
+}
+
 /** 산술 평균(반올림 안 함). 빈 배열 RangeError */
 export function meanRating(values: readonly number[]): number {
   if (values.length === 0) throw new RangeError('values: 빈 배열의 평균은 정의되지 않음');
@@ -71,7 +85,7 @@ export function meanRating(values: readonly number[]): number {
 }
 
 /**
- * 팀 게임 ELO(D104). 팀 레이팅 = 팀원 elo 평균, 참가자별 K, delta = round(k × (S − E_team)).
+ * 팀 게임 ELO(D104). 팀 레이팅 = 팀원 elo 평균, 참가자별 K, delta = round(applyLossRatio(k × (S − E_team))).
  * 출력 순서 = blue 입력 순서 → orange 입력 순서. 하한 없음. 한 팀이 비면 RangeError.
  */
 export function computeTeamEloUpdates(input: {
@@ -96,7 +110,7 @@ export function computeTeamEloUpdates(input: {
     players.map((p) => {
       const s = winner === team ? 1 : 0;
       const k = eloKFactor(p.gamesPlayed, policy);
-      const delta = roundHalfAwayFromZero(k * (s - e));
+      const delta = roundHalfAwayFromZero(applyLossRatio(k * (s - e), policy.lossRatio));
       return {
         userId: p.userId,
         eloBefore: p.elo,
@@ -122,6 +136,8 @@ export function isPlacementWin(rank: number, count: number): boolean {
 
 /**
  * 개인 순위 ELO(D105, 메인 기본값 3). 모든 쌍을 1:1(순위가 높은 쪽 승)로 보고 K/(M−1)로 나눠 합산.
+ * 패배 배율은 쌍마다가 아니라 합산 변동의 부호로 정한다(D170). outcome(상위 절반)과 무관해서 승으로 세면서
+ * 점수가 내려가는 사람도 배율을 받는다.
  * placement 오름차순으로 rank 1..M을 다시 매긴다. M < 2 또는 placement 중복 → RangeError. 출력 rank 순.
  */
 export function computePlacementEloUpdates(input: {
@@ -147,7 +163,7 @@ export function computePlacementEloUpdates(input: {
       raw += s - expectedScore(pi.elo, pj.elo);
     });
     const k = eloKFactor(pi.gamesPlayed, policy);
-    const delta = roundHalfAwayFromZero((k / (m - 1)) * raw);
+    const delta = roundHalfAwayFromZero(applyLossRatio((k / (m - 1)) * raw, policy.lossRatio));
     const rank = i + 1;
     return {
       userId: pi.userId,
@@ -170,18 +186,19 @@ export function computeWinRate(wins: number, losses: number): number | null {
   return Math.round((wins / total) * 1000) / 1000;
 }
 
-/** 밸런스·팀 요약의 예상 ELO 변동(팀 평균 레이팅, 단일 K). 반올림 = roundHalfAwayFromZero */
-export function previewTeamElo(input: { blueAvg: number; orangeAvg: number; k: number }): {
+/** 밸런스·팀 요약의 예상 ELO 변동(팀 평균 레이팅, 단일 K). lose에만 패배 배율(D171). 반올림 = roundHalfAwayFromZero */
+export function previewTeamElo(input: { blueAvg: number; orangeAvg: number; k: number; lossRatio: number }): {
   blue: { win: number; lose: number };
   orange: { win: number; lose: number };
 } {
-  const { blueAvg, orangeAvg, k } = input;
+  const { blueAvg, orangeAvg, k, lossRatio } = input;
   assertFiniteNumber(k, 'k');
   const eB = expectedScore(blueAvg, orangeAvg);
   const eO = 1 - eB;
+  const roundLoss = (e: number) => roundHalfAwayFromZero(applyLossRatio(k * (0 - e), lossRatio));
   return {
-    blue: { win: roundHalfAwayFromZero(k * (1 - eB)), lose: roundHalfAwayFromZero(k * (0 - eB)) },
-    orange: { win: roundHalfAwayFromZero(k * (1 - eO)), lose: roundHalfAwayFromZero(k * (0 - eO)) },
+    blue: { win: roundHalfAwayFromZero(k * (1 - eB)), lose: roundLoss(eB) },
+    orange: { win: roundHalfAwayFromZero(k * (1 - eO)), lose: roundLoss(eO) },
   };
 }
 

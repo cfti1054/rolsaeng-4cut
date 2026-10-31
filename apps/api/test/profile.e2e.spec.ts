@@ -31,7 +31,7 @@ function setIdle(app: TestApp, over: Record<string, unknown> = {}): void {
 }
 
 describe('GET /users/:id/profile', () => {
-  it('빈 상태(연동 없음): tiers [], main_position·recent_matches null, scrim 빈 객체(S3 D119)·badges null, 본인이면 sync_quota', async () => {
+  it('빈 상태(연동 없음): tiers [], main_position·recent_matches null, scrim 빈 객체(S3 D119)·badges [](S4 D159), 본인이면 sync_quota', async () => {
     t = await createTestApp({ fixedClock: true });
     const { token, userId } = await devLogin(t, 'alice');
     const p = await profile(t, token, userId);
@@ -42,7 +42,7 @@ describe('GET /users/:id/profile', () => {
     expect(p.main_position).toBeNull();
     expect(p.recent_matches).toBeNull();
     expect(p.scrim).toEqual({ season: null, ratings: [], recent: [] });
-    expect(p.badges).toBeNull();
+    expect(p.badges).toEqual([]);
     expect(p.sync_quota).toMatchObject({ limit: 5, used: 0, remaining: 5 });
     expect(t.queue.jobs).toEqual([]);
   });

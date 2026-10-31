@@ -1,10 +1,10 @@
 /**
- * games 시드. 기준값은 @gcd/shared GAME_SEED 한 곳이다.
+ * games·badges 시드. 기준값은 @gcd/shared GAME_SEED, SEASON_BADGE_SEED 한 곳이다.
  * 실행: corepack pnpm --filter api prisma:seed  (DATABASE_URL 필요)
  * code 기준 upsert라 여러 번 실행해도 안전하다.
  */
 import { PrismaClient } from '@prisma/client';
-import { GAME_SEED } from '@gcd/shared';
+import { GAME_SEED, SEASON_BADGE_SEED } from '@gcd/shared';
 
 const prisma = new PrismaClient();
 
@@ -30,6 +30,11 @@ async function main(): Promise<void> {
     });
   }
   console.log(`seeded games: ${GAME_SEED.map((g) => g.code).join(', ')}`);
+  for (const b of SEASON_BADGE_SEED) {
+    const data = { name: b.name, description: b.description, condition: b.condition };
+    await prisma.badge.upsert({ where: { code: b.code }, create: { code: b.code, ...data }, update: data });
+  }
+  console.log(`seeded badges: ${SEASON_BADGE_SEED.length}`);
 }
 
 main()

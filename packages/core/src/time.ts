@@ -1,7 +1,7 @@
 import type { SyncQuota } from '@gcd/shared';
 import { DAY_MS, KST_OFFSET_LABEL, KST_OFFSET_MS } from './config';
 
-function assertValidDate(d: Date, name: string): void {
+export function assertValidDate(d: Date, name: string): void {
   if (!(d instanceof Date) || Number.isNaN(d.getTime())) {
     throw new RangeError(`${name}: 올바른 Date가 아님`);
   }
@@ -18,6 +18,18 @@ export function kstDayWindow(now: Date): { start: Date; end: Date } {
   const kstDayStartMs = Math.floor(kstMs / DAY_MS) * DAY_MS;
   const startMs = kstDayStartMs - KST_OFFSET_MS;
   return { start: new Date(startMs), end: new Date(startMs + DAY_MS) };
+}
+
+/**
+ * now가 속한 KST 주 구간 [start, end). start = 월요일 00:00 KST, end = start + 7일.
+ * 1970-01-01(KST 일 번호 0)이 목요일이라 일 번호 + 3을 7로 나눈 나머지가 월요일부터 지난 날 수다.
+ */
+export function kstWeekWindow(now: Date): { start: Date; end: Date } {
+  const { start: dayStart } = kstDayWindow(now);
+  const kstDayNumber = (dayStart.getTime() + KST_OFFSET_MS) / DAY_MS;
+  const daysSinceMonday = (((kstDayNumber + 3) % 7) + 7) % 7;
+  const startMs = dayStart.getTime() - daysSinceMonday * DAY_MS;
+  return { start: new Date(startMs), end: new Date(startMs + 7 * DAY_MS) };
 }
 
 /**

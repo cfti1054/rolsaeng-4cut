@@ -7,6 +7,7 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import { EmptyState, ErrorState, Eyebrow, Skeleton } from '@/components/ui/primitives';
 import { isApiError } from '@/lib/api/client';
 import { cn } from '@/lib/cn';
+import { ratingEmptyText } from '@/lib/dashboard';
 import { errorMessage } from '@/lib/errors';
 import { formatFull, formatMonthDay } from '@/lib/format';
 import { GAME_META } from '@/lib/games';
@@ -27,10 +28,13 @@ import {
  * 그래프 색은 CSS 변수(토큰)만 쓴다(hex 금지, D53).
  */
 
-/** 요약 카드 「내전 레이팅」 값. ratings []·scrim null → 「내전 기록 없음」 */
-export function scrimRatingSummary(p: GetUserProfileResponse): { value: ReactNode; sub: string; game: GameCode | null } {
+/** 요약 카드 「내전 레이팅」 값. 값이 없을 때 문구는 ratingEmptyText */
+export function scrimRatingSummary(p: GetUserProfileResponse): { value: ReactNode; sub: string; game: GameCode | null; rank: number | null } {
   const best = primaryRating(p.scrim?.ratings ?? []);
-  if (!best) return { value: <span className="text-muted">내전 기록 없음</span>, sub: p.scrim?.season ? p.scrim.season.name : '아직 반영된 내전이 없어요', game: null };
+  if (!best) {
+    const empty = ratingEmptyText(p.scrim);
+    return { value: <span className="text-muted">{empty.value}</span>, sub: empty.sub, game: null, rank: null };
+  }
   return {
     value: (
       <span className="font-display">
@@ -40,6 +44,7 @@ export function scrimRatingSummary(p: GetUserProfileResponse): { value: ReactNod
     ),
     sub: ratingRecordText(best),
     game: best.game,
+    rank: best.rank,
   };
 }
 

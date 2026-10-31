@@ -117,11 +117,11 @@ export function ScrimCard({ s, now, preview = false }: { s: ScrimSummary; now: n
               <span
                 className={cn(
                   'flex items-center gap-1.5 font-semibold',
-                  outcome.team === 'blue' ? 'text-blue-ink' : outcome.team === 'orange' ? 'text-orange-ink' : 'text-accent-ink',
+                  outcome.team === 'blue' ? 'text-blue-ink' : outcome.team === 'orange' ? 'text-team-red-ink' : 'text-accent-ink',
                 )}
               >
                 {outcome.team && (
-                  <span aria-hidden="true" className={cn('size-2 rounded-full', outcome.team === 'blue' ? 'bg-blue' : 'bg-orange')} />
+                  <span aria-hidden="true" className={cn('size-2 rounded-full', outcome.team === 'blue' ? 'bg-blue' : 'bg-team-red')} />
                 )}
                 {outcome.text}
               </span>

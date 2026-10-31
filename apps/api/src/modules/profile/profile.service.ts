@@ -4,11 +4,13 @@ import {
   GetUserProfileResponse,
   LolMatchSummary,
   PROFILE_RECENT_MATCHES_LIMIT,
+  type ProfileBadge,
   ProfileRecentMatches,
   ProfileTierCard,
   RANKED_QUEUE_BY_GAME,
   RECENT_MATCHES_MAX,
   RecentLolMatch,
+  parseSeasonBadgeCode,
 } from '@gcd/shared';
 import { AppError } from '../../common/app-error';
 import { APP_CLOCK, type Clock } from '../../common/clock';
@@ -16,6 +18,7 @@ import { DATA_DRAGON, type DataDragon } from '../../integrations/contracts';
 import { PrismaService } from '../../prisma/prisma.service';
 import { type AccountRow, GameAccountViews, primaryRiotRows } from '../game-accounts/game-account-views.service';
 import { SyncEnqueuer } from '../game-accounts/sync-enqueuer.service';
+import { seasonRef } from '../ratings/seasons.service';
 import { DEV_DISCORD_ID_PREFIX, discordAvatarUrl } from '../users/me.mapper';
 import { ProfileScrimService } from './profile-scrim.service';
 
@@ -24,7 +27,7 @@ export const PROFILE_REFRESH_ERROR_BACKOFF_MS = 30 * 60 * 1000;
 
 /**
  * GET /users/:id/profile (계약 S1 8절). 대표 라이엇 계정 기준 티어·주 포지션·최근 전적.
- * scrim은 S3부터 항상 객체(ProfileScrim, D119), badges는 null(D39). 외부 식별자는 응답 스키마 parse로 걸러진다(D38).
+ * scrim은 S3부터 항상 객체(ProfileScrim, D119), badges는 S4부터 항상 배열(D159). 외부 식별자는 응답 스키마 parse로 걸러진다(D38).
  */
 @Injectable()
 export class ProfileService {
@@ -90,7 +93,39 @@ export class ProfileService {
       recent_matches: recent,
       sync_quota: isSelf ? await this.views.syncQuota(userId, now) : null,
       scrim: await this.scrimBlock.forUser(userId, now),
-      badges: null,
+      badges: await this.loadBadges(userId),
+    });
+  }
+
+  /** 획득 뱃지(계약 S4 4-4). earned_at DESC, id ASC. 표마다 한 번씩 읽는다(N+1 없음) */
+  private async loadBadges(userId: string): Promise<ProfileBadge[]> {
+    const rows = await this.prisma.userBadge.findMany({
+      where: { userId },
+      orderBy: [{ earnedAt: 'desc' }, { id: 'asc' }],
+    });
+    if (rows.length === 0) return [];
+    const badges = await this.prisma.badge.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.badgeId))] } } });
+    const seasonIds = [...new Set(rows.flatMap((r) => (r.seasonId ? [r.seasonId] : [])))];
+    const seasons = seasonIds.length ? await this.prisma.season.findMany({ where: { id: { in: seasonIds } } }) : [];
+    const badgeById = new Map(badges.map((b) => [b.id, b]));
+    const seasonById = new Map(seasons.map((s) => [s.id, s]));
+    return rows.flatMap((r) => {
+      const badge = badgeById.get(r.badgeId);
+      if (!badge) return [];
+      const season = r.seasonId ? seasonById.get(r.seasonId) : undefined;
+      const parsed = parseSeasonBadgeCode(badge.code);
+      return [
+        {
+          id: r.id,
+          code: badge.code,
+          name: badge.name,
+          description: badge.description,
+          earned_at: r.earnedAt.toISOString(),
+          season: season ? seasonRef(season) : null,
+          game: parsed?.game ?? null,
+          place: parsed?.place ?? null,
+        },
+      ];
     });
   }
 

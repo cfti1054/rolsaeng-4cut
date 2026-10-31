@@ -101,7 +101,7 @@ export class ScrimTeamsService {
     return BalanceScrimResponse.parse({
       options: result.options.map((o, i) => {
         const preview = scrim.rated
-          ? previewTeamElo({ blueAvg: o.blue.ratingAvg, orangeAvg: o.orange.ratingAvg, k: k.kBase })
+          ? previewTeamElo({ blueAvg: o.blue.ratingAvg, orangeAvg: o.orange.ratingAvg, k: k.kBase, lossRatio: k.lossRatio })
           : null;
         return {
           rank: i + 1,
@@ -120,6 +120,7 @@ export class ScrimTeamsService {
         k_base: k.kBase,
         k_new: k.kNew,
         new_player_games: k.newPlayerGames,
+        loss_ratio: k.lossRatio,
         full_weight_games: BALANCE_FULL_WEIGHT_GAMES,
       },
     });

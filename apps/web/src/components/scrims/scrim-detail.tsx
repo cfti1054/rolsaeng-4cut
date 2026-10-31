@@ -29,6 +29,7 @@ import {
 } from '@/lib/hooks/scrims';
 import { useNow } from '@/lib/hooks/use-now';
 import { routes } from '@/lib/routes';
+import { TEAM_LABEL } from '@/lib/scrim-results';
 import {
   CANCEL_REASON_TEXT,
   formatHms,
@@ -453,7 +454,7 @@ function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => vo
             {p.team ? (
               <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-text-2">
                 <span aria-hidden="true" className={cn('size-2 rounded-full', TEAM_TONE[p.team].dot)} />
-                <span className="sr-only">{p.team === 'blue' ? '블루팀' : '오렌지팀'}</span>
+                <span className="sr-only">{TEAM_LABEL[p.team].ko}</span>
                 {p.position ? positionLabel(p.position) : null}
               </span>
             ) : (

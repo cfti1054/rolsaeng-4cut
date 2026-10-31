@@ -1,13 +1,23 @@
 'use client';
 
 import type { DevLoginRequest, Me, UpdateMeRequest } from '@gcd/shared';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { devLogin, getMe, logout, refreshToken, updateMe } from '@/lib/api/auth';
 import { isApiError } from '@/lib/api/client';
 
 export const queryKeys = {
   me: ['me'] as const,
 };
+
+/**
+ * refresh·dev-login으로 받은 user를 /me 캐시에 넣는다. 다른 탭의 재로그인 등으로 사용자가 바뀌었으면 이전 사용자 값을 지운다.
+ * clear()는 지금 떠 있는 화면에 알리지 않아 이전 값이 그대로 남으므로, 화면까지 비우고 다시 받는 resetQueries를 쓴다.
+ */
+export function applySessionUser(qc: QueryClient, user: Me): void {
+  const prev = qc.getQueryData<Me>(queryKeys.me);
+  qc.setQueryData<Me>(queryKeys.me, user);
+  if (prev && prev.id !== user.id) void qc.resetQueries({ predicate: (q) => q.queryKey[0] !== queryKeys.me[0] });
+}
 
 /** GET /me. 토큰이 없으면 클라이언트가 먼저 refresh로 부팅한다. 인증 오류는 재시도하지 않는다. */
 export function useMe() {

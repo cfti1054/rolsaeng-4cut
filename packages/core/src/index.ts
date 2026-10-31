@@ -7,10 +7,10 @@
  * S1: KST 하루 구간·수동 새로고침 횟수, 주 포지션, 소유 확인 아이콘, 티어 변환·비교, 전적 캐시 만료.
  * S2: 노쇼 제한(7-4, no-show.ts), 내전 참가·대기열·시작·자동 마감(scrim.ts).
  * S3: 내전 ELO(7-1, rating.ts), 팀 자동 밸런스(7-2, balance.ts), 시즌 판정·자동 생성(season.ts).
- * S4(랭킹 집계 7-3)에서 추가한다.
+ * S4: 티어·ELO 랭킹과 순위 변동(7-3, ranking.ts), 소프트 리셋·시즌 종료·시즌 표시(season.ts), KST 주 구간(time.ts).
  */
 export * from './config';
-export { kstDayWindow, formatKstMidnight, buildSyncQuota } from './time';
+export { kstDayWindow, kstWeekWindow, formatKstMidnight, buildSyncQuota } from './time';
 export { computeMainPosition, MAIN_POSITION_MAX } from './profile';
 export {
   pickVerificationIcon,
@@ -46,6 +46,7 @@ export {
   eloKFactor,
   expectedScore,
   roundHalfAwayFromZero,
+  applyLossRatio,
   meanRating,
   computeTeamEloUpdates,
   computePlacementEloUpdates,
@@ -79,5 +80,24 @@ export {
   kstMonthStart,
   addKstMonths,
   planAutoSeason,
+  softResetElo,
+  seasonStartElo,
+  pickPreviousRating,
+  selectSeasonsToClose,
+  computeSeasonStandings,
+  computeSeasonBadges,
+  seasonDaysLeft,
+  seasonProgress,
   type SeasonLike,
 } from './season';
+export {
+  tierScore,
+  compareRanking,
+  buildTierRanking,
+  buildEloRanking,
+  computeRankChange,
+  rollRankBaseline,
+  isRankingStale,
+  type RankingComparable,
+  type RankBaseline,
+} from './ranking';

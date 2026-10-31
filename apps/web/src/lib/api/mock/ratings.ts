@@ -1,5 +1,6 @@
 import {
   balanceTeams,
+  buildEloRanking,
   computePlacementEloUpdates,
   computeSkill,
   computeTeamEloUpdates,
@@ -24,9 +25,11 @@ import {
   GameCode,
   IsoDateTime,
   PROFILE_RECENT_SCRIMS_LIMIT,
+  RANKING_ELO_MIN_GAMES_DEFAULT,
   RATING_HISTORY_POINTS_MAX,
   SCRIM_ELO_K_BASE_DEFAULT,
   SCRIM_ELO_K_NEW_DEFAULT,
+  SCRIM_ELO_LOSS_RATIO_DEFAULT,
   SCRIM_ELO_NEW_PLAYER_GAMES_DEFAULT,
   SEASON_AUTO_LENGTH_MONTHS_DEFAULT,
   ScrimPlayerStatus,
@@ -96,6 +99,8 @@ export const MockHistory = z.object({
   elo_after: z.number().int(),
   delta: z.number().int(),
   k_factor: z.number().int(),
+  /** 승패(D105). 패배 0점이나 승리로 세는 음수 변동이 있어 delta 부호로 알 수 없다 */
+  outcome: z.enum(['win', 'loss']),
   created_at: IsoDateTime,
 });
 export type MockHistory = z.infer<typeof MockHistory>;
@@ -120,10 +125,17 @@ export interface MockRatingOptions {
   seasonLengthMonths?: number;
 }
 export function mockEloPolicy(o?: MockRatingOptions): EloPolicy {
-  return o?.policy ?? { kBase: SCRIM_ELO_K_BASE_DEFAULT, kNew: SCRIM_ELO_K_NEW_DEFAULT, newPlayerGames: SCRIM_ELO_NEW_PLAYER_GAMES_DEFAULT };
+  return (
+    o?.policy ?? {
+      kBase: SCRIM_ELO_K_BASE_DEFAULT,
+      kNew: SCRIM_ELO_K_NEW_DEFAULT,
+      newPlayerGames: SCRIM_ELO_NEW_PLAYER_GAMES_DEFAULT,
+      lossRatio: SCRIM_ELO_LOSS_RATIO_DEFAULT,
+    }
+  );
 }
 export function ratingPolicyView(policy: EloPolicy): RatingPolicyView {
-  return { k_base: policy.kBase, k_new: policy.kNew, new_player_games: policy.newPlayerGames, full_weight_games: BALANCE_FULL_WEIGHT_GAMES };
+  return { k_base: policy.kBase, k_new: policy.kNew, new_player_games: policy.newPlayerGames, loss_ratio: policy.lossRatio, full_weight_games: BALANCE_FULL_WEIGHT_GAMES };
 }
 
 // -----------------------------------------------------------------------------
@@ -190,6 +202,12 @@ export function skillInfo(st: S3Data, input: { userId: string; game: GameCode; t
   };
 }
 
+/** ELO 순위표(core buildEloRanking). 서버 ranking_caches 값을 대신한다. 최소 경기 수는 목 env(목 전용 기본값) */
+export function mockEloStandings(st: S3Data, game: GameCode, seasonId: string, minGames: number = RANKING_ELO_MIN_GAMES_DEFAULT) {
+  const rows = st.ratings.filter((r) => r.game === game && r.season_id === seasonId).map((r) => ({ ...r, userId: r.user_id }));
+  return buildEloRanking({ rows, minGames });
+}
+
 const prob3 = (p: number) => Math.round(p * 1000) / 1000;
 
 function sideView(plan: TeamPlan, preview: { win: number; lose: number } | null): ScrimTeamSide {
@@ -205,7 +223,7 @@ function sideView(plan: TeamPlan, preview: { win: number; lose: number } | null)
 
 function previews(e: TeamsEvaluation, rated: boolean, policy: EloPolicy) {
   if (!rated) return { blue: null, orange: null };
-  return previewTeamElo({ blueAvg: e.blue.ratingAvg, orangeAvg: e.orange.ratingAvg, k: policy.kBase });
+  return previewTeamElo({ blueAvg: e.blue.ratingAvg, orangeAvg: e.orange.ratingAvg, k: policy.kBase, lossRatio: policy.lossRatio });
 }
 
 export interface TeamPlayerInput extends BalancePlayer {
@@ -340,6 +358,7 @@ export function applyApproval(
         elo_after: u.eloAfter,
         delta: u.delta,
         k_factor: u.kFactor,
+        outcome: u.outcome,
         created_at: iso(input.now),
       });
     }
@@ -453,7 +472,16 @@ export function profileScrim(
     ? st.ratings
         .filter((r) => r.user_id === input.userId && r.season_id === season.id)
         .sort((a, b) => input.gameOrder.indexOf(a.game) - input.gameOrder.indexOf(b.game))
-        .map((r) => ({ game: r.game, elo: r.elo, wins: r.wins, losses: r.losses, games: r.wins + r.losses, win_rate: computeWinRate(r.wins, r.losses) }))
+        .map((r) => ({
+          game: r.game,
+          elo: r.elo,
+          wins: r.wins,
+          losses: r.losses,
+          games: r.wins + r.losses,
+          win_rate: computeWinRate(r.wins, r.losses),
+          // 캐시 읽기 흉내(D159): 순위권 밖이면 null
+          rank: mockEloStandings(st, r.game, season.id).find((e) => e.userId === input.userId)?.rank ?? null,
+        }))
     : [];
   const recent: (ProfileRecentScrim & { t: number })[] = [];
   for (const f of input.finished) {

@@ -140,7 +140,7 @@ export class ScrimViews {
     return { id: u.id, nickname: u.nickname, avatar_url: discordAvatarUrl(u.discordId, u.discordAvatar) };
   }
 
-  private gameRef(game: Game) {
+  gameRef(game: Game) {
     const code = GameCode.safeParse(game.code);
     if (!code.success) throw new AppError('INTERNAL_ERROR', undefined, { message: `알 수 없는 게임 코드` });
     return {
@@ -405,7 +405,12 @@ export class ScrimViews {
       usePositions: teamsUsePositions(scrim, game),
     });
     const preview = scrim.rated
-      ? previewTeamElo({ blueAvg: ev.blue.ratingAvg, orangeAvg: ev.orange.ratingAvg, k: this.config.rating.kBase })
+      ? previewTeamElo({
+          blueAvg: ev.blue.ratingAvg,
+          orangeAvg: ev.orange.ratingAvg,
+          k: this.config.rating.kBase,
+          lossRatio: this.config.rating.lossRatio,
+        })
       : null;
     return {
       blue: teamSideView(ev.blue, preview?.blue ?? null),

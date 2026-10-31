@@ -190,7 +190,8 @@ describe('S1 목 백엔드(계약 파싱 통과)', () => {
       tiers: [],
       main_position: null,
       recent_matches: null,
-      badges: null,
+      // S4: 항상 배열(끝난 시즌 순위가 없거나 입상하지 않으면 [])
+      badges: [],
       user: { discord_linked: true },
     });
     // S3: scrim 블록은 항상 객체(내전 목 시드에서 계산 — 시즌·레이팅·최근 내전)

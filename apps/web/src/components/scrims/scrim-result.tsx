@@ -116,7 +116,7 @@ function TeamResultForm({ s, onToast }: { s: ScrimDetail; onToast: ToastFn }) {
                 className={cn(
                   'flex h-[72px] flex-[1_1_220px] items-center justify-center gap-3 rounded-[18px] border-2',
                   TEAM_TONE[t].ink,
-                  on ? cn(t === 'blue' ? 'border-blue' : 'border-orange', TEAM_TONE[t].soft) : 'border-line-3 bg-surface-2',
+                  on ? cn(t === 'blue' ? 'border-blue' : 'border-team-red', TEAM_TONE[t].soft) : 'border-line-3 bg-surface-2',
                 )}
               >
                 <span className="font-display text-xl font-bold tracking-[0.12em]">{TEAM_LABEL[t].tag}</span>
@@ -373,7 +373,8 @@ function ApprovedResult({ s, r }: { s: ScrimDetail; r: ScrimResultView }) {
           <span className="text-xs text-faint">
             레이팅 변동{r.season ? ` · ${r.season.name}` : ''}
           </span>
-          <div className="overflow-x-auto">
+          {/* sr-only(absolute)가 스크롤러 밖으로 새어 문서 폭을 늘리지 않게 relative를 둔다 */}
+          <div className="relative overflow-x-auto">
             <table className="w-full min-w-[420px] border-collapse text-sm">
               <thead>
                 <tr className="text-left text-xs text-faint">

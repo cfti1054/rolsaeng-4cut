@@ -33,6 +33,8 @@ export const RatingPolicyView = z.object({
   k_new: z.number().int().min(1),
   /** SCRIM_ELO_NEW_PLAYER_GAMES(기본 10). 그 게임 rated 경기 수가 이 값 미만이면 k_new */
   new_player_games: z.number().int().min(1),
+  /** SCRIM_ELO_LOSS_RATIO(기본 0.5). 점수가 내려갈 때 곱하는 배율, 0–1(D169) */
+  loss_ratio: z.number().min(0).max(1),
   /** 실력값 w = min(경기 수 ÷ 이 값, 1). BALANCE_FULL_WEIGHT_GAMES(10, 설정값 아님) */
   full_weight_games: z.number().int().min(1),
 });

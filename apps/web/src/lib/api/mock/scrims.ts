@@ -47,6 +47,7 @@ import {
   UpdateScrimRequest,
   Uuid,
   type ErrorCode,
+  type ProfileBadge,
   type SearchSteamAppsResponse,
   type SteamAppOption,
   type GameSeed,
@@ -59,6 +60,7 @@ import {
 } from '@gcd/shared';
 import { z } from 'zod';
 import { MOCK_OTHER_MEMBER_ID } from './game-accounts';
+import { handleRankings, isRankingPath, mockProfileBadges as rankingProfileBadges, scenarioState, type MockRankingOptions } from './rankings';
 import {
   MockS3Fields,
   activeResult,
@@ -163,7 +165,7 @@ const MockPlayer = z.object({
 type MockPlayer = z.infer<typeof MockPlayer>;
 
 /** 시드 형식 버전. 바뀌면 저장된 목 DB를 버리고 다시 만든다(S3 필드·시나리오 추가) */
-const SEED_VERSION = 3;
+const SEED_VERSION = 6;
 
 export const MockS2State = z.object({
   /** 시드를 만든 사용자 id. 다른 사용자로 로그인하면 다시 만든다 */
@@ -190,6 +192,8 @@ export interface MockS2Options {
   noShowPolicy?: { threshold: number; windowDays: number; restrictionDays: number };
   /** S3 목 env(K 값·시즌 길이) */
   ratings?: MockRatingOptions;
+  /** S4 랭킹·요약 화면 상태 확인용 */
+  rankings?: MockRankingOptions;
 }
 
 export interface MockS2Context {
@@ -475,7 +479,7 @@ function seed(me: Me, now: number, opts?: MockS2Options): MockS2State {
   const seedOf = (game: GameCode) => (userId: string) => tierSeedOf(game, refOf(userId), userId === me.id);
   const rowsIn = (scrimId: string) => state.players.filter((p) => p.scrim_id === scrimId);
   const lolPositions = gameOf('lol').positions;
-  /** 팀·포지션 저장(슬롯 순서대로 블루 5 · 오렌지 5, 포지션은 1지망) */
+  /** 팀·포지션 저장(슬롯 순서대로 블루 5 · 레드 5, 포지션은 1지망) */
   const assignTeams = (scrimId: string) => {
     const rows = rowsIn(scrimId).filter((p) => p.status === 'joined' || p.status === 'no_show');
     const half = Math.ceil(rows.length / 2);
@@ -530,15 +534,26 @@ function seed(me: Me, now: number, opts?: MockS2Options): MockS2State {
     '목요일 협곡 내전',
     '불금 협곡 내전',
     '어제 밤 협곡 내전',
+    // S4: 지난 시즌 최종 순위(5경기 이상)가 보이도록 지난 시즌 경기를 더한다
+    '지난 시즌 초반 내전',
+    '지난 시즌 주말 협곡',
+    '지난 시즌 평일 협곡',
+    '지난 시즌 일요 내전',
+    '지난 시즌 금요 내전',
+    '지난 시즌 막판 내전',
   ];
-  const pastDaysAgo = [70, 64, 58, 40, 36, 33, 29, 29, 24, 19, 14, 9, 5, 1];
+  const pastDaysAgo = [70, 64, 58, 40, 36, 33, 29, 29, 24, 19, 14, 9, 5, 1, 100, 96, 92, 88, 84, 80];
   const pool = MOCK_SCRIM_USERS.filter((u) => u.nickname !== '체스왕').map((u) => u.id);
-  pastTitles.forEach((title, k) => {
+  const pastAt = (k: number) => now - pastDaysAgo[k]! * DAY_MS - (k % 2) * 3 * 3_600_000;
+  // 승인 흐름이 이력을 쌓으므로 시간순으로 반영한다(k는 경기별 고정 조건이라 그대로 둔다)
+  const pastOrder = pastTitles.map((_, k) => k).sort((a, b) => pastAt(a) - pastAt(b));
+  pastOrder.forEach((k) => {
+    const title = pastTitles[k]!;
     const meIn = k !== 4 && k !== 9;
     const excluded = new Set([pool[k % pool.length], meIn ? pool[(k + 5) % pool.length] : undefined]);
     const others = pool.filter((u) => !excluded.has(u)).slice(0, meIn ? 9 : 10);
     const roster = meIn ? [others[0]!, me.id, ...others.slice(1)] : others;
-    const at = now - pastDaysAgo[k]! * DAY_MS - (k % 2) * 3 * 3_600_000;
+    const at = pastAt(k);
     const s = add(
       { game: 'lol', title, scheduled_at: iso(at - 2 * 3_600_000), capacity: 10, host_id: roster[0]!, status: 'finished', started_at: iso(at - 2 * 3_600_000), rated: k !== 5 },
       roster.map((u, i) => [u, [lolPositions[i % 5]!, lolPositions[(i + 1) % 5]!]] as [string, string[]]),
@@ -686,9 +701,10 @@ function ensureSeeded(ctx: Pick<MockS2Context, 'state' | 'me' | 'now' | 'save' |
   return s;
 }
 
-/** 이 목이 처리하는 경로인가(backend.ts 라우팅용). /users/:id/rating-history, /seasons 포함 */
+/** 이 목이 처리하는 경로인가(backend.ts 라우팅용). /users/:id/rating-history, /seasons, S4 랭킹·요약 포함 */
 export function isS2Path(path: string): boolean {
   return (
+    isRankingPath(path) ||
     path === ApiPath.games ||
     path === ApiPath.steamApps ||
     path === ApiPath.myScrimRestriction ||
@@ -707,7 +723,7 @@ export function mockProfileScrim(ctx: Pick<MockS2Context, 'state' | 'me' | 'now'
   const state = ensureSeeded(ctx);
   if (userId !== ctx.me.id && !MOCK_SCRIM_USERS.some((u) => u.id === userId)) return null;
   const order = [...GAME_SEED].sort((a, b) => a.sort_order - b.sort_order).map((g) => g.code);
-  return profileScrim(state, {
+  return profileScrim(scenarioState(state, ctx.opts?.rankings?.scenario?.() ?? null, ctx.now), {
     userId,
     now: ctx.now,
     gameOrder: order,
@@ -732,7 +748,12 @@ export function mockProfileScrim(ctx: Pick<MockS2Context, 'state' | 'me' | 'now'
   });
 }
 
-/** S2·S3 내전 경로가 아니면 null */
+/** 프로필 `badges`(시즌 최종 순위에서 계산). 모르는 사용자는 [] */
+export function mockProfileBadges(ctx: Pick<MockS2Context, 'state' | 'me' | 'now' | 'save' | 'opts'>, userId: string): ProfileBadge[] {
+  return rankingProfileBadges(ensureSeeded(ctx), { userId, now: ctx.now, games: GAME_SEED, scenario: ctx.opts?.rankings?.scenario?.() ?? null });
+}
+
+/** S2·S3·S4 내전·랭킹 경로가 아니면 null */
 export function handleS2(ctx: MockS2Context): Response | null {
   const { method, path, me, now, json, error } = ctx;
   if (!isS2Path(path)) return null;
@@ -959,6 +980,28 @@ export function handleS2(ctx: MockS2Context): Response | null {
       ? `정원은 ${game.capacity_min}–${game.capacity_max}명${game.capacity_step > 1 ? ` ${game.capacity_step}명 단위` : ''}이에요`
       : null;
 
+  // S4 GET /rankings/tier·elo, /dashboard/summary
+  if (isRankingPath(path)) {
+    return handleRankings({
+      policy: eloPolicy,
+      method,
+      path,
+      search: ctx.search,
+      me,
+      now,
+      state,
+      scrims: state.scrims,
+      members: MOCK_SCRIM_USERS,
+      userRef: (uid2) => userRef(uid2, me),
+      summary: (s) => summary(s as MockScrim),
+      joinedUsers: (s) => slotRows(s as MockScrim).filter((p) => p.status === 'joined').map((p) => userRef(p.user_id, me)),
+      games: [...GAME_SEED].sort((a, b) => a.sort_order - b.sort_order),
+      json,
+      error,
+      scenario: ctx.opts?.rankings?.scenario?.() ?? null,
+    });
+  }
+
   // GET /games
   if (path === ApiPath.games && method === 'GET') {
     const res: ListGamesResponse = { items: mockGames(), next_cursor: null };
@@ -1099,7 +1142,9 @@ export function handleS2(ctx: MockS2Context): Response | null {
   // ---------------------------------------------------------------------------
 
   // GET /seasons
-  if (path === ApiPath.seasons && method === 'GET') return json(200, seasonsResponse(state, now));
+  if (path === ApiPath.seasons && method === 'GET') {
+    return json(200, seasonsResponse(scenarioState(state, ctx.opts?.rankings?.scenario?.() ?? null, now), now));
+  }
 
   // GET /users/:id/rating-history?game&season
   let m = matchTemplate(ApiPath.userRatingHistory, path);

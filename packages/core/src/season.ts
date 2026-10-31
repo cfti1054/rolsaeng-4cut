@@ -1,5 +1,7 @@
-import { autoSeasonName } from '@gcd/shared';
-import { DAY_MS, KST_OFFSET_MS } from './config';
+import { SEASON_BADGE_PLACES, autoSeasonName, type SeasonBadgePlace } from '@gcd/shared';
+import { DAY_MS, KST_OFFSET_MS, SEASON_SOFT_RESET_CENTER } from './config';
+import { buildEloRanking } from './ranking';
+import { roundHalfAwayFromZero } from './rating';
 
 // =============================================================================
 // S3 시즌(계약 S3 6절·7-5, D116). 구간은 반열림 [startsAt, endsAt). 시각은 인자로 받는다.
@@ -114,4 +116,115 @@ export function planAutoSeason(input: {
   if (nextStart !== null && end.getTime() > nextStart) end = new Date(nextStart);
 
   return { name: autoSeasonName(seasons.length + 1), startsAt: start, endsAt: end };
+}
+
+// =============================================================================
+// S4 시즌 전환·종료(계약 S4 6절, D140–D145). 리셋 값은 이전 행의 순수 함수이고 비율은 인자로 받는다.
+// =============================================================================
+
+function assertRatio(ratio: number): void {
+  if (typeof ratio !== 'number' || !(ratio >= 0 && ratio <= 1)) {
+    throw new RangeError(`ratio: 0 이상 1 이하여야 함 (${ratio})`);
+  }
+}
+
+/** 1000 + 반올림((elo − 1000) × ratio). 변동분을 반올림해 1000 기준 대칭이다. ratio ∉ [0, 1]이면 RangeError */
+export function softResetElo(elo: number, ratio: number): number {
+  assertRatio(ratio);
+  return SEASON_SOFT_RESET_CENTER + roundHalfAwayFromZero((elo - SEASON_SOFT_RESET_CENTER) * ratio);
+}
+
+/** 새 시즌 첫 행의 시작값(6-1): 이전 행이 있으면 소프트 리셋, 없으면 티어 시드. 시드 경로에서도 ratio를 검사한다 */
+export function seasonStartElo(input: { previousElo: number | null; tierSeed: number; ratio: number }): number {
+  const { previousElo, tierSeed, ratio } = input;
+  assertRatio(ratio);
+  return previousElo === null ? tierSeed : softResetElo(previousElo, ratio);
+}
+
+/**
+ * 시작값을 줄 이전 시즌 행(6-1, D142). 행의 시즌 중 startsAt < target에서 startsAt 최신 → endsAt 최신 → seasonId ASC.
+ * seasons에 없는 행은 무시한다. 연속 빈 시즌은 가장 최근 행 하나만 고르므로 리셋이 1회다.
+ */
+export function pickPreviousRating<R extends { seasonId: string }>(input: {
+  rows: readonly R[];
+  seasons: readonly SeasonLike[];
+  targetStartsAt: Date;
+}): R | null {
+  const { rows, seasons, targetStartsAt } = input;
+  assertValidDate(targetStartsAt, 'targetStartsAt');
+  const target = targetStartsAt.getTime();
+  const seasonById = new Map(seasons.map((s) => [s.id, s]));
+
+  let best: { row: R; season: SeasonLike } | null = null;
+  for (const row of rows) {
+    const season = seasonById.get(row.seasonId);
+    if (season === undefined || season.startsAt.getTime() >= target) continue;
+    if (best === null) {
+      best = { row, season };
+      continue;
+    }
+    const byStart = season.startsAt.getTime() - best.season.startsAt.getTime();
+    const byEnd = season.endsAt.getTime() - best.season.endsAt.getTime();
+    if (byStart > 0 || (byStart === 0 && (byEnd > 0 || (byEnd === 0 && season.id < best.season.id)))) {
+      best = { row, season };
+    }
+  }
+  return best?.row ?? null;
+}
+
+/** 종료 작업 대상(6-3 2번): closedAt 없음 && endsAt + graceMs ≤ now. endsAt ASC, id ASC. 입력을 바꾸지 않는다 */
+export function selectSeasonsToClose<T extends SeasonLike & { closedAt: Date | null }>(
+  seasons: readonly T[],
+  now: Date,
+  graceMs: number,
+): T[] {
+  assertValidDate(now, 'now');
+  if (!Number.isFinite(graceMs) || graceMs < 0) {
+    throw new RangeError(`graceMs: 0 이상의 유한한 숫자여야 함 (${graceMs})`);
+  }
+  const t = now.getTime();
+  return seasons
+    .filter((s) => s.closedAt == null && s.endsAt.getTime() + graceMs <= t)
+    .sort((a, b) => a.endsAt.getTime() - b.endsAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+/** 최종 순위(D145): minGames 이상만, 순위 규칙은 buildEloRanking과 같다 */
+export function computeSeasonStandings(input: {
+  rows: readonly { userId: string; elo: number; wins: number; losses: number }[];
+  minGames: number;
+}): { userId: string; rank: number; elo: number; wins: number; losses: number }[] {
+  return buildEloRanking(input).map(({ userId, rank, elo, wins, losses }) => ({ userId, rank, elo, wins, losses }));
+}
+
+/** 시즌 뱃지 지급 대상(6-4): 순위 1·2·3. 순위 오름차순으로 돌려준다 */
+export function computeSeasonBadges(
+  standings: readonly { userId: string; rank: number }[],
+): { userId: string; place: SeasonBadgePlace }[] {
+  const places: readonly number[] = SEASON_BADGE_PLACES;
+  return standings
+    .filter((s) => places.includes(s.rank))
+    .map((s) => ({ userId: s.userId, place: s.rank as SeasonBadgePlace }))
+    .sort((a, b) => a.place - b.place || (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0));
+}
+
+const kstDayNumber = (ms: number): number => Math.floor((ms + KST_OFFSET_MS) / DAY_MS);
+
+/** 남은 일수: (endsAt − 1ms)의 KST 날짜 − now의 KST 날짜, 최소 0. 마지막 날과 끝난 뒤는 0 */
+export function seasonDaysLeft(endsAt: Date, now: Date): number {
+  assertValidDate(endsAt, 'endsAt');
+  assertValidDate(now, 'now');
+  return Math.max(0, kstDayNumber(endsAt.getTime() - 1) - kstDayNumber(now.getTime()));
+}
+
+/** 시즌 진행률: 0–1로 자르고 소수 셋째 자리 반올림. 길이가 0 이하인 구간도 나누지 않고 0 또는 1을 돌려준다 */
+export function seasonProgress(season: { startsAt: Date; endsAt: Date }, now: Date): number {
+  assertValidDate(season.startsAt, 'startsAt');
+  assertValidDate(season.endsAt, 'endsAt');
+  assertValidDate(now, 'now');
+  const start = season.startsAt.getTime();
+  const end = season.endsAt.getTime();
+  const t = now.getTime();
+  if (t <= start) return 0;
+  if (t >= end) return 1;
+  return Math.round(((t - start) / (end - start)) * 1000) / 1000;
 }

@@ -114,9 +114,9 @@ describe('S2 목: 게임·목록', () => {
     expect(tft.items.every((s) => s.game.code === 'tft')).toBe(true);
     expect((await t.list('playing')).items.every((s) => s.status === 'playing')).toBe(true);
     const ended = await t.list('ended', { limit: '100' });
-    // S3 시드: 지난 협곡 내전 14개 + 지난주 롤체 로비(finished) + 취소 1개
+    // S3·S4 시드: 지난 협곡 내전 20개 + 지난주 롤체 로비(finished) + 취소 1개
     expect([...new Set(ended.items.map((s) => s.status))].sort()).toEqual(['cancelled', 'finished']);
-    expect(ended.items.filter((s) => s.status === 'finished')).toHaveLength(15);
+    expect(ended.items.filter((s) => s.status === 'finished')).toHaveLength(21);
   });
 
   it('카드 집계: open_positions(1지망 기준), my_status, 응답에 email·discord_id 없음', async () => {

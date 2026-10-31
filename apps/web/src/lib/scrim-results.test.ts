@@ -56,7 +56,12 @@ describe('S3 표시 문구', () => {
     );
     expect(balanceSubtitle({ partitions_evaluated: 35, used_positions: false, options: [{}] as never })).toBe('35가지 팀 구성 중 비용이 가장 낮은 1개 안');
     expect(skillFormulaText(null)).not.toMatch(/\d/);
-    expect(skillFormulaText({ k_base: 24, k_new: 36, new_player_games: 5, full_weight_games: 10 })).toContain('K = 24, 신규 멤버 K = 36');
+    const policy = { k_base: 24, k_new: 36, new_player_games: 5, loss_ratio: 1, full_weight_games: 10 };
+    expect(skillFormulaText(policy)).toContain('K = 24, 신규 멤버 K = 36');
+    expect(skillFormulaText(policy)).not.toContain('패배 점수');
+    expect(skillFormulaText({ ...policy, loss_ratio: 0.5 }).endsWith(' 패배 점수는 50%만 반영해요.')).toBe(true);
+    expect(skillFormulaText({ ...policy, loss_ratio: 0.25 }).endsWith(' 패배 점수는 25%만 반영해요.')).toBe(true);
+    expect(skillFormulaText({ ...policy, loss_ratio: 0 }).endsWith(' 패배 점수는 0%만 반영해요.')).toBe(true);
   });
 
   it('결과 문구', () => {
@@ -71,7 +76,7 @@ describe('S3 입력 검사', () => {
   it('팀 직접 수정: 빈 팀·포지션 누락·중복', () => {
     const ps = [player(1, { preferred_positions: ['top'] }), player(2), player(3), player(4, { status: 'no_show' })];
     const positions = ['top', 'mid'];
-    expect(buildTeamsRequest(ps, { [uid(1)]: { team: 'blue', position: 'top' } }, true, positions).issues).toContain('오렌지팀에 1명 이상 넣어 주세요.');
+    expect(buildTeamsRequest(ps, { [uid(1)]: { team: 'blue', position: 'top' } }, true, positions).issues).toContain('레드팀에 1명 이상 넣어 주세요.');
     const dup = buildTeamsRequest(
       ps,
       { [uid(1)]: { team: 'blue', position: 'top' }, [uid(2)]: { team: 'blue', position: 'top' }, [uid(3)]: { team: 'orange', position: null } },
@@ -130,8 +135,8 @@ describe('S3 RESULT 영역 상태', () => {
 
 describe('S3 프로필', () => {
   it('대표 레이팅 = 경기 수 최다(같으면 앞), 승률 문구', () => {
-    const a = { game: 'lol', elo: 1421, wins: 17, losses: 11, games: 28, win_rate: 0.607 } as const;
-    const b = { game: 'tft', elo: 1100, wins: 1, losses: 1, games: 28, win_rate: 0.5 } as const;
+    const a = { game: 'lol', elo: 1421, wins: 17, losses: 11, games: 28, win_rate: 0.607, rank: 3 } as const;
+    const b = { game: 'tft', elo: 1100, wins: 1, losses: 1, games: 28, win_rate: 0.5, rank: null } as const;
     expect(primaryRating([a, b])).toBe(a);
     expect(primaryRating([])).toBeNull();
     expect(ratingRecordText(a)).toBe('17승 11패 · 승률 61%');
