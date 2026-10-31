@@ -325,7 +325,8 @@ export function TeamsPanel({ s, onToast }: { s: ScrimDetail; onToast: ToastFn })
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="flex-[1_1_320px] text-xs leading-relaxed text-faint">{skillFormulaText(current.rating_policy)}</span>
-            <div className="flex flex-wrap gap-2.5">
+            {/* gap 8px: 390px에서 lg 14px 버튼 세 개(닫기·직접 수정·N안으로 팀 확정)가 한 줄에 들어가게(10px이면 0.2px 넘침) */}
+            <div className="flex flex-wrap gap-2">
               <Button size="lg" variant="ghost" onClick={() => setPlan(null)} disabled={save.isPending}>
                 닫기
               </Button>

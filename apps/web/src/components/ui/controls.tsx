@@ -26,8 +26,9 @@ export function Button({
       type="button"
       {...rest}
       className={cn(
-        'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap text-[13px] disabled:cursor-not-allowed disabled:opacity-50',
-        size === 'lg' ? 'h-[46px] rounded-[14px] px-5 text-sm' : 'h-10 rounded-xl px-3.5',
+        'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50',
+        // 글자 크기는 size에서만 정한다(cn은 병합하지 않아 기본 text-[13px]과 text-sm을 함께 두면 13px이 이겼다)
+        size === 'lg' ? 'h-[46px] rounded-[14px] px-5 text-sm' : 'h-10 rounded-xl px-3.5 text-[13px]',
         VARIANT[variant],
         className,
       )}

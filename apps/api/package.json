@@ -27,15 +27,15 @@
     "@nestjs/platform-express": "11.2.8",
     "@nestjs/schedule": "12.0.2",
     "@prisma/client": "6.19.3",
-    "bullmq": "6.5.0",
+    "bullmq": "6.5.3",
     "cookie-parser": "1.4.7",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
-    "zod": "3.25.76"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@nestjs/testing": "11.2.8",
-    "@swc/core": "1.16.20",
+    "@swc/core": "1.16.21",
     "@types/cookie-parser": "1.4.10",
     "@types/express": "5.0.6",
     "@types/node": "24.19.2",
@@ -43,6 +43,6 @@
     "tsx": "4.23.15",
     "typescript": "5.9.3",
     "unplugin-swc": "1.6.0",
-    "vitest": "3.2.7"
+    "vitest": "5.0.5"
   }
 }

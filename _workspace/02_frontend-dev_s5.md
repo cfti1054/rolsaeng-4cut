@@ -120,3 +120,62 @@
 - `corepack pnpm --filter web typecheck` 통과
 - 테스트 27파일 304개 통과(+4). Node 20.11이라 임시 `vitest.tmp.config.mjs`로 실행 후 삭제
 - `corepack pnpm --filter web build` 통과(일반 모드)
+
+## 삭제 버튼 스타일
+
+리더가 `DeleteScrimButton`을 공용 `Button variant="danger"`로 바꾼 뒤 브라우저로 확인했다. 목 production 빌드, 관리자 개발 로그인, 1440·390 × 다크·라이트.
+
+### 확인 결과(리더 변경 직후)
+- 내전 상세 머리: 삭제와 링크 복사가 높이 40px, 모서리 12px, 글자 13px/600, 같은 top으로 맞음. 390px에서도 한 줄이고 잘림 없음.
+- 내전 카드: 어색함 두 가지.
+  1. 주 버튼(`참가하기`·`상세 보기`·`참가 중 · 상세 보기`)에 `mt-auto`가 있어서, 같은 줄 카드 높이가 늘면 삭제 버튼만 위에 남는다. 그래서 삭제와 주 버튼 사이 간격이 카드마다 달랐다(2·3번째 줄 카드).
+  2. 폭 전체를 차지하는 40px/12px 위험 막대가 46px/14px 주 버튼 위에 쌓여 주 행동보다 눈에 띄었다.
+
+### 수정(`apps/web/src/components/scrims/scrim-card.tsx`)
+- 카드 하단을 `mt-auto flex gap-2` 한 줄로 묶었다. 주 버튼 링크는 `flex-1 min-w-0`, 삭제는 오른쪽에 `size="lg"`(46px·14px 모서리)로 붙였다. 미리보기(preview) 카드는 그대로다.
+- `DeleteScrimButton`에 `size?: 'md' | 'lg'` prop을 추가했다. 상세 머리는 기본 md 그대로다.
+- 카드 12장에 「삭제」가 반복되므로 `aria-label={`${title} 삭제`}`를 붙였다. 화면에 보이는 글자는 「삭제」 그대로다.
+- 색은 기존 danger 토큰 그대로이고 새 토큰은 없다. `controls.tsx`의 `Button`은 건드리지 않아 다른 화면 영향은 없다.
+
+### 수정 후 확인
+- 카드: 삭제(폭 65px)와 주 버튼이 같은 줄, 높이 46·모서리 14로 일치. 카드 안 버튼 글자 잘림 0, 가로 넘침 0(1440·390 모두). 390px 카드 하단은 주 버튼 약 247px + 삭제 65px.
+- 삭제 확인 대화상자가 열림(제목 「내전을 삭제할까요?」, 취소·삭제). 콘솔 오류 0(4조합).
+- 남은 차이: 카드 삭제 글자는 13px/600, 주 링크는 14px/700. `cn`이 클래스 병합 없이 이어 붙이기만 해서 `Button size="lg"`의 `text-sm`이 기본 `text-[13px]`에 지기 때문이다. 앱 전체 lg Button 19곳이 이미 같은 상태라 여기서만 따로 바꾸지 않았다(고치려면 Button 기본 클래스에서 글자 크기를 size 분기로 옮겨야 하고, lg 19곳이 함께 14px가 된다 → 리더 판단).
+
+### 스크린샷
+`/private/tmp/claude-501/-Users-cfti1054-Documents-GitHub-rolsaeng-4cut/ecf7f0de-031c-49ed-9801-f3ea7a17127a/scratchpad/`
+- 수정 전: `shots2/list_{dark,light}_{1440,390}.png`
+- 수정 후: `shots3/list_*`, `shots3/card_*`, `shots3/detail_*`, `shots3/dialog_*` (각 `{dark,light}_{1440,390}`)
+
+### 검증
+- `corepack pnpm --filter web typecheck` 통과. 테스트 27파일 305개 통과(임시 `vitest.tmp.config.mjs` 실행 후 삭제). `corepack pnpm --filter web build` 일반 모드 통과(목 모드 빌드도 통과, 마지막 `.next`는 일반 모드).
+
+## 버튼 글자 크기·뒤로가기 정렬
+
+사용자 승인 두 건. apps/web 안에서만 고쳤고 package.json·lockfile은 건드리지 않았다.
+
+### 1) lg 버튼 14px(`apps/web/src/components/ui/controls.tsx`)
+- 원인: `cn`은 클래스를 병합하지 않고 이어 붙이기만 한다. 그래서 기본 `text-[13px]`과 lg의 `text-sm`이 함께 붙어 13px이 이겼다.
+- 수정: 글자 크기를 size 분기로 옮겼다. lg = `text-sm`(14px), md = `text-[13px]`. md 결과는 그대로다(className에 `text-xs`를 넘기는 노쇼 버튼 2곳도 이전과 같은 조건).
+- 확인(목 production 빌드, 관리자, 1440·390 × 다크·라이트): 로그인, 홈, 작성, 관리자, 설정(라이엇 입력 → 아이콘 확인 단계, Steam으로 로그인), 프로필, 내전 목록(모집 중·진행 중·종료), 상세 28개, 팀 자동 밸런스 결과 3곳, 직접 구성 3곳, 결과 제출. 모두 176개 화면을 봤다.
+  - 46px 버튼 20종(참가하기, 상세 보기, 참가 중 · 상세 보기, 삭제, 포지션 변경, 참가 취소, 팀 자동 밸런스 실행, 팀 직접/다시 구성, 닫기, 직접 수정, 1안으로 팀 확정, 이 구성으로 저장, 취소, 결과 제출, 다음, 바꿨어요·확인, Steam으로 로그인, 모집글 작성 등)이 모두 14px이다.
+  - 가로 넘침 0, 버튼 글자 잘림 0, 화면 밖 버튼 0, 콘솔 오류 0.
+  - 줄바꿈 비교: 같은 빌드에서 lg 버튼만 13px로 되돌린 상태와 줄 구성을 대조했다. 차이는 한 곳뿐이었다. 390px 팀 자동 밸런스 결과 줄에서 「1안으로 팀 확정」이 다음 줄로 떨어졌다. 버튼 합 292.2 + 간격 20 = 312.2px로, 들어갈 폭 312px를 0.2px 넘었다.
+  - 이번 확인에서 화면에 띄우지 못한 lg 버튼: 프로필 동기화 버튼(관리자 목 계정에 연동 게임 계정이 없어 표시되지 않음), 설정 「다시 시작」(아이콘 확인 실패 상태). 둘 다 줄에 혼자 있거나 같은 줄의 「바꿨어요·확인」「취소」와 함께 있는 구조라 위 확인과 같은 조건이다.
+- 보정 1곳(`apps/web/src/components/scrims/scrim-teams.tsx`): 밸런스 결과 버튼 묶음 간격을 `gap-2.5` → `gap-2`로 줄였다(여유 3.8px). 다시 비교하니 13px·14px 줄 구성 차이 0곳이다.
+- 카드 삭제 버튼: 주 버튼과 같은 14px. 굵기는 danger 600, 주 링크 700이다(variant 차이라 그대로 뒀다).
+
+### 2) 「← 내전/모집 목록」 정렬(`apps/web/src/components/scrims/scrim-detail.tsx`)
+- 원인: `BackLink`에 `self-start`가 고정돼 있어서, `items-center` 머리 줄에서 링크만 위로 붙었다.
+- 수정: `BackLink`에 `align` prop(기본 `self-start`)을 두고, 상세 머리 줄에서만 `self-center`를 쓴다. 찾을 수 없음·오류 화면의 BackLink(세로 쌓임)는 기본값이라 폭 전체로 늘어나지 않는다.
+- 확인: 링크와 「링크 복사」의 세로 중심이 1440에서 48/48, 390에서 102/102로 같다.
+- 다른 사용처: 작성 화면(`scrim-new-form.tsx`)의 같은 문구 링크는 세로 쌓임 header 안에 있고 옆에 버튼이 없어 정렬 문제가 없다. 수정하지 않았다.
+
+### 스크린샷
+`/private/tmp/claude-501/-Users-cfti1054-Documents-GitHub-rolsaeng-4cut/ecf7f0de-031c-49ed-9801-f3ea7a17127a/scratchpad/`
+- `sweep/` 전체 176장(`{화면}_{dark,light}_{1440,390}.png`)과 측정값 `sweep/result.json`. 이 묶음은 간격 보정 전이라 detail04·12·14-balance의 390은 줄이 떨어진 상태다.
+- `final/` 보정 후: `card_*`, `detail-header_*`, `balance-row_*` (각 `{dark,light}_{1440,390}`)
+
+### 검증
+- typecheck 통과, 테스트 27파일 305개 통과(임시 `vitest.tmp.config.mjs` 실행 후 삭제), build 일반 모드 통과(마지막 `.next`는 일반 모드). 목 서버(3123) 종료.
+- 참고: 작업 중 `apps/web`에서 다른 프로세스의 `next dev -p 3100`이 돌고 있었다. 기준선(13px) 빌드가 한 번 멈춰 중단했고, 대신 같은 빌드에서 13px 강제 주입 비교로 대체했다. `apps/web/Dockerfile` 변경은 이 작업과 무관하다.

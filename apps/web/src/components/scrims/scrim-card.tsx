@@ -4,7 +4,7 @@ import { steamAppHeaderImageUrl, TFT_MODE_LABEL, type ScrimSummary } from '@gcd/
 import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ConfirmDialog } from '@/components/ui/controls';
+import { Button, ConfirmDialog } from '@/components/ui/controls';
 import { brand } from '@/lib/brand';
 import { cn } from '@/lib/cn';
 import { GAME_SCRIM_META, scrimGameTag } from '@/lib/games';
@@ -142,7 +142,6 @@ export function ScrimCard({ s, now, preview = false }: { s: ScrimSummary; now: n
           <CapacityPips joined={s.joined_count} capacity={s.capacity} game={s.game.code} full={s.status === 'full'} />
         </div>
 
-        {!preview && s.can_delete && <DeleteScrimButton id={s.id} title={s.title} />}
         {preview ? (
           <span
             aria-hidden="true"
@@ -151,31 +150,46 @@ export function ScrimCard({ s, now, preview = false }: { s: ScrimSummary; now: n
             참가하기
           </span>
         ) : (
-          <Link
-            href={href}
-            aria-label={`${s.title} — ${action.label}`}
-            className={cn(
-              'mt-auto flex h-[46px] items-center justify-center rounded-[14px] text-sm font-bold no-underline',
-              ACTION_CLASS[action.tone],
-            )}
-          >
-            {action.label}
-          </Link>
+          // 삭제(관리자)는 주 버튼 오른쪽에 같은 높이·모서리로 붙인다. 위에 따로 두면 mt-auto 때문에 카드마다 간격이 달라진다
+          <div className="mt-auto flex gap-2">
+            <Link
+              href={href}
+              aria-label={`${s.title} — ${action.label}`}
+              className={cn(
+                'flex h-[46px] min-w-0 flex-1 items-center justify-center rounded-[14px] text-sm font-bold no-underline',
+                ACTION_CLASS[action.tone],
+              )}
+            >
+              {action.label}
+            </Link>
+            {s.can_delete && <DeleteScrimButton id={s.id} title={s.title} size="lg" />}
+          </div>
         )}
       </div>
     </article>
   );
 }
 
-export function DeleteScrimButton({ id, title }: { id: string; title: string }) {
+export function DeleteScrimButton({
+  id,
+  title,
+  className,
+  size,
+}: {
+  id: string;
+  title: string;
+  className?: string;
+  /** md = 상세 머리(링크 복사와 같은 40px), lg = 카드 하단(주 버튼과 같은 46px) */
+  size?: 'md' | 'lg';
+}) {
   const router = useRouter();
   const del = useDeleteScrim(id);
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className="h-10 rounded-[14px] border border-line-3 text-sm font-semibold text-orange-ink">
+      <Button variant="danger" size={size} onClick={() => setOpen(true)} className={className} aria-label={`${title} 삭제`}>
         삭제
-      </button>
+      </Button>
       <ConfirmDialog
         open={open}
         title="내전을 삭제할까요?"

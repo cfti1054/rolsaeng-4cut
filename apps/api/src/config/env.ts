@@ -33,7 +33,7 @@ const strictBool = (def: boolean) =>
   z.preprocess(
     (v) => (typeof v === 'string' ? (v.trim() === '' ? undefined : v.trim().toLowerCase()) : v),
     z
-      .enum(['true', 'false'], { errorMap: () => ({ message: 'true 또는 false' }) })
+      .enum(['true', 'false'], { error: 'true 또는 false' })
       .default(def ? 'true' : 'false')
       .transform((v) => v === 'true'),
   );
@@ -72,17 +72,17 @@ const EnvSchema = z.object({
       .default('http://localhost:3000')
       .transform((v) => new URL(v).origin),
   ),
-  DATABASE_URL: z.string({ required_error: 'DATABASE_URL 필수' }).min(1, 'DATABASE_URL 필수'),
+  DATABASE_URL: z.string({ error: (iss) => (iss.input === undefined ? 'DATABASE_URL 필수' : undefined) }).min(1, 'DATABASE_URL 필수'),
   REDIS_URL: optionalString,
   JWT_ACCESS_SECRET: z
-    .string({ required_error: 'JWT_ACCESS_SECRET 필수' })
+    .string({ error: (iss) => (iss.input === undefined ? 'JWT_ACCESS_SECRET 필수' : undefined) })
     .min(32, 'JWT_ACCESS_SECRET은 32자 이상'),
   JWT_ACCESS_TTL_SEC: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(900)),
   REFRESH_TOKEN_TTL_DAYS: z.preprocess(
     emptyToUndefined,
     z.coerce.number().int().positive().default(30),
   ),
-  COOKIE_SECRET: z.string({ required_error: 'COOKIE_SECRET 필수' }).min(32, 'COOKIE_SECRET은 32자 이상'),
+  COOKIE_SECRET: z.string({ error: (iss) => (iss.input === undefined ? 'COOKIE_SECRET 필수' : undefined) }).min(32, 'COOKIE_SECRET은 32자 이상'),
   DISCORD_CLIENT_ID: optionalString,
   DISCORD_CLIENT_SECRET: optionalString,
   DISCORD_REDIRECT_URI: z.preprocess(emptyToUndefined, z.string().url().optional()),

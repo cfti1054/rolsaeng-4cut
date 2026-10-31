@@ -8,7 +8,9 @@
 #   - NEXT_PUBLIC_*: 브라우저 번들에 들어간다
 #   - API_ORIGIN: next.config.ts의 rewrites가 빌드 때 계산되어 라우트 표에 저장된다
 
-FROM node:22-bookworm-slim
+# Node 패치 버전까지 고정한다(22.23.4는 2026-10-21 보안 릴리스). 고정하지 않으면 Railway 빌드 캐시가 옛 22.x를 재사용할 수 있다.
+# 새 보안 릴리스가 나오면 이 태그를 올린다.
+FROM node:22.23.4-bookworm-slim
 
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 

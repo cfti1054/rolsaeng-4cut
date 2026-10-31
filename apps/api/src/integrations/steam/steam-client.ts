@@ -49,6 +49,7 @@ const StoreSearchSchema = z.object({
     .default([]),
 });
 const StoreAppDetailsSchema = z.record(
+  z.string(),
   z.object({ success: z.boolean(), data: z.object({ name: z.string() }).optional() }),
 );
 
@@ -176,7 +177,7 @@ export class SteamHttpApi implements SteamApi {
   private getJson<T>(
     path: string,
     params: Record<string, string>,
-    schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+    schema: z.ZodType<T, unknown>,
     mode: CallMode,
   ): Promise<T> {
     const key = this.opts.steamApiKey;
@@ -189,7 +190,7 @@ export class SteamHttpApi implements SteamApi {
     host: string,
     path: string,
     params: Record<string, string>,
-    schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+    schema: z.ZodType<T, unknown>,
     mode: CallMode,
   ): Promise<T> {
     const url = `https://${host}${path}?${new URLSearchParams(params).toString()}`;

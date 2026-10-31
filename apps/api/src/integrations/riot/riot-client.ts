@@ -138,7 +138,7 @@ export class RiotHttpApi implements RiotApi {
   private async get<T>(
     host: string,
     path: string,
-    schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+    schema: z.ZodType<T, unknown>,
     mode: CallMode,
   ): Promise<T> {
     const key = this.opts.riotApiKey;

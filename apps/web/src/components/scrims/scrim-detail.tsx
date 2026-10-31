@@ -147,7 +147,7 @@ function DetailBody({
   return (
     <>
       <div className="flex items-center justify-between gap-3">
-        <BackLink />
+        <BackLink align="self-center" />
         <span className="flex items-center gap-2">
           {s.can_delete && <DeleteScrimButton id={s.id} title={s.title} />}
           <ShareButton s={s} onToast={setToast} />
@@ -169,9 +169,10 @@ function DetailBody({
   );
 }
 
-function BackLink() {
+/** 기본 self-start(세로 쌓임에서 폭 전체로 늘어나지 않게). 상세 머리 줄처럼 버튼과 나란히 둘 때는 self-center로 맞춘다 */
+function BackLink({ align = 'self-start' }: { align?: 'self-start' | 'self-center' }) {
   return (
-    <Link href={routes.scrims()} className="self-start text-[13px] text-muted no-underline hover:text-text">
+    <Link href={routes.scrims()} className={cn(align, 'text-[13px] text-muted no-underline hover:text-text')}>
       ← 내전/모집 목록
     </Link>
   );
