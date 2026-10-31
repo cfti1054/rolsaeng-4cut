@@ -23,11 +23,12 @@ import {
   GetEloRankingResponse,
   GetTierRankingQuery,
   GetTierRankingResponse,
+  BALANCE_ELO_WEIGHT_MAX,
+  BALANCE_FULL_WEIGHT_GAMES,
   RANKING_CACHE_INTERVAL_MIN,
   RANKING_ELO_MIN_GAMES_DEFAULT,
   RANKING_ITEMS_MAX,
   SEASON_CLOSE_GRACE_SEC,
-  SEASON_SOFT_RESET_RATIO_DEFAULT,
   seasonBadgeCode,
   seasonBadgeSeed,
   type DashboardRecentResult,
@@ -54,7 +55,7 @@ import { currentSeason, mockEloStandings, seasonRef, type MockResult, type MockS
  *
  * - 캐시 흉내: synced_at = 5분 단위로 내린 시각, rank_change = 이번 KST 주 시작 시점 순위 대비(D153).
  * - 종료 작업은 없다(계약 10절). 끝난 시즌(ends_at + 유예 ≤ now)은 저장된 ratings로 읽기 때 순위·뱃지를 계산해
- *   season_standings처럼 내려 준다. 시즌 전환 소프트 리셋도 흉내 내지 않는다.
+ *   season_standings처럼 내려 준다. 새 시즌 행은 승인 때 RATING_START_ELO로 만든다(이월 없음, 20절).
  * - 활동·플레이타임·음성·패치 값은 만들지 않는다(슬라이스 「제외」).
  *
  * 상태 확인: localStorage `gcd-mock-rankings`에 아래 값을 넣고 새로고침한다.
@@ -69,7 +70,17 @@ import { currentSeason, mockEloStandings, seasonRef, type MockResult, type MockS
  */
 
 export const MOCK_RANKING_SCENARIO_KEY = 'gcd-mock-rankings';
-export const MockRankingScenario = z.enum(['stale', 'final', 'no_season', 'empty', 'error', 'loading', 'me_outside', 'me_error']);
+export const MockRankingScenario = z.enum([
+  'stale',
+  'final',
+  'no_season',
+  'empty',
+  'error',
+  'loading',
+  'me_outside',
+  'me_error',
+  'top_unavailable',
+]);
 export type MockRankingScenario = z.infer<typeof MockRankingScenario>;
 
 export interface MockRankingOptions {
@@ -336,7 +347,11 @@ function dashboardResponse(st: S3Data, ctx: SummaryCtx): GetDashboardSummaryResp
 
   // 상위 랭커: sort_order 순으로 처음 행이 있는 게임, 전부 비면 첫 게임(계약 8-2)
   let top: GetDashboardSummaryResponse['top_rankers'] = null;
-  if (shownSeason) {
+  let topState: GetDashboardSummaryResponse['top_rankers_state'] = 'no_season';
+  if (ctx.games.length === 0 && shownSeason) {
+    topState = 'unavailable';
+  } else if (shownSeason) {
+    topState = 'ready';
     const sources = ctx.games.map((g) => ({ game: g.code, src: eloSource(st, g.code, shownSeason, ctx) }));
     const pick = sources.find((x) => x.src.items.length > 0) ?? sources[0]!;
     top = {
@@ -347,6 +362,10 @@ function dashboardResponse(st: S3Data, ctx: SummaryCtx): GetDashboardSummaryResp
       synced_at: pick.src.synced_at,
       stale: pick.src.stale,
     };
+  }
+  if (ctx.scenario === 'top_unavailable' && shownSeason) {
+    top = null;
+    topState = 'unavailable';
   }
 
   // 다음 내전(계약 8-1)
@@ -385,12 +404,13 @@ function dashboardResponse(st: S3Data, ctx: SummaryCtx): GetDashboardSummaryResp
         }
       : null,
     rating_policy: {
-      soft_reset_ratio: SEASON_SOFT_RESET_RATIO_DEFAULT,
       min_games: MIN_GAMES,
       k_base: ctx.policy.kBase,
       k_new: ctx.policy.kNew,
       new_player_games: ctx.policy.newPlayerGames,
       loss_ratio: ctx.policy.lossRatio,
+      full_weight_games: BALANCE_FULL_WEIGHT_GAMES,
+      elo_weight_max: BALANCE_ELO_WEIGHT_MAX,
     },
     next_scrim,
     recruiting: open
@@ -399,8 +419,16 @@ function dashboardResponse(st: S3Data, ctx: SummaryCtx): GetDashboardSummaryResp
       .map((s) => ctx.summary(s)),
     stats: { recruiting_scrims: open.length, scrims_this_week: ctx.scrims.filter(inWeek).length, week_start: week.start.toISOString() },
     top_rankers: top,
+    top_rankers_state: topState,
     recent_results: recentResults(st, ctx),
-    me: myRow ? { game: myRow.game, elo: myEntry?.elo ?? myRow.elo, rank: myEntry?.rank ?? null, games: myRow.wins + myRow.losses } : null,
+    me: myRow
+      ? {
+          game: myRow.game,
+          elo: myEntry?.elo ?? myRow.elo,
+          rank: ctx.scenario === 'top_unavailable' ? null : (myEntry?.rank ?? null),
+          games: myRow.wins + myRow.losses,
+        }
+      : null,
   });
 }
 
@@ -466,6 +494,9 @@ export function handleRankings(ctx: MockRankingContext): Response {
   const { method, path, now, me, scenario, json, error } = ctx;
   if (method !== 'GET') return error('NOT_FOUND', `목에 없는 경로: ${method} ${path}`);
   if (scenario === 'error') return error('INTERNAL_ERROR', '목 오류 상태');
+  if (scenario === 'top_unavailable' && path !== ApiPath.dashboardSummary) {
+    return error('INTERNAL_ERROR', '목 랭킹 첫 계산 실패');
+  }
   const empty = scenario === 'empty';
   const st = scenarioState(ctx.state, scenario, now);
 

@@ -1,7 +1,7 @@
 /**
  * S4 GET /dashboard/summary(계약 8절, D156–D158). DB 없이 FakePrisma + MemoryRankingCache.
  */
-import { GetDashboardSummaryResponse } from '@gcd/shared';
+import { GetDashboardSummaryBody, GetDashboardSummaryResponse } from '@gcd/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 import { eloRankingKey } from '../src/modules/rankings/ranking-keys';
 import { call, expectNoExternalIds } from './support/s1-helpers';
@@ -36,7 +36,7 @@ async function summary(app: TestApp, who: Who): Promise<GetDashboardSummaryRespo
   expect({ status: res.status, text }).toMatchObject({ status: 200 });
   expectNoExternalIds(text);
   expect(text).not.toMatch(/email|discord_id|dev-/i);
-  return GetDashboardSummaryResponse.strict().parse(JSON.parse(text));
+  return GetDashboardSummaryResponse.parse(GetDashboardSummaryBody.strict().parse(JSON.parse(text)));
 }
 
 function seedScrim(
@@ -63,7 +63,6 @@ describe('GET /dashboard/summary 빈 상태', () => {
     t = await createTestApp({
       fixedClock: NOW,
       env: {
-        SEASON_SOFT_RESET_RATIO: '0.3',
         RANKING_ELO_MIN_GAMES: '7',
         SCRIM_ELO_K_BASE: '24',
         SCRIM_ELO_K_NEW: '30',
@@ -74,11 +73,20 @@ describe('GET /dashboard/summary 빈 상태', () => {
     const me = await login(t, 'me');
     expect(await summary(t, me)).toEqual({
       season: null,
-      rating_policy: { soft_reset_ratio: 0.3, min_games: 7, k_base: 24, k_new: 30, new_player_games: 6, loss_ratio: 0.25 },
+      rating_policy: {
+        min_games: 7,
+        k_base: 24,
+        k_new: 30,
+        new_player_games: 6,
+        loss_ratio: 0.25,
+        full_weight_games: 10,
+        elo_weight_max: 0.2,
+      },
       next_scrim: null,
       recruiting: [],
       stats: { recruiting_scrims: 0, scrims_this_week: 0, week_start: '2026-10-26T00:00:00.000+09:00' },
       top_rankers: null,
+      top_rankers_state: 'no_season',
       recent_results: [],
       me: null,
     });
@@ -215,6 +223,52 @@ describe('top_rankers·me', () => {
     expect(final.season).toBeNull();
     expect(final.top_rankers).toMatchObject({ game: 'tft', is_final: true, stale: false, synced_at: NOW });
     expect(final.me).toBeNull();
+    expect(final.top_rankers_state).toBe('ready');
+  });
+
+  it('첫 계산 실패는 요약 200·unavailable. 시즌·통계·me는 남고, 풀면 ready(21절)', async () => {
+    t = await createTestApp({ fixedClock: NOW });
+    const me = await login(t, 'me');
+    const s = seedSeason(t, '현재', ...CURRENT);
+    seedRating(t, me.userId, s.id, { elo: 1300, wins: 5 });
+    t.rankingCache.failWrites.add(eloRankingKey('lol', s.id));
+    const failed = await summary(t, me);
+    expect(failed.top_rankers_state).toBe('unavailable');
+    expect(failed.top_rankers).toBeNull();
+    expect(failed.season?.name).toBe('현재');
+    expect(failed.stats.week_start).toBe('2026-10-26T00:00:00.000+09:00');
+    expect(failed.me).toEqual({ game: 'lol', elo: 1300, rank: null, games: 5 });
+
+    t.rankingCache.failWrites.clear();
+    const again = await summary(t, me);
+    expect(again.top_rankers_state).toBe('ready');
+    expect(again.top_rankers?.game).toBe('lol');
+    expect(again.me).toMatchObject({ elo: 1300, rank: 1 });
+  });
+
+  it('앞 게임이 비어 있고 다음 게임 계산이 실패하면 빈 블록으로 대체하지 않는다', async () => {
+    t = await createTestApp({ fixedClock: NOW });
+    const me = await login(t, 'me');
+    const s = seedSeason(t, '현재', ...CURRENT);
+    t.rankingCache.failWrites.add(eloRankingKey('tft', s.id));
+    const r = await summary(t, me);
+    expect(r.top_rankers_state).toBe('unavailable');
+    expect(r.top_rankers).toBeNull();
+    expect(r.season?.name).toBe('현재');
+  });
+
+  it('games 행이 없으면 unavailable, 시즌도 없으면 no_season이 우선', async () => {
+    t = await createTestApp({ fixedClock: NOW });
+    const me = await login(t, 'me');
+    const s = seedSeason(t, '현재', ...CURRENT);
+    t.prisma.game.rows.splice(0);
+    const noGames = await summary(t, me);
+    expect(noGames.top_rankers_state).toBe('unavailable');
+    expect(noGames.top_rankers).toBeNull();
+    expect(noGames.season?.id).toBe(s.id);
+
+    t.prisma.season.rows.splice(0);
+    expect((await summary(t, me)).top_rankers_state).toBe('no_season');
   });
 
   it('me: 현재 시즌 경기 수 최다 게임, 같으면 sort_order, 캐시의 elo·rank 사용', async () => {

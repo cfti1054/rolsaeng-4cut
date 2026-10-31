@@ -11,6 +11,9 @@
 | 2026-10-30 | S4 최초 작성: 엔드포인트 신규 3개 + 프로필 응답 확장 2개(`badges`, `ratings[].rank`), 오류 코드 추가 없음(전체 43개), 스키마 증분(마이그레이션 `20261030180000_s4`), core 함수 16개, 환경 변수 3개, 결정 D140–D165 | architect |
 | 2026-10-31 | 구현·QA 반영(문서만, 교차 QA 정정 C1–C15). 구현 후 사실 맞춤: 3절 마이그레이션 이력, 4-4 공개 메서드·뱃지 조회, 7-2 SQL, 9절 예외·추가 export, 10절 화면 규칙·재조회·목, 11절 모듈, D164. 새 결정 D166(뱃지 월 표시), D167(세션 사용자 변경), D168(시즌 공백 프로필 표시). 소프트 리셋 안내 문구 정리(10절). 확인 필요 Q8 추가(요약 첫 계산 실패·`top_rankers` null 의미), 2절·8-2에 현재 동작 명시. 18절에 배포 영향 추가. 코드 미반영 2건은 같은 날 frontend가 반영(r2 확인), 18절 참고 | architect |
 | 2026-10-31 | S4 후속 변경 3건: 패배 배율, 레드팀 호칭, ELO 설명 ⓘ. 19절 신설, 결정 D169–D178, 확인 필요 Q9·Q10. shared·`.env.example` 수정, 스키마 변경 없음 | architect |
+| 2026-10-31 | S4 후속 변경 2(사용자 결정 4건): 시작 점수 전원 1000, 시즌마다 1000 초기화(소프트 리셋 폐지), 밸런스 w = 0.2 × min(현재 시즌 경기 수 ÷ 10, 1), 라인 기본값 = 라이엇 주·보조 라인. 20절 신설, 결정 D182–D195, 확인 필요 Q11–Q13, Q1·Q5 닫힘. 새 엔드포인트 1개(`GET /me/position-suggestions`), 응답 필드 변경 2곳(`rating_policy`), env 1개 삭제, 마이그레이션 없음(`schema.prisma` 주석만). 앞 절의 충돌 규칙에 「20절로 변경」 표시 | architect |
+| 2026-10-31 | Q9·Q10 사용자 확정(추천안 그대로, 코드 변경 없음). Q9 패배 배율 0.5 유지(D173, `SCRIM_ELO_LOSS_RATIO`로 조정). Q10 ⓘ 이유 문구 유지 | 리더 |
+| 2026-10-31 | S4 후속 변경 3(사용자 결정): Q2·Q3·Q4·Q6·Q7 추천안 확정(코드 변경 없음, Q4는 S5에서 `users.left_at`), Q8 지금 구현. 21절, 결정 D196–D201. 요약 응답 필수 필드 1개(`top_rankers_state`), `top_rankers` 첫 계산 실패는 요약만 부분 실패, `GET /rankings/*` 500은 그대로. shared `dashboard.ts`·`contract.s4.test.ts` 수정, 스키마·마이그레이션 없음. 2절·8-2의 「Q8에서 판단」은 21절로 대체 | architect |
 
 ---
 
@@ -23,7 +26,7 @@
 | 2장 랭킹 · 티어 랭킹 (P0) | `GET /rankings/tier`, 대표 계정 최신 스냅샷, 티어 점수 |
 | 2장 랭킹 · 내전 ELO 랭킹 (P0) | `GET /rankings/elo`, 시즌별, 5경기 이상, 내 순위, 순위 변동. 주간·월간은 제외(D162, 17절 Q6) |
 | 7-3 캐시 | 5분 주기 작업, PostgreSQL 저장, 실패 시 마지막 성공값 + 갱신 시각 |
-| 7-3 시즌 종료 | 최종 순위 스냅샷, 뱃지 지급, 소프트 리셋(새 시즌 첫 행) |
+| 7-3 시즌 종료 | 최종 순위 스냅샷, 뱃지 지급, ~~소프트 리셋(새 시즌 첫 행)~~ **→ 20절로 변경: 새 시즌은 전원 1000(D183)** |
 | 6장 `/dashboard/summary`, 8장 `/` | 홈, 사이드바 시즌 카드, 내 ELO·순위 |
 | 2장 프로필 · 뱃지 (P0) | `GET /users/:id/profile`의 `badges`, 내전 레이팅 순위(D127 후속) |
 
@@ -35,8 +38,8 @@
 
 | 기존 | 변경 | 이유 |
 | --- | --- | --- |
-| **D103** 「시드는 (사용자, 게임, 시즌) 행을 처음 만들 때 한 번 쓴다」 | 새 행의 시작값 = **이전 시즌 행이 있으면 소프트 리셋, 없으면 시드**. 시드 표·출처(대표 계정)는 그대로. 밸런스의 「티어 시드」도 그대로 | 문서 7-3 소프트 리셋. 슬라이스 「새 시즌 첫 레이팅 행을 소프트 리셋 값으로」 |
-| **D107** 「행이 없으면 시드(= 그 시즌 첫 반영 때 쓰일 값)」 | 괄호의 원칙을 유지한다: 행이 없으면 **첫 반영 때 쓰일 값**(소프트 리셋 값 또는 시드). 조회는 행을 만들지 않는다(D160) | 이월을 무시하면 지난 시즌 1600인 멤버가 첫 내전 밸런스에서 시드로 계산된다 |
+| **D103** 「시드는 (사용자, 게임, 시즌) 행을 처음 만들 때 한 번 쓴다」 | 새 행의 시작값 = **이전 시즌 행이 있으면 소프트 리셋, 없으면 시드**. 시드 표·출처(대표 계정)는 그대로. 밸런스의 「티어 시드」도 그대로. **→ 20절로 변경: 시작값은 항상 1000, 시드 표는 밸런스 티어 환산값으로만 쓴다(D182, D189)** | 문서 7-3 소프트 리셋. 슬라이스 「새 시즌 첫 레이팅 행을 소프트 리셋 값으로」 |
+| **D107** 「행이 없으면 시드(= 그 시즌 첫 반영 때 쓰일 값)」 | 괄호의 원칙을 유지한다: 행이 없으면 **첫 반영 때 쓰일 값**(소프트 리셋 값 또는 시드). 조회는 행을 만들지 않는다(D160). **→ 20절로 변경: 첫 반영 때 쓰일 값 = 1000, w 정의도 바뀐다(D187)** | 이월을 무시하면 지난 시즌 1600인 멤버가 첫 내전 밸런스에서 시드로 계산된다 |
 | **S3 5-5** 승인 흐름 | 7c단계(시즌 행 `FOR SHARE` + `closed_at` 검사) 추가, 9단계 시작값 변경. 실행 순서는 6-2 | 종료 작업과의 경합(D141) |
 | **S3 6절** 마지막 항목 「이전 시즌 값 이월·소프트 리셋은 S4 이후」 | 6절로 대체 | - |
 | **S3 11절** approve 잠금 행 | 시즌 행 FOR SHARE 추가(15절) | D141 |
@@ -57,7 +60,7 @@
 | NOT_FOUND | `GET /rankings/elo`의 없는 season id |
 | INTERNAL_ERROR(로그) | 빈 캐시 첫 계산 실패(마지막 성공값이 없음), GameCode는 유효한데 games 행 없음(D135와 같은 처리), 승인 시 닫힌 시즌(7c, 정상 흐름에서 생기지 않음, 롤백·pending 유지) |
 
-빈 캐시 첫 계산 실패의 현재 동작: `GET /rankings/*`는 500이다(보여 줄 마지막 성공값이 없음). `GET /dashboard/summary`도 같은 계산을 거치므로 **요약 전체가 500**이다(모집·통계까지 함께 실패). 값이 있는 캐시의 갱신 실패는 해당 없다(200, `stale: true`). 처리 방향은 17절 Q8.
+빈 캐시 첫 계산 실패의 현재 동작: `GET /rankings/*`는 500이다(보여 줄 마지막 성공값이 없음). `GET /dashboard/summary`도 같은 계산을 거치므로 **요약 전체가 500**이다(모집·통계까지 함께 실패). 값이 있는 캐시의 갱신 실패는 해당 없다(200, `stale: true`). 처리 방향은 17절 Q8. **→ 21절로 변경: `GET /rankings/*`는 그대로 500, 요약은 `top_rankers`만 부분 실패(`top_rankers_state: 'unavailable'`, 200, D196)**
 
 ---
 
@@ -70,7 +73,7 @@
 | 대상 | 변경 | 근거 |
 | --- | --- | --- |
 | seasons | **추가** `closed_at timestamptz NULL` | D141·D144 |
-| ratings | **추가** `carried_from_season_id uuid NULL` FK seasons(ON DELETE SET NULL) | D140 감사 |
+| ratings | **추가** `carried_from_season_id uuid NULL` FK seasons(ON DELETE SET NULL) | D140 감사. **20절로 변경: 컬럼은 남기고 쓰지 않는다(D184)** |
 | ranking_caches | **새 표**: `id`, `cache_key`(unique), `payload jsonb`, `computed_at`, `last_failed_at`, `last_error`, `baseline_period_start`, `baseline_ranks jsonb DEFAULT '{}'`, `created_at`, `updated_at` | D146, D153 |
 | season_standings | 컬럼 변경 없음. 의미 확정: 5경기 이상 멤버만 | D145 |
 | badges, user_badges | 컬럼 변경 없음. 유일 키 `(user_id, badge_id, season_id)` 재사용. 시드 추가(`seed.ts`) | D145 |
@@ -80,8 +83,8 @@
 | 컬럼 | 의미 |
 | --- | --- |
 | seasons.closed_at | 시즌 종료 처리 커밋 시각. 값이 있으면 그 시즌 `ratings`는 더 바뀌지 않고, 조회 출처는 `season_standings`다 |
-| ratings.elo(첫 행) | 6-1 시작값 |
-| ratings.carried_from_season_id | 시작값을 준 이전 시즌. 시드로 시작했으면 null |
+| ratings.elo(첫 행) | 6-1 시작값. **20절로 변경: 1000(D182)** |
+| ratings.carried_from_season_id | 시작값을 준 이전 시즌. 시드로 시작했으면 null. **20절로 변경: 새 행은 항상 null, 기존 값은 감사 기록(D184)** |
 | ranking_caches.payload·computed_at | 마지막 **성공** 값·시각. 실패가 지우지 않는다 |
 | ranking_caches.last_failed_at·last_error | 마지막 실패. 성공하면 null. `last_error`는 로그용, 응답에 내리지 않는다 |
 | ranking_caches.baseline_* | 순위 변동 기준(D153) |
@@ -150,6 +153,8 @@
 
 ### 6-1. 시작값 규칙
 
+> **20절로 변경(D182, D183):** 이 절의 소프트 리셋·티어 시드 시작값은 폐지됐다. 새 행은 항상 `RATING_START_ELO`(1000)로 시작한다. 「행을 처음 만드는 순간 한 번」이라는 시점 규칙만 남는다. 아래는 이력으로 둔다.
+
 (사용자, 게임, 시즌) 행을 **처음 만드는 순간** 한 번 계산한다.
 
 ```
@@ -181,9 +186,9 @@ carried_from_season_id = prev?.seasonId ?? null
   SELECT closed_at FROM seasons WHERE id = $1 FOR SHARE
   ```
   `closed_at`이 있으면 로그 + `INTERNAL_ERROR`(전체 롤백, 결과 pending 유지). 잠금은 커밋까지 유지된다.
-- **9 (변경)** 없는 사용자에 대해 `loadPreviousRatings(tx, game, season.startsAt, missing)` → 6-1 시작값. prev가 없는 사용자만 `loadTierSeeds`. `createMany({ data: [{…, elo, carriedFromSeasonId}], skipDuplicates: true })` 후 다시 조회(그대로).
+- **9 (변경)** 없는 사용자에 대해 `loadPreviousRatings(tx, game, season.startsAt, missing)` → 6-1 시작값. prev가 없는 사용자만 `loadTierSeeds`. `createMany({ data: [{…, elo, carriedFromSeasonId}], skipDuplicates: true })` 후 다시 조회(그대로). **→ 20절로 변경: `createMany({ data: [{ userId, gameId, seasonId, elo: RATING_START_ELO }], skipDuplicates: true })`. 이전 시즌·티어 조회 없음, `carriedFromSeasonId` 안 씀(20-4). 7c는 유지(D185)**
 
-`loadPreviousRatings`는 8단계 사용자 잠금 아래에서 읽으므로, 같은 사용자의 직전 시즌 승인이 진행 중이면 그 커밋 뒤 값을 본다. 잠금 뒤에 now를 정하는 D128 덕분에 사용자별 승인 순서와 시즌 순서가 같다.
+`loadPreviousRatings`는 8단계 사용자 잠금 아래에서 읽으므로, 같은 사용자의 직전 시즌 승인이 진행 중이면 그 커밋 뒤 값을 본다. 잠금 뒤에 now를 정하는 D128 덕분에 사용자별 승인 순서와 시즌 순서가 같다. (20절 이후 이 문단은 이력이다. 사용자 잠금은 ratings 갱신 직렬화를 위해 그대로 쓴다)
 
 ### 6-3. 시즌 종료 작업 `SeasonCloser` (D141, D144)
 
@@ -219,6 +224,8 @@ GameCode로 parse되지 않는 games 행은 그 게임만 건너뛰고 로그. �
 ### 6-5. 경합 시나리오 (QA 대조표)
 
 T = 시즌 S의 `ends_at`.
+
+> **20절로 변경(D183):** 아래 표의 「리셋」은 모두 「S+1 새 행을 1000으로 만든다」로 읽는다(1·2·5·10행). 1과 2가 같은 값이라는 결론, 4·6–9·11행은 그대로다(20-4).
 
 | # | 상황 | 결과 |
 | --- | --- | --- |
@@ -350,9 +357,9 @@ row = store.read(key); parse 실패 → 없음으로 취급(로그)
 
 ### 8-2. top_rankers·me
 
-- 시즌 = `resolveSeasonAt(now) ?? latestStartedSeason(now)`. 없으면 `top_rankers = null`.
+- 시즌 = `resolveSeasonAt(now) ?? latestStartedSeason(now)`. 없으면 `top_rankers = null`(21절: `top_rankers_state: 'no_season'`).
 - game = `games.sort_order` 순으로 4-2 출처를 읽어 처음 행이 있는 게임, 전부 비면 첫 게임.
-- 현재 동작의 예외 2가지(Q8에서 판단): `games`가 비면 시즌이 있어도 `top_rankers = null`이라 화면이 「아직 시즌이 없어요」로 보인다(시드는 배포 CMD가 돌리므로 시드 없는 DB에서만 생긴다). 이 블록의 첫 계산이 실패하면 요약 전체가 500이다(2절). `packages/shared/src/dashboard.ts`의 「시즌이 하나도 없으면 null」 주석은 Q8 결정 때 함께 고친다.
+- **→ 21절로 변경: 아래 두 예외는 `top_rankers_state`로 나눈다(시즌 없음 `no_season`, games 빈 경우·첫 계산 실패 `unavailable`, D196–D198). 주석도 21절에서 고쳤다.** 이전 동작(기록용): `games`가 비면 시즌이 있어도 `top_rankers = null`이라 화면이 「아직 시즌이 없어요」로 보인다(시드는 배포 CMD가 돌리므로 시드 없는 DB에서만 생긴다). 이 블록의 첫 계산이 실패하면 요약 전체가 500이다(2절). `packages/shared/src/dashboard.ts`의 「시즌이 하나도 없으면 null」 주석은 Q8 결정 때 함께 고친다.
 - me: 현재 시즌 없으면 null. 내 `ratings` 행 중 `wins + losses` 최대(같으면 sort_order) → 없으면 null. 그 게임 캐시 행의 내 entry가 있으면 `elo`·`rank`는 entry 값, 없으면 `elo` = ratings 값·`rank` null. `games` = wins + losses.
 
 ### 8-3. 최근 내전 결과
@@ -394,9 +401,9 @@ I/O 없음, 시각은 인자, env 값은 인자. `index.ts` export 추가. 전�
 
 | 함수 | 시그니처 | 규칙 |
 | --- | --- | --- |
-| softResetElo | `(elo: number, ratio: number) => number` | 6-1. ratio ∉ [0,1] RangeError |
-| seasonStartElo | `(input: { previousElo: number \| null; tierSeed: number; ratio: number }) => number` | 6-1 |
-| pickPreviousRating | `<R extends { seasonId: string }>(input: { rows: readonly R[]; seasons: readonly SeasonLike[]; targetStartsAt: Date }) => R \| null` | 행의 시즌 중 `startsAt < target`, startsAt 최신 → endsAt 최신 → seasonId ASC. seasons에 없는 행 무시 |
+| ~~softResetElo~~ | `(elo: number, ratio: number) => number` | 6-1. ratio ∉ [0,1] RangeError. **20절로 변경: 삭제(D183)** |
+| ~~seasonStartElo~~ | `(input: { previousElo: number \| null; tierSeed: number; ratio: number }) => number` | 6-1. **20절로 변경: 삭제(D183)** |
+| ~~pickPreviousRating~~ | `<R extends { seasonId: string }>(input: { rows: readonly R[]; seasons: readonly SeasonLike[]; targetStartsAt: Date }) => R \| null` | 행의 시즌 중 `startsAt < target`, startsAt 최신 → endsAt 최신 → seasonId ASC. seasons에 없는 행 무시. **20절로 변경: 삭제(D183)** |
 | selectSeasonsToClose | `<T extends SeasonLike & { closedAt: Date \| null }>(seasons: readonly T[], now: Date, graceMs: number) => T[]` | 6-3 2번. 경계 포함(`endsAt + 유예 = now`이면 대상) |
 | computeSeasonStandings | `(input: { rows: readonly { userId; elo; wins; losses }[]; minGames: number }) => { userId; rank; elo; wins; losses }[]` | buildEloRanking |
 | computeSeasonBadges | `(standings: readonly { userId; rank }[]) => { userId: string; place: SeasonBadgePlace }[]` | rank가 `SEASON_BADGE_PLACES`(1·2·3)에 있는 행만. 0·음수·소수는 제외. place ASC → userId ASC |
@@ -405,13 +412,13 @@ I/O 없음, 시각은 인자, env 값은 인자. `index.ts` export 추가. 전�
 
 테스트 필수: 6-1 검증 값·표 5경우, 반올림 대칭, 연속 빈 시즌 리셋 1회, 겹친 시즌 결정성, 유예 경계 ±1ms, 동점 4단계, 입력 순서를 섞어도 결과 동일, 승률 교차 곱(2/3 vs 4/6 동률), 7-7 표, KST 일요일 23:59 ↔ 월요일 00:00(UTC 일요일 15:00) 경계, D-day(마지막 날 0, 끝난 뒤 0).
 
-**core 신규 합계 16개**: kstWeekWindow, tierScore, compareRanking, buildTierRanking, buildEloRanking, computeRankChange, rollRankBaseline, isRankingStale, softResetElo, seasonStartElo, pickPreviousRating, selectSeasonsToClose, computeSeasonStandings, computeSeasonBadges, seasonDaysLeft, seasonProgress. 기존 `computeWinRate`, `roundHalfAwayFromZero`는 재사용한다. 추가 export: 상수 `SEASON_SOFT_RESET_CENTER`(1000, `config.ts`), 타입 `RankingComparable`, `RankBaseline`.
+**core 신규 합계 16개**: kstWeekWindow, tierScore, compareRanking, buildTierRanking, buildEloRanking, computeRankChange, rollRankBaseline, isRankingStale, softResetElo, seasonStartElo, pickPreviousRating, selectSeasonsToClose, computeSeasonStandings, computeSeasonBadges, seasonDaysLeft, seasonProgress. 기존 `computeWinRate`, `roundHalfAwayFromZero`는 재사용한다. 추가 export: 상수 `SEASON_SOFT_RESET_CENTER`(1000, `config.ts`), 타입 `RankingComparable`, `RankBaseline`. **20절로 변경: `softResetElo`·`seasonStartElo`·`pickPreviousRating`·`SEASON_SOFT_RESET_CENTER` 삭제(D183, 20-3)**
 
 ---
 
 ## 10. 화면 (frontend)
 
-공통: 시각 KST, 마이너스 U+2212, 색은 토큰(D53), env 값 직접 사용 금지(`RANKING_ELO_MIN_GAMES_DEFAULT`, `SEASON_SOFT_RESET_RATIO_DEFAULT`는 목 전용). 값이 없는 카드에 가짜 숫자를 넣지 않는다.
+공통: 시각 KST, 마이너스 U+2212, 색은 토큰(D53), env 값 직접 사용 금지(`RANKING_ELO_MIN_GAMES_DEFAULT`, `SEASON_SOFT_RESET_RATIO_DEFAULT`는 목 전용, **후자는 20절에서 삭제**). 값이 없는 카드에 가짜 숫자를 넣지 않는다.
 
 ### `/rankings` (목업 Rankings)
 
@@ -444,7 +451,7 @@ I/O 없음, 시각은 인자, env 값은 인자. `index.ts` export 추가. 전�
 
 | 항목 | 표시 |
 | --- | --- |
-| 시즌 카드 | 「{season.name}」 + `days_left` 「D-34」(0이면 「D-DAY」), 12칸(`progress × 12` 반올림), 안내(`soft_reset_ratio`, N = ratio × 100 반올림) — 0.5: 「종료 시 레이팅 절반 소프트 리셋」, 1: 「종료 시 레이팅 유지」, 0: 「종료 시 레이팅 1000으로 초기화」, 그 외: 「종료 시 1000 기준 차이의 {N}%만 유지」(식이 레이팅 전체가 아니라 1000과의 차이에 적용된다, ratio 0.3이면 1600 → 1180) |
+| 시즌 카드 | 「{season.name}」 + `days_left` 「D-34」(0이면 「D-DAY」), 12칸(`progress × 12` 반올림), 안내(`soft_reset_ratio`, N = ratio × 100 반올림) — 0.5: 「종료 시 레이팅 절반 소프트 리셋」, 1: 「종료 시 레이팅 유지」, 0: 「종료 시 레이팅 1000으로 초기화」, 그 외: 「종료 시 1000 기준 차이의 {N}%만 유지」(식이 레이팅 전체가 아니라 1000과의 차이에 적용된다, ratio 0.3이면 1600 → 1180). **→ 20절로 변경: 안내는 고정 문구 「종료 시 모두 {RATING_START_ELO}점으로 초기화」(20-7)** |
 | season null | 「다음 시즌 준비 중」, 「첫 내전 결과가 승인되면 시작돼요」 |
 | 사용자 카드 | 「ELO {elo} · #{rank}」, rank null → 「ELO {elo}」, me null → 기존 표시 |
 | 요약 실패 | 시즌 카드 숨김, 사용자 카드 유지(앱 셸을 막지 않는다) |
@@ -482,9 +489,9 @@ I/O 없음, 시각은 인자, env 값은 인자. `index.ts` export 추가. 전�
 | `modules/rankings/ranking-jobs.scheduler.ts`(새) | 7-5 |
 | `modules/rankings/rankable-users.ts`(새) | D161 |
 | `modules/dashboard/`(새) | 컨트롤러 + `DashboardService`(8절). `ScrimViews` 필요 → `ScrimsModule.forRoot()`의 `exports`에 `ScrimViews` 추가, DashboardModule은 `ScrimsModule.forRoot()`를 import(D164 동일 객체 규칙) |
-| `modules/ratings/rating-carry.ts`(새) | `loadPreviousRatings(db, game, targetStartsAt, userIds)`: seasons 조회 → `rating.findMany` → `pickPreviousRating`. 승인·읽기 공용 |
+| `modules/ratings/rating-carry.ts`(새) | `loadPreviousRatings(db, game, targetStartsAt, userIds)`: seasons 조회 → `rating.findMany` → `pickPreviousRating`. 승인·읽기 공용. **20절로 변경: 파일 삭제(D183)** |
 | `modules/ratings/rating-locks.ts` | `lockSeasonForRating` |
-| `modules/ratings/rating-inputs.service.ts` | D160 |
+| `modules/ratings/rating-inputs.service.ts` | D160. **20절로 변경: 행이 없으면 1000, w는 현재 시즌 경기 수(20-4)** |
 | `modules/scrims/scrim-results.service.ts` | 6-2 |
 | `modules/profile/*` | 4-4. ProfileModule이 RankingsModule import |
 | `config/env.ts` | 13절, `rankingJobsEnabledFromEnv` |
@@ -509,11 +516,11 @@ seasons: 진행 중(starts_at ≤ now < ends_at)
 
 | 변수 | 사용처 | 기본 | 비고 |
 | --- | --- | --- | --- |
-| SEASON_SOFT_RESET_RATIO | api | 0.5 | 0–1 실수. 문서 7-3 |
+| ~~SEASON_SOFT_RESET_RATIO~~ | api | 0.5 | 0–1 실수. 문서 7-3. **20절로 변경: 삭제(D183). `.env.example`에서 지움** |
 | RANKING_ELO_MIN_GAMES | api | 5 | 양의 정수. 값을 바꿔도 이미 닫힌 시즌 standings는 그대로 |
 | RANKING_JOBS_ENABLED | api | true | `strictBool`. 모듈 구성 시점에 읽는다(D96과 같음) |
 
-기본값 상수: shared `SEASON_SOFT_RESET_RATIO_DEFAULT`, `RANKING_ELO_MIN_GAMES_DEFAULT`. `AppConfig`: `seasonSoftResetRatio: number`, `ranking: { eloMinGames: number; jobsEnabled: boolean }`. 화면 노출: `rating_policy`, `GetEloRankingResponse.min_games`.
+기본값 상수: shared `SEASON_SOFT_RESET_RATIO_DEFAULT`, `RANKING_ELO_MIN_GAMES_DEFAULT`. `AppConfig`: `seasonSoftResetRatio: number`, `ranking: { eloMinGames: number; jobsEnabled: boolean }`. 화면 노출: `rating_policy`, `GetEloRankingResponse.min_games`. **20절로 변경: `SEASON_SOFT_RESET_RATIO_DEFAULT`·`seasonSoftResetRatio` 삭제**
 
 설정값이 아닌 상수: `RANKING_CACHE_INTERVAL_MIN`(5), `RANKING_STALE_AFTER_SEC`(660), `RANKING_ITEMS_MAX`(200), `SEASON_CLOSE_GRACE_SEC`(60), 뱃지 순위 1·2·3.
 
@@ -582,12 +589,12 @@ architect(완료)
 
 | # | 결정 | 이유 |
 | --- | --- | --- |
-| D140 | 소프트 리셋은 **새 시즌 첫 행을 만들 때** 계산한다. 시즌 종료 작업은 `ratings`를 쓰지 않는다. `carried_from_season_id`로 출처를 남긴다. D103 변경 | 값이 이전 행의 순수 함수이고 행 생성 경로가 하나 + 유일 키라 작업 순서·횟수와 무관하게 정확히 한 번이다. 종료 시점에 다음 시즌이 없을 수 있고(D116), 5경기 미만은 어차피 안 보여 0경기 행이 필요 없다 |
+| D140 | **[20절로 변경: 소프트 리셋 폐지, 첫 행 = 1000(D182·D183). 「종료 작업은 ratings를 쓰지 않는다」는 유지]** 소프트 리셋은 **새 시즌 첫 행을 만들 때** 계산한다. 시즌 종료 작업은 `ratings`를 쓰지 않는다. `carried_from_season_id`로 출처를 남긴다. D103 변경 | 값이 이전 행의 순수 함수이고 행 생성 경로가 하나 + 유일 키라 작업 순서·횟수와 무관하게 정확히 한 번이다. 종료 시점에 다음 시즌이 없을 수 있고(D116), 5경기 미만은 어차피 안 보여 0경기 행이 필요 없다 |
 | D141 | 승인은 쓰기 전 시즌 행 `FOR SHARE` + `closed_at` 검사, 종료는 `FOR NO KEY UPDATE`, 종료 대상은 `ends_at + 60초` 이후 | 시계에 기대지 않고 진행 중 승인이 끝나기를 기다려 standings 오염을 막는다. 유예는 사용자가 오류를 보지 않게 하는 장치고, 안전성은 잠금이 보장한다. `FOR UPDATE`면 새 시즌 행 FK 검사까지 막으므로 쓰지 않는다 |
-| D142 | 시작값: `1000 + 반올림((이전 − 1000) × ratio)`. 이전 값 = 가장 최근 시즌의 행. 경기 수 무관, 빈 시즌을 건너뛰어도 1회 | 문서 식에 예외가 없다. 빈 시즌에는 그 사람 행이 없어 리셋할 값이 없다. 규칙이 하나라 검증이 쉽다 |
+| D142 | **[20절로 변경: 폐지(D183)]** 시작값: `1000 + 반올림((이전 − 1000) × ratio)`. 이전 값 = 가장 최근 시즌의 행. 경기 수 무관, 빈 시즌을 건너뛰어도 1회 | 문서 식에 예외가 없다. 빈 시즌에는 그 사람 행이 없어 리셋할 값이 없다. 규칙이 하나라 검증이 쉽다 |
 | D143 | 시즌 생성은 D116 그대로 승인에서만. 종료 작업은 다음 시즌을 만들지 않는다. 그 사이 사이드바 「다음 시즌 준비 중」, 랭킹 기본값은 직전 시즌 최종 순위 | 활동이 없는 동안 빈 시즌이 쌓이지 않고 쓰기 경로가 늘지 않는다. 다음 시즌은 직전 끝에서 이어 붙으므로 기간 손실도 없다 |
 | D144 | 종료 멱등: 시즌당 1트랜잭션(standings + 뱃지 + closed_at), `closed_at`이 처리 완료 표시. `season-close` try lock, 시즌 행 잠금 후 재확인, 유일 키 + skipDuplicates | 부분 완료 상태가 없어 재개 로직이 필요 없다. 시즌 데이터는 작아 트랜잭션 하나로 충분하다 |
-| D145 | `season_standings`는 5경기 이상만. 뱃지는 게임별 1·2·3위, 코드 `season_{game}_top{n}`, earned_at = ends_at, 종료 트랜잭션이 뱃지 행도 보장 | `rank`가 NOT NULL이고 문서 「5경기 이상만 노출」과 같다. 미달자 값은 ratings에 남아 이월에 쓰인다. 게임별 코드로 유일 키를 바꾸지 않는다(메인 기본값 2) |
+| D145 | `season_standings`는 5경기 이상만. 뱃지는 게임별 1·2·3위, 코드 `season_{game}_top{n}`, earned_at = ends_at, 종료 트랜잭션이 뱃지 행도 보장 | `rank`가 NOT NULL이고 문서 「5경기 이상만 노출」과 같다. 미달자 값은 ratings에 남아 이월에 쓰인다(**20절로 변경: 이월 없음, D186**). 게임별 코드로 유일 키를 바꾸지 않는다(메인 기본값 2) |
 | D146 | 캐시 저장소는 Redis 유무와 무관하게 PostgreSQL `ranking_caches` 한 경로 | 재시작·다중 인스턴스에서 마지막 성공값이 살아야 하고(메모리 대체는 불가), 경로가 둘이면 Redis 없는 이 환경에서 다른 쪽을 검증할 수 없다. S1 큐는 소비자 분리가 목적이라 전환이 필요했지만 여기서는 DB 쿼리뿐이다. 문서 4장 「Redis 없이 시작」. 슬라이스 「Redis 없으면 동작하는 대체 경로」를 만족 |
 | D147 | 키는 게임·시즌별, 갱신 대상은 닫히지 않은 시작된 시즌. 닫힌 시즌 키는 작업이 지운다 | 끝났지만 미처리인 시즌도 같은 경로로 보여 조회에 빈틈이 없다 |
 | D148 | 빈 캐시는 첫 요청에서 동기 계산(인스턴스 안 단일 실행). 값이 있으면 오래돼도 읽기는 계산하지 않는다 | 배포 직후 빈 화면을 없애면서 「요청마다 계산하지 않는다」를 지킨다. 프로필·`me`는 계산을 일으키지 않는다 |
@@ -602,10 +609,10 @@ architect(완료)
 | D157 | 사이드바는 `/dashboard/summary`를 공유한다. 대표 게임 = 현재 시즌 경기 수 최다(같으면 sort_order). `elo`와 `rank`는 같은 캐시 행 | 엔드포인트를 늘리지 않고 홈과 요청을 합친다. 무거워지면 필드를 그대로 분리할 수 있다. 값이 어긋나 보이지 않게 한 출처로 묶는다 |
 | D158 | 다음 내전은 joined + recruiting·full. waitlist·playing 제외. 대체는 시작 전 recruiting. 목록은 next_scrim을 뺀다 | `playing`은 결과가 없으면 영구히 남는다. 카드와 목록이 중복되지 않게 |
 | D159 | 프로필 `badges` 전체 배열, `ratings[].rank` 추가(캐시 읽기만) | D127 후속. 목업 BADGES·「#3 ELO」 |
-| D160 | 읽기(`rating-inputs`)는 행이 없으면 첫 반영 값(소프트 리셋 또는 시드)을 계산해 쓰고 저장하지 않는다. 현재 시즌이 없으면 target = now | D107 원칙 유지. 조회는 행을 만들지 않는다(D116) |
+| D160 | **[20절로 변경: 첫 반영 값 = 1000(D182)]** 읽기(`rating-inputs`)는 행이 없으면 첫 반영 값(소프트 리셋 또는 시드)을 계산해 쓰고 저장하지 않는다. 현재 시즌이 없으면 target = now | D107 원칙 유지. 조회는 행을 만들지 않는다(D116) |
 | D161 | 「탈퇴·비활성」 상태 컬럼이 없으므로 S4의 제외 조건은 사용자 행이 존재함(삭제는 Cascade)이다. `rankableUserWhere` 한 곳에 둔다 | 메인 기본값 4가 재사용할 규칙이 코드에 없다(D24는 토큰 폐기뿐). 17절 Q4 |
 | D162 | ELO 랭킹은 시즌 단위만 | 문서 7-3·6장·슬라이스·목업 기준. 2장 「주간·월간」은 Q6 |
-| D163 | env 3개(13절). 비율·최소 경기 수는 설정값, 뱃지 순위·유예·주기는 상수 | 슬라이스 「비율은 설정값」「상수 또는 env」 |
+| D163 | env 3개(13절). 비율·최소 경기 수는 설정값, 뱃지 순위·유예·주기는 상수. **[20절로 변경: 비율 env 삭제, 2개]** | 슬라이스 「비율은 설정값」「상수 또는 env」 |
 | D164 | cron 하나로 종료 → 캐시 갱신 순서로 실행, 플래그 `RANKING_JOBS_ENABLED`, 모듈 분리. 스케줄 모듈은 `sharedScheduleModule` 객체 하나를 공유하고, `ScrimsModule.forRoot()`는 구성(jobs 여부)마다 같은 객체를 돌려준다 | 종료 직후 캐시가 정리된다. Nest 11은 동적 모듈을 참조로 구분해서 `forRoot()`를 부를 때마다 별도 인스턴스가 생기고 cron이 그 수만큼 중복 실행된다. S2 주석의 「같은 메타데이터라 한 번만」은 Nest 11에서 맞지 않다 |
 | D165 | 시즌 경계에서 승인 대기였던 결과는 승인 시각 기준 다음 시즌 반영(D116 유지) | 내전 시각 기준으로 바꾸면 닫힌 시즌을 다시 열어야 해 standings 불변이 깨진다. Q3 |
 | D166 | 뱃지 월 표시는 `earned_at − 1ms`의 KST 월이다. 표시만 그렇게 하고 저장 값(`earned_at = ends_at`, D145)은 바꾸지 않는다 | `ends_at`은 배타적 끝이라 2월 1일 00:00 KST에 끝난 시즌이 그대로 쓰면 「2월」로 보인다. 시즌이 실제로 끝난 달은 1월이다 |
@@ -615,7 +622,7 @@ architect(완료)
 | D170 | 개인 순위는 합산 변동의 부호로 배율을 정한다. 승패 표시(D105)와 분리 | 메인 기본값 1. 쌍마다 곱하면 식이 달라지고, 승패 표시로 정하면 점수가 내려가는 상위 절반이 배율을 못 받는다 |
 | D171 | `previewTeamElo`는 `lossRatio`를 필수로 받고, `rating_policy`에 `loss_ratio`를 더한다(D124 확장) | 미리보기와 실제 반영이 같은 규칙이어야 한다 |
 | D172 | 이미 승인된 경기는 다시 계산하지 않는다. 적용 배율은 저장하지 않고 `elo_before`·`elo_after`로 남긴다 | 메인 기본값 2. 이번 변경은 스키마를 바꾸지 않는다 |
-| D173 | 비대칭으로 생기는 점수 인플레이션을 허용하고 19-1에 영향을 기록한다 | 메인 기본값 1. 소프트 리셋이 평균 상승을 묶어 준다. Q9 |
+| D173 | 비대칭으로 생기는 점수 인플레이션을 허용하고 19-1에 영향을 기록한다 | 메인 기본값 1. 소프트 리셋이 평균 상승을 묶어 준다(**20절로 변경: 시즌마다 1000 초기화가 묶는다, 20-1**). Q9 |
 | D174 | 호칭 변경은 화면만. 영문 태그 `RED`, 색 토큰 `--team-red`·`--team-red-ink`. API 값 `orange`·DB enum·코드 식별자 유지 | 메인 기본값 3. 팀 전용 이름으로 경고용 orange와 섞이지 않게 한다 |
 | D175 | ⓘ는 `/rankings` ELO 탭과 프로필 내전 레이팅 카드 2곳. 사이드바 제외 | 점수를 보는 자리다. 사이드바는 메뉴 버튼 안에 중첩되고 모바일에 없다 |
 | D176 | ⓘ 값 출처는 `/dashboard/summary`의 `rating_policy` 확장. 고정값은 core 상수, 예시는 core 함수 | 앱 셸이 이미 부르는 요청이라 가장 작다. 새 엔드포인트와 요청이 없다 |
@@ -630,16 +637,16 @@ architect(완료)
 
 | # | 질문 | 현재 계약 · 추천 | 다른 선택지 |
 | --- | --- | --- | --- |
-| Q1 | 다이아 신규 멤버는 첫 경기를 1800(시드)으로 시작하는데, 같은 티어로 지난 시즌을 뛴 멤버는 소프트 리셋으로 약 1400에서 시작한다. 지난 시즌을 안 뛴 사람이 더 높게 시작해도 되는가? | 문서 그대로 유지(추천). 시즌이 쌓이면 대부분 이월 값을 쓴다 | (a) 시작값 = max(소프트 리셋, 시드) (b) 소프트 리셋 중심을 1000 대신 그 사람 티어 시드로 |
-| Q2 | 시즌이 끝나고 다음 내전이 승인되기 전까지 현재 시즌이 없다(사이드바 「다음 시즌 준비 중」, 랭킹은 직전 시즌 최종 순위). 괜찮은가? | 유지(추천, D143) | 종료 작업이 다음 시즌을 바로 만든다(화면은 끊기지 않지만 활동 없는 기간에 빈 시즌이 쌓인다) |
-| Q3 | 시즌 마지막 날 경기가 종료 후 승인되면 새 시즌에 반영되고 지난 시즌 순위에 들어가지 않는다. 괜찮은가? | 유지(추천, D165). 운영진이 종료 전 승인을 끝내도록 안내 | 종료 처리를 대기 결과가 없어질 때까지 미룬다(최종 순위가 늦어진다) |
-| Q4 | 사용자 상태 컬럼이 없어 서버를 나간 멤버도 S5 전까지 랭킹에 남고 뱃지를 받을 수 있다. 괜찮은가? | S5 봇 탈퇴 이벤트 때 `users.left_at`을 추가하고 `rankableUserWhere`만 바꾼다(추천) | 지금 컬럼 + 운영진 수동 표시(S6 화면 필요) |
-| Q5 | 지난 시즌 5경기 미만 멤버도 같은 소프트 리셋을 받는다. 괜찮은가? | 유지(추천, D142) | 5경기 미만은 시드로 다시 시작 |
-| Q6 | 문서 2장은 ELO 랭킹을 「주간·월간·시즌 단위」라고 하고 7-3·6장·목업은 시즌별이다. 주간·월간이 필요한가? | 시즌만(추천, D162) | S5 이후 `rating_history` 합산으로 기간 변동 랭킹 추가 |
-| Q7 | 뱃지가 게임별 1–3위인데 목업은 「시즌 1 TOP 10」이다. | 메인 기본값대로 1–3위 | `SEASON_BADGE_PLACES`와 시드 변경, 코드 형식 유지 |
-| Q8 | 배포 직후 등 랭킹 캐시가 빈 상태에서 첫 계산이 실패하면 홈 요약 전체가 500이 되어 모집·통계도 안 보이고 사이드바 시즌 카드도 사라진다. 또 `top_rankers: null` 하나가 「시즌 없음」과 「게임 시드 없음」을 함께 뜻해, 시즌이 있어도 「아직 시즌이 없어요」로 보일 수 있다. 어떻게 처리할까? | 이번에는 코드를 바꾸지 않는다(2절·8-2 현재 동작). **추천: 다음 변경 때 부분 실패로 처리하고 null의 의미를 나눈다.** `top_rankers` 첫 계산 실패는 요약 500으로 올리지 않고 로그 후 null. 응답에 `top_rankers_state: 'ready' \| 'no_season' \| 'unavailable'`를 추가한다. `no_season`은 시즌 행 없음, `unavailable`은 계산 실패와 `games` 빈 경우(서버 설정 오류, 로그). 화면은 `no_season` 「아직 시즌이 없어요」, `unavailable` 「순위를 불러오지 못했어요」. 영향: shared `dashboard.ts`(필드·주석), `dashboard.service.ts`, 웹 홈·목, 테스트 | (a) 현재 유지(500이어도 다음 요청에서 복구되고, 시드 누락은 배포 CMD가 막는다) (b) `top_rankers`를 항상 객체로 하고 `season` nullable + `items []`(응답 모양 변경이 더 크다) (c) 요약 500만 막고 null 의미는 그대로(화면이 실패를 「시즌 없음」으로 잘못 말한다) |
-| Q9 | 패배 배율 0.5면 승률 50% 멤버도 경기당 평균 약 4점씩 올라, 랭킹이 경기 수도 함께 반영하게 된다(19-1). 괜찮은가? | 요청대로 0.5 유지(추천, D173). 실제 시즌 값을 보고 조정 | (a) 0.75처럼 덜 줄인다 (b) 시즌별 평균을 보정한다(작업 추가) |
-| Q10 | ⓘ에 승패 점수가 다른 이유를 「지는 부담을 줄여 내전에 편하게 참여하도록」이라고 적었다. 요청에 이유가 없어 architect가 쓴 표현이다. 맞는가? | 이 문구로 진행(추천) | 원하는 이유로 문구만 교체 |
+| Q1 | **사용자 결정으로 닫힘(20절, D182): 시작 점수는 티어 무관 전원 1000.** 다이아 신규 멤버는 첫 경기를 1800(시드)으로 시작하는데, 같은 티어로 지난 시즌을 뛴 멤버는 소프트 리셋으로 약 1400에서 시작한다. 지난 시즌을 안 뛴 사람이 더 높게 시작해도 되는가? | 문서 그대로 유지(추천). 시즌이 쌓이면 대부분 이월 값을 쓴다 | (a) 시작값 = max(소프트 리셋, 시드) (b) 소프트 리셋 중심을 1000 대신 그 사람 티어 시드로 |
+| Q2 | **사용자 결정으로 닫힘(2026-10-31): 추천안 그대로 유지(D143), 코드 변경 없음.** 시즌이 끝나고 다음 내전이 승인되기 전까지 현재 시즌이 없다(사이드바 「다음 시즌 준비 중」, 랭킹은 직전 시즌 최종 순위). 괜찮은가? | 유지(추천, D143) | 종료 작업이 다음 시즌을 바로 만든다(화면은 끊기지 않지만 활동 없는 기간에 빈 시즌이 쌓인다) |
+| Q3 | **사용자 결정으로 닫힘(2026-10-31): 추천안 그대로, 승인 시각 기준 다음 시즌 반영(D165), 코드 변경 없음.** 시즌 마지막 날 경기가 종료 후 승인되면 새 시즌에 반영되고 지난 시즌 순위에 들어가지 않는다. 괜찮은가? | 유지(추천, D165). 운영진이 종료 전 승인을 끝내도록 안내 | 종료 처리를 대기 결과가 없어질 때까지 미룬다(최종 순위가 늦어진다) |
+| Q4 | **사용자 결정으로 닫힘(2026-10-31): 추천안대로 S5 봇 탈퇴 이벤트 때 `users.left_at` 추가 + `rankableUserWhere`만 변경. 지금은 구현하지 않는다(S4 코드 변경 없음).** 사용자 상태 컬럼이 없어 서버를 나간 멤버도 S5 전까지 랭킹에 남고 뱃지를 받을 수 있다. 괜찮은가? | S5 봇 탈퇴 이벤트 때 `users.left_at`을 추가하고 `rankableUserWhere`만 바꾼다(추천) | 지금 컬럼 + 운영진 수동 표시(S6 화면 필요) |
+| Q5 | **사용자 결정으로 닫힘(20절, D183): 소프트 리셋이 없어져 질문 자체가 없어졌다.** 지난 시즌 5경기 미만 멤버도 같은 소프트 리셋을 받는다. 괜찮은가? | 유지(추천, D142) | 5경기 미만은 시드로 다시 시작 |
+| Q6 | **사용자 결정으로 닫힘(2026-10-31): ELO 랭킹은 시즌 단위만(D162), 코드 변경 없음.** 문서 2장은 ELO 랭킹을 「주간·월간·시즌 단위」라고 하고 7-3·6장·목업은 시즌별이다. 주간·월간이 필요한가? | 시즌만(추천, D162) | S5 이후 `rating_history` 합산으로 기간 변동 랭킹 추가 |
+| Q7 | **사용자 결정으로 닫힘(2026-10-31): 뱃지는 게임별 1–3위 유지, 코드 변경 없음.** 뱃지가 게임별 1–3위인데 목업은 「시즌 1 TOP 10」이다. | 메인 기본값대로 1–3위 | `SEASON_BADGE_PLACES`와 시드 변경, 코드 형식 유지 |
+| Q8 | **사용자 결정으로 닫힘(2026-10-31): 추천 방향을 지금 구현한다(21절, D196–D200).** 아래 「이번에는 코드를 바꾸지 않는다」는 더 이상 현재 계약이 아니다(기록용). 배포 직후 등 랭킹 캐시가 빈 상태에서 첫 계산이 실패하면 홈 요약 전체가 500이 되어 모집·통계도 안 보이고 사이드바 시즌 카드도 사라진다. 또 `top_rankers: null` 하나가 「시즌 없음」과 「게임 시드 없음」을 함께 뜻해, 시즌이 있어도 「아직 시즌이 없어요」로 보일 수 있다. 어떻게 처리할까? | 이번에는 코드를 바꾸지 않는다(2절·8-2 현재 동작). **추천: 다음 변경 때 부분 실패로 처리하고 null의 의미를 나눈다.** `top_rankers` 첫 계산 실패는 요약 500으로 올리지 않고 로그 후 null. 응답에 `top_rankers_state: 'ready' \| 'no_season' \| 'unavailable'`를 추가한다. `no_season`은 시즌 행 없음, `unavailable`은 계산 실패와 `games` 빈 경우(서버 설정 오류, 로그). 화면은 `no_season` 「아직 시즌이 없어요」, `unavailable` 「순위를 불러오지 못했어요」. 영향: shared `dashboard.ts`(필드·주석), `dashboard.service.ts`, 웹 홈·목, 테스트 | (a) 현재 유지(500이어도 다음 요청에서 복구되고, 시드 누락은 배포 CMD가 막는다) (b) `top_rankers`를 항상 객체로 하고 `season` nullable + `items []`(응답 모양 변경이 더 크다) (c) 요약 500만 막고 null 의미는 그대로(화면이 실패를 「시즌 없음」으로 잘못 말한다) |
+| Q9 | **사용자 결정으로 닫힘(2026-10-31): 패배 배율 0.5 유지(D173).** 승률 50% 멤버도 경기당 평균 약 4점씩 올라 랭킹이 경기 수도 함께 반영한다. 시즌마다 1000으로 초기화하므로 상승은 그 시즌 안에서만 쌓인다(20-1). 값을 바꾸려면 `SCRIM_ELO_LOSS_RATIO`(0–1) | 요청대로 0.5 유지(추천, D173). 실제 시즌 값을 보고 조정 | (a) 0.75처럼 덜 줄인다 (b) 시즌별 평균을 보정한다(작업 추가) |
+| Q10 | **사용자 결정으로 닫힘(2026-10-31): 이 문구로 유지.** ⓘ에 승패 점수가 다른 이유를 「지는 부담을 줄여 내전에 편하게 참여하도록」이라고 적었다 | 이 문구로 진행(추천) | 원하는 이유로 문구만 교체 |
 
 ---
 
@@ -747,8 +754,8 @@ export type EloPolicy = { kBase: number; kNew: number; newPlayerGames: number; l
 
 - 비슷한 두 팀, K 32, ratio 0.5면 참가자 1인당 경기당 평균 약 +4점이다(승 +16, 패 −8의 평균). 5:5 한 판이면 전체 합 +40점이다.
 - 승률 50%인 멤버도 경기 수만큼 오른다. 시즌 30경기면 약 +120점이다. 랭킹이 실력뿐 아니라 경기 수도 함께 반영하게 된다.
-- 소프트 리셋 기준점 1000은 그대로라 시즌마다 1000과의 차이가 절반으로 줄어 전체 평균이 끝없이 오르지는 않는다. 평균 상승이 시즌당 D점이면 시즌 시작 평균은 약 1000 + D, 끝 평균은 약 1000 + 2D에서 멈춘다(ratio 0.5, 소프트 리셋 0.5 기준). 다만 1000이 더는 「평균 멤버」 점수가 아니다.
-- 티어 시드는 고정값이라 시간이 지나면 기존 멤버 점수가 같은 티어 신규 멤버보다 높아진다. Q1의 역전(신규가 더 높게 시작)은 줄지만, 신규 멤버의 기대 승률은 실제보다 낮게 계산된다. 밸런스 실력값도 10경기 이상 멤버 쪽이 조금 높게 나온다.
+- 소프트 리셋 기준점 1000은 그대로라 시즌마다 1000과의 차이가 절반으로 줄어 전체 평균이 끝없이 오르지는 않는다. 평균 상승이 시즌당 D점이면 시즌 시작 평균은 약 1000 + D, 끝 평균은 약 1000 + 2D에서 멈춘다(ratio 0.5, 소프트 리셋 0.5 기준). 다만 1000이 더는 「평균 멤버」 점수가 아니다. **→ 20절로 변경: 시즌마다 전원 1000으로 초기화하므로 시즌 시작 평균은 항상 1000이고 상승은 그 시즌 안에서만 쌓인다(20-1)**
+- 티어 시드는 고정값이라 시간이 지나면 기존 멤버 점수가 같은 티어 신규 멤버보다 높아진다. Q1의 역전(신규가 더 높게 시작)은 줄지만, 신규 멤버의 기대 승률은 실제보다 낮게 계산된다. 밸런스 실력값도 10경기 이상 멤버 쪽이 조금 높게 나온다. **→ 20절로 변경: 티어 시드 시작이 없어져 이 문단은 해당 없음. 시즌 중 늦게 합류한 멤버는 1000에서 시작해 기존 멤버보다 낮은 자리에서 시작한다(20-1)**
 
 위 수치는 승률 50%를 가정한 계산이다. 실제 운영값으로 확인한 것은 아니다.
 
@@ -797,7 +804,7 @@ export type EloPolicy = { kBase: number; kNew: number; newPlayerGames: number; l
 
 사이드바는 넣지 않는다. 사용자 카드 전체가 메뉴 버튼이라 버튼 안에 버튼이 생기고, 모바일에는 사이드바가 없다.
 
-**값 출처:** 이미 모든 `(main)` 화면이 앱 셸에서 부르는 `useDashboardSummary()`의 `rating_policy`다. 엔드포인트를 늘리지 않고 요청도 늘지 않는다. 고정값(시드 범위, 기준점 1000)은 core 상수 `RATING_SEED_BY_TIER`, `RATING_SEED_DEFAULT`, `SEASON_SOFT_RESET_CENTER`에서 읽는다. 예시 숫자는 core `softResetElo`, `previewTeamElo`로 계산한다. 화면에 숫자를 직접 쓰지 않는다.
+**값 출처:** 이미 모든 `(main)` 화면이 앱 셸에서 부르는 `useDashboardSummary()`의 `rating_policy`다. 엔드포인트를 늘리지 않고 요청도 늘지 않는다. 고정값(시드 범위, 기준점 1000)은 core 상수 `RATING_SEED_BY_TIER`, `RATING_SEED_DEFAULT`, `SEASON_SOFT_RESET_CENTER`에서 읽는다. 예시 숫자는 core `softResetElo`, `previewTeamElo`로 계산한다. 화면에 숫자를 직접 쓰지 않는다. **→ 20절로 변경: 시작 점수는 shared `RATING_START_ELO`, 밸런스 비중은 `rating_policy.elo_weight_max`·`full_weight_games`. `softResetElo`·`SEASON_SOFT_RESET_CENTER`·시드 표는 ⓘ에서 쓰지 않는다**
 
 **문구:** `apps/web/src/lib/elo-info.ts`의 순수 함수 `eloInfoSections(policy: DashboardRatingPolicy | null)`가 만든다. 제목은 「내전 ELO란?」이다.
 
@@ -820,7 +827,7 @@ export type EloPolicy = { kBase: number; kNew: number; newPlayerGames: number; l
 | 이길 때와 질 때 같은 크기로 계산해요. | 1 |
 | 져도 점수가 내려가지 않아요. | 0 |
 
-`win`·`lose`는 `previewTeamElo({blueAvg: 1000, orangeAvg: 1000, k: k_base, lossRatio})`의 blue 값이다. 현재 규칙(티어 시드)대로 설명한다. 전원 1000 안은 사용자 결정 전이라 문구에 넣지 않는다(기본값 6).
+`win`·`lose`는 `previewTeamElo({blueAvg: 1000, orangeAvg: 1000, k: k_base, lossRatio})`의 blue 값이다. 현재 규칙(티어 시드)대로 설명한다. 전원 1000 안은 사용자 결정 전이라 문구에 넣지 않는다(기본값 6). **→ 20절로 변경: 「무슨 점수인가요」·「시작 점수」 문구와 소프트 리셋 문장 표는 20-7 문구로 바꾸고, 「팀을 나눌 때는요」를 더한다(D194)**
 
 **컴포넌트:** 공용 `components/ui/info-tip.tsx`(`InfoTip`, 내용은 children) + `components/rankings/elo-info.tsx`(`EloInfo`, 문구·값 연결). 아이콘은 `ui/icons.tsx`에 `InfoIcon` 추가.
 
@@ -874,3 +881,368 @@ architect가 바꾼 것: `packages/shared/src/scrims.ts`(`SCRIM_ELO_LOSS_RATIO_D
 검증: shared 92 통과, shared dist 재빌드, shared·core·api typecheck Done. **web typecheck는 예상대로 실패한다**(`mock/ratings.ts:128`, `lib/scrim-results.test.ts:59`, `loss_ratio` 없음). frontend가 채우면 해소된다. 새 필드가 필수라 backend·목이 채우기 전에는 `GET /dashboard/summary`와 `POST /scrims/:id/balance`의 응답 parse도 실패한다. typecheck로는 api 쪽이 드러나지 않는다.
 
 `_workspace/ELO_설명서.md` 4절의 예시는 구현 후 새 값에 맞춰 고쳐야 한다. 이 문서 범위 밖이라 그대로 두었다.
+
+---
+
+## 20. S4 후속 변경 2 (사용자 결정, 2026-10-31)
+
+입력: `_workspace/00_input/slice.md` 끝 「S4 후속 변경 2」(사용자 결정 1–4, 메인 기본값 1–9). 취지: **티어와 라인은 팀을 나눌 때만 쓰고, 내전 ELO는 티어와 무관하게 내전 결과만으로 오르내리는 「이 디스코드 안의 내전 실력」 점수다.** 이 절이 앞 절(6-1, 6-2 9단계, 6-5, 9-3, 10절 시즌 카드, 13절, D103·D107·D140·D142·D160, 19-1 인플레이션, 19-3 문구)과 다르면 이 절을 따른다. 앞 절의 해당 자리에는 「20절로 변경」 표시를 달았다.
+
+메인 기본값은 1–9 모두 그대로 따른다(다르게 정한 것 없음). 대응: 1 → D187, 2 → D188, 3 → D189, 4 → D193, 5 → D183·D184, 6 → D186, 7 → D190–D192, 8 → 20-7·Q1·Q5 닫힘, 9 → 20-11.
+
+### 20-1. 바뀌는 규칙
+
+| # | 규칙 | 전 | 후 |
+| --- | --- | --- | --- |
+| 1 | ELO 시작 점수 | 이전 시즌 행 있으면 소프트 리셋, 없으면 티어 시드(600–2000) | **전원 `RATING_START_ELO` = 1000.** (사용자, 게임, 시즌) 행을 처음 만들 때(승인 9단계) 한 번 |
+| 2 | 시즌 전환 | `1000 + 반올림((이전 − 1000) × 0.5)` | **소프트 리셋 없음.** 새 시즌 행도 1000. 지난 시즌 값은 `season_standings`·뱃지·`rating_history`로만 남는다 |
+| 3 | 밸런스 실력값 | `w × 레이팅 + (1 − w) × 티어 시드`, w = min(전체 시즌 경기 수 ÷ 10, 1) | `w × 내전 ELO + (1 − w) × 티어 환산값`, **w = 0.2 × min(현재 시즌 경기 수 ÷ 10, 1)**. 0경기 0, 5경기 0.1, 10경기 이상 0.2. 티어 비중 ≥ 80% |
+| 4 | 1지망·2지망 기본 선택 | 빈 선택 | 롤(포지션 받는 내전)에서 **라이엇 대표 계정 최근 20경기 주·보조 라인**(`computeMainPosition` 상위 2개). 본인이 바꿀 수 있다. 서버는 받은 값을 그대로 저장 |
+
+- 티어 환산값 = 기존 시드 표 그대로(아이언 600 … 다이아 1800, 마스터 이상 2000, 언랭·티어 없음·연동 없음·티어 없는 게임 1000). 이름만 화면에서 「티어 환산값」(D189). 출처도 그대로(대표 계정 최신 스냅샷, `loadTierSeeds`).
+- 「현재 시즌 경기 수」 = 그 (사용자, 게임)의 **현재 시즌 `ratings` 행 `wins + losses`**. 행이 없거나 현재 시즌이 없으면 0(D187).
+- 「내전 ELO」(실력값의 ELO 항, 미리보기 `rating`) = 현재 시즌 `ratings.elo`, 행이 없으면 1000. 행이 없으면 경기 수가 0이라 실력값에는 영향이 없고, `rating_avg`·`elo_preview`에만 쓰인다.
+- K 판정(D106, 모든 시즌 rating_history 수)과 `is_new`는 **그대로**. 새 시즌에 1000으로 돌아가도 신규 K로 돌아가지 않는다.
+- 패배 배율(19-1), 랭킹 5경기 이상(7-3), 시즌 종료 작업의 standings·뱃지(6-3, 6-4)는 그대로.
+
+**영향(보고서·설명서에 적을 것):**
+
+- 시즌 시작 직후에는 모두 1000이라 ELO 랭킹이 비어 있다가(5경기 미만) 경기가 쌓이며 채워진다. 지난 시즌 상위권도 같은 자리에서 다시 시작한다.
+- 시즌 시작 직후 실력값은 거의 티어 환산값이다(w = 0). 밸런스가 내전 결과를 반영하는 폭은 그 시즌 10경기까지 최대 20%로 늘어난다. 지난 시즌에 많이 뛴 멤버도 새 시즌 0경기면 w = 0이다(메인 기본값 1: 1000은 정보가 없는 값이라 섞지 않는다).
+- 실력값의 ELO 항이 움직일 수 있는 폭: 같은 티어 두 멤버가 ELO 1300과 900이면 w 0.2에서 실력값 차이는 80점이다. 티어 한 단계(200점) 차이의 40%다. 티어가 밸런스를 주도하고 ELO는 미세 조정이다.
+- 패배 배율 인플레이션(19-1, Q9): 시즌마다 1000으로 초기화하므로 시즌 시작 평균은 항상 1000이고, 상승은 그 시즌 안에서만 쌓인다(시즌 30경기, 승률 50%면 시즌 끝 약 +120점). 소프트 리셋이 있을 때의 「1000 + 2D 수렴」 분석은 해당 없다.
+- 시즌 중간에 합류한 멤버는 1000에서 시작하므로 이미 많이 이긴 기존 멤버보다 낮은 자리에서 시작한다. 이 서버 내전 기록이 없다는 뜻이라 규칙에 맞는다.
+- **기존 데이터(D193, Q11):** 이미 승인된 경기와 **현재 시즌에 이미 있는 `ratings` 행은 다시 계산하지 않는다.** 현재 시즌 기존 행은 티어 시드(또는 소프트 리셋)로 시작한 값이 그대로 이어지고, 이번 변경 뒤 현재 시즌에 처음 반영되는 멤버만 1000에서 시작한다. 그래서 **현재 시즌 ELO 랭킹은 시즌이 끝날 때까지 두 시작 규칙이 섞인다**(예: 기존 다이아 멤버 1800 근처 vs 새 멤버 1000). 다음 시즌부터는 전원 1000이다.
+
+### 20-2. 소프트 리셋 제거 범위 (D183–D186)
+
+| 대상 | 처리 |
+| --- | --- |
+| core `softResetElo`, `seasonStartElo`, `pickPreviousRating` | **삭제**(+ 테스트) |
+| core 상수 `SEASON_SOFT_RESET_CENTER` | **삭제**. 시작 점수는 shared `RATING_START_ELO` |
+| shared `SEASON_SOFT_RESET_RATIO_DEFAULT` | **삭제**(architect 반영 완료) |
+| env `SEASON_SOFT_RESET_RATIO`, `AppConfig.seasonSoftResetRatio` | **삭제**. `.env.example`에서 지움(architect 반영 완료). Railway에 남아 있어도 무시된다(env 스키마가 모르는 키를 버린다, backend 테스트로 보인다) |
+| `apps/api/src/modules/ratings/rating-carry.ts`(`loadPreviousRatings`) | **파일 삭제**. 쓰는 곳 2곳(승인 9단계, `rating-inputs`)도 뺀다 |
+| 승인 9단계 이월 판정 | 이전 시즌·티어 조회 없이 `elo: RATING_START_ELO`(20-4) |
+| `ratings.carried_from_season_id` | **컬럼·FK·관계 유지, 쓰지 않는다**(D184). 새 행은 값을 넣지 않아 null. 기존 행 값은 감사 기록으로 그대로. 마이그레이션 없음 |
+| 7c 시즌 행 `FOR SHARE` + `closed_at` 검사 | **유지**(D185). 닫힌 시즌 standings 오염 방지(D141)는 이월과 무관하다 |
+| 8단계 사용자 advisory 잠금 | **유지**. 같은 사용자 ratings 갱신 직렬화(S3). 6-2의 「직전 시즌 커밋 뒤 값을 본다」 이유만 없어진다 |
+| 시즌 종료 작업 `SeasonCloser` | **코드 동작 변경 없음**(D186). 원래 ratings를 쓰지 않았다. 주석의 소프트 리셋 언급만 고친다 |
+| 6-5 경합표 | 「리셋」 → 「1000으로 새 행」. 1과 2가 같은 값이라는 결론은 그대로(둘 다 1000) |
+| D160 읽기 | 행이 없으면 1000(이전 시즌 조회 없음) |
+| 사이드바 시즌 카드, ⓘ, 로그인 화면, 설명서 | 20-7 |
+
+### 20-3. core 변경 (logic)
+
+`@gcd/shared` 상수를 쓴다: `RATING_START_ELO`(1000), `BALANCE_ELO_WEIGHT_MAX`(0.2), `BALANCE_FULL_WEIGHT_GAMES`(10, 그대로).
+
+| 함수 | 시그니처 | 규칙 |
+| --- | --- | --- |
+| balanceEloWeight(**새**) | `(seasonGames: number) => number` | `BALANCE_ELO_WEIGHT_MAX × min(seasonGames, F) ÷ F`(F = `BALANCE_FULL_WEIGHT_GAMES`). 곱하고 나서 나눈다(0.2 × 1 ÷ 10 = 0.02, 부동소수 오차를 줄인다). 0 이상 정수가 아니면 RangeError |
+| computeSkill(**변경**) | `(input: { seasonElo: number \| null; seasonGames: number; tierSeed: number }) => number` | `w = balanceEloWeight(seasonGames)`, `elo = seasonElo ?? RATING_START_ELO`, `roundHalfAwayFromZero(w × elo + (1 − w) × tierSeed)`. 입력 이름 `gamesPlayed` → **`seasonGames`**(뜻이 바뀌어 옛 호출부가 컴파일 오류로 드러나게, D189) |
+| softResetElo, seasonStartElo, pickPreviousRating | - | **삭제** |
+
+- `tierSeedRating`, `RATING_SEED_BY_TIER`, `RATING_SEED_DEFAULT`는 이름 그대로 두고 주석만 「밸런스 티어 환산값(ELO 시작값 아님)」으로 고친다(D189).
+- `BalancePlayer.rating` 주석: 「현재 시즌 ELO(행이 없으면 RATING_START_ELO)」.
+- `balanceTeams`·`evaluateTeams`·`previewTeamElo`·ELO 갱신 함수는 변경 없음.
+
+검증 값(테스트 필수):
+
+| tierSeed | seasonElo | seasonGames | w | skill |
+| --- | --- | --- | --- | --- |
+| 1800 | 1000 | 0 | 0 | 1800 |
+| 1800 | 1000 | 1 | 0.02 | 1784 |
+| 1800 | 1000 | 5 | 0.1 | 1720 |
+| 1800 | 1000 | 10 | 0.2 | 1640 |
+| 1800 | 1000 | 25 | 0.2 | 1640 |
+| 600 | 1400 | 10 | 0.2 | 760 |
+| 1200 | 1500 | 10 | 0.2 | 1260 |
+| 1000 | null | 0 | 0 | 1000 |
+| 1800 | null | 3 | 0.06 | 1752(null → 1000) |
+
+`balanceEloWeight`: 0 → 0, 1 → 0.02, 5 → 0.1, 10 → 0.2, 11 → 0.2, −1·1.5·NaN → RangeError. `computeSkill`의 `seasonGames` 범위 오류도 같은 RangeError. 0.5 반올림 경계 테스트는 두지 않는다(부동소수 오차로 결과가 흔들린다).
+
+**core 합계:** 삭제 함수 3개 + 상수 1개, 새 함수 1개, 시그니처 변경 1개. dist 재빌드.
+
+### 20-4. backend 흐름 변경
+
+**승인 9단계(`scrim-results.service.ts:203–227`):**
+
+```ts
+if (missing.length > 0) {
+  await tx.rating.createMany({
+    data: missing.map((userId) => ({ userId, gameId: game.id, seasonId: season.id, elo: RATING_START_ELO })),
+    skipDuplicates: true,
+  });
+}
+```
+
+`loadPreviousRatings`·`loadTierSeeds`·`seasonStartElo`·`tierSeedRating` import를 뺀다. `carriedFromSeasonId`는 넣지 않는다(기본 null). 나머지 단계(7a·7b·7c·8·10–13, `countRatedGames`로 K 판정)는 그대로.
+
+**읽기 `RatingInputsService.forUsers`(`rating-inputs.service.ts`):**
+
+| 값 | 후 |
+| --- | --- |
+| `seasonElo` | 현재 시즌 행 `elo`, 없으면 null(이전 시즌 조회 없음) |
+| `seasonGames`(**새 필드**) | 현재 시즌 행 `wins + losses`, 없으면 0 |
+| `gamesPlayed` | 그대로(모든 시즌 rating_history 수). `isNew`에만 쓴다 |
+| `tierSeed` | 그대로(`loadTierSeeds`) |
+| `skill` | `computeSkill({ seasonElo, seasonGames, tierSeed })` |
+| `rating` | `seasonElo ?? RATING_START_ELO` |
+
+쿼리: 시즌 1 + ratings 1 + 이력 수 1 + 시드 2(이전 시즌 2회가 빠진다). 상세 `players[].skill`, 밸런스, 저장된 팀 요약(`balance`)이 모두 이 값을 쓴다.
+
+**응답 `rating_policy`:**
+
+| 위치 | 변경 |
+| --- | --- |
+| `scrim-teams.service.ts:119–125`(밸런스) | `elo_weight_max: BALANCE_ELO_WEIGHT_MAX` 추가 |
+| `dashboard.service.ts:78–85`(요약) | `soft_reset_ratio` 삭제, `full_weight_games: BALANCE_FULL_WEIGHT_GAMES`, `elo_weight_max: BALANCE_ELO_WEIGHT_MAX` 추가 |
+
+**env(`config/env.ts`):** `SEASON_SOFT_RESET_RATIO` 항목, `SEASON_SOFT_RESET_RATIO_DEFAULT` import, `AppConfig.seasonSoftResetRatio`와 대입 삭제.
+
+**라인 추천:** 20-5.
+
+### 20-5. 라인 추천 `GET /me/position-suggestions` (D190–D192)
+
+| 메서드 | 경로 (`ApiPath`) | Request | Response | 오류 코드 |
+| --- | --- | --- | --- | --- |
+| GET | /me/position-suggestions (`myPositionSuggestions`) | `GetMyPositionSuggestionsQuery {game}` | 200 `GetMyPositionSuggestionsResponse {game, positions, sample_size, synced_at}` | VALIDATION_FAILED(게임 누락·모르는 값) |
+
+JWT, 멤버 전원, **요청자 본인 것만**(다른 사용자 id를 받지 않는다). 스키마는 `packages/shared/src/scrims.ts` 끝.
+
+서버 계산(`PositionSuggestions.forUser(userId, gameCode)`):
+
+1. games 행(code). 없으면 INTERNAL_ERROR + 로그(D135와 같은 처리). `has_positions = false`면 `{positions: [], sample_size: 0, synced_at: null}`.
+2. 그 게임의 요청자 대표 계정: `gameAccount.findFirst({ where: { userId, gameId, isPrimary: true } })`. 없으면 위와 같은 빈 응답.
+3. `recent_matches` where 그 계정, `playedAt DESC, id ASC`, `take: RECENT_MATCHES_MAX`. `LolMatchSummary.safeParse` 실패·`win` null 행은 건너뛴다. **프로필 `ProfileService.loadMatches`와 같은 조회·필터**여야 하므로 그 메서드를 `modules/profile/recent-matches.ts`의 함수(`loadRecentLolMatches(db, gameAccountId)`)로 빼서 둘 다 쓴다.
+4. `computeMainPosition(matches.map(m => m.summary.position))` → null이면 `positions []`, `sample_size 0`. 아니면 `positions` = 결과 순서대로 `game.positions`에 있는 값만, 최대 2개, `sample_size` = 결과 값.
+5. `synced_at` = 계정 `matchesSyncedAt`(없으면 null).
+
+- **외부 API 호출·동기화 등록 없음.** 프로필 조회와 달리 `maybeQueueMatches`를 부르지 않는다(메인 기본값 7). 전적이 오래됐으면 오래된 값으로 추천한다(Q13).
+- 롤 대표 계정의 결과는 같은 사용자의 프로필 `main_position.positions[].position`과 같다(qa 대조).
+- 위치: `modules/profile/position-suggestions.service.ts`(새) + `profile.controller.ts`에 라우트(ProfileModule에 이미 Prisma·GameCatalog 접근이 있다). 게임 행 조회는 기존 `GameCatalog`를 쓴다.
+- 참가 신청(`POST /scrims/:id/join`)·작성(`POST /scrims`)은 **변경 없음.** 서버는 받은 `preferred_positions`·`host_preferred_positions`를 그대로 검증·저장하고 비어 있어도 채우지 않는다.
+
+화면 규칙(D192):
+
+| 화면 | 기본값을 채우는 조건 | 채우지 않는 경우 |
+| --- | --- | --- |
+| `/scrims/new` 작성 폼 | `effPositions`(게임 has_positions && 포지션 사용)이고 1지망·2지망을 사용자가 아직 건드리지 않았을 때, 추천이 도착하면 `first = positions[0] ?? null`, `second = positions[1] ?? null`. 게임을 바꾸면(`pickGame`) 「건드림」을 풀고 그 게임 추천으로 다시 채운다 | 사용자가 하나라도 바꾼 뒤 늦게 도착한 추천, 추천 `[]`·로딩·오류(빈 선택 그대로, 오류 문구 없음) |
+| `/scrims/[id]` 참가 영역 `JoinControls` | `usePositions && v.can_join && !inRoster`(= `viewer.preferred_positions`가 []인 신청 전)이고 사용자가 아직 건드리지 않았을 때 같은 방식 | 참가·대기 중(저장된 희망 포지션이 우선), 위와 같은 경우 |
+
+- 추천으로 채운 상태가 그대로면 고르는 칸 아래에 안내 한 줄: 「솔로 랭크 최근 {sample_size}경기 기준으로 골라 뒀어요. 바꿔도 돼요.」. 사용자가 바꾸면 숨긴다.
+- 추천이 1개면 1지망만 채운다. 신청 버튼 조건(1지망 필수)은 그대로다.
+- 쿼리: `usePositionSuggestions(game, enabled)` — 키 `['me', 'position-suggestions', game]`, `enabled`는 위 조건의 게임 쪽(포지션 받는 게임일 때만 요청), staleTime 5분. 실패해도 재시도 토스트를 띄우지 않는다.
+
+### 20-6. shared 계약 변경 (architect 반영 완료)
+
+| 파일 | 변경 |
+| --- | --- |
+| `scrims.ts` | 상수 `RATING_START_ELO = 1000`, `BALANCE_ELO_WEIGHT_MAX = 0.2` 추가. `BALANCE_FULL_WEIGHT_GAMES`(10) 뜻 주석 변경(「w가 최대에 닿는 현재 시즌 경기 수」). `ScrimTeamSide`·`ScrimPlayerView.skill`·`ScrimViewer.preferred_positions` 주석. `GetMyPositionSuggestionsQuery`·`GetMyPositionSuggestionsResponse` 추가 |
+| `scrim-results.ts` | `RatingPolicyView.elo_weight_max`(0–1, 필수) 추가, `full_weight_games` 주석, `BalanceOptionMember.rating` 주석 |
+| `dashboard.ts` | `DashboardRatingPolicy`: `soft_reset_ratio` **삭제**, `full_weight_games`·`elo_weight_max` **추가**(필수) |
+| `seasons.ts` | `SEASON_SOFT_RESET_RATIO_DEFAULT` **삭제**, 머리 주석 |
+| `paths.ts` | `myPositionSuggestions: '/me/position-suggestions'` |
+| `contract.s3.test.ts` | 밸런스 `rating_policy` 픽스처에 `elo_weight_max` |
+| `contract.s4.test.ts` | 소프트 리셋 상수 테스트 삭제, 요약 픽스처 갱신, 「S4 후속 변경 2」 describe 7개(상수 값, 소프트 리셋 상수 없음, 요약·밸런스 `rating_policy`, 추천 경로·쿼리·응답, 오류 코드 43개 유지) |
+
+오류 코드 추가 없음(43개). `ScrimViewer`·`ScrimDetail` 모양은 그대로다(D190).
+
+### 20-7. 화면 문구 변경 목록 (frontend)
+
+숫자는 shared `RATING_START_ELO`와 응답 `rating_policy`로만 만든다(`*_DEFAULT` import 금지 규칙 그대로. `RATING_START_ELO`는 설정값이 아닌 고정 상수라 D176의 core 상수와 같은 취급). N = `round(elo_weight_max × 100)`.
+
+| 위치(현재 줄) | 지금 | 변경 |
+| --- | --- | --- |
+| `apps/web/src/lib/elo-info.ts:1, 12–21` | `softResetElo`·`SEASON_SOFT_RESET_CENTER`·`RATING_SEED_*` import, `softResetSentence` | 삭제 |
+| `elo-info.ts:27` | 승패 예시 `previewTeamElo({blueAvg: RATING_SEED_DEFAULT, …})` | `RATING_START_ELO` |
+| `elo-info.ts:46–47` 「무슨 점수인가요」 | 「…라이엇 티어와는 따로 계산하고, 게임과 시즌마다 따로 쌓여요.」 | 「우리 서버 내전 결과로만 정해지는 점수예요. 라이엇 티어와 상관없이 모두 같은 점수에서 시작하고, 게임과 시즌마다 따로 쌓여요.」 |
+| `elo-info.ts:51–53, 61–63` 「시작 점수는 어떻게 정하나요」(값 있음·없음 둘 다) | 소프트 리셋·티어 시드 문장 | 「모든 멤버가 티어와 상관없이 {RATING_START_ELO}점에서 시작해요. 새 시즌이 시작되면 모두 다시 {RATING_START_ELO}점이 돼요. 지난 시즌 순위는 시즌 최종 순위와 뱃지로 남아요.」(상수라 값 유무와 같은 문구) |
+| `elo-info.ts` 끝 **새 섹션** 「팀을 나눌 때는요」 | 없음 | 값 있음: 「팀 자동 밸런스는 티어를 중심으로 나누고, 내전 ELO는 이번 시즌 경기 수에 따라 조금씩 섞어요. 이번 시즌 {full_weight_games}경기부터 최대 {N}%이고, 티어 비중은 {100 − N}% 아래로 내려가지 않아요.」 N = 0이면 「팀 자동 밸런스는 티어만으로 나눠요.」. 값 없음: 「팀 자동 밸런스는 티어를 중심으로 나누고, 내전 ELO는 조금만 섞어요.」 |
+| `lib/dashboard.ts:7, 15–16, 28–34` `softResetText(ratio)` | 비율별 4가지 문구 | `seasonResetText()` = 「종료 시 모두 {RATING_START_ELO}점으로 초기화」. `HALF_RATIO` 삭제 |
+| `components/shell/season-card.tsx:5, 42` | `softResetText(policy.soft_reset_ratio)` | `seasonResetText()` |
+| `lib/scrim-results.ts:56–60` `skillFormulaText` | 「실력값 = w × 내전 레이팅 + (1 − w) × 티어 시드, w = 내전 경기 수 ÷ {full_weight_games} (최대 1). K = …」 | 「실력값 = w × 내전 ELO + (1 − w) × 티어 환산값. w는 이번 시즌 내전 경기 수에 따라 0에서 {N}%까지 늘어요({full_weight_games}경기부터 {N}%). K = {k_base}, 신규 멤버 K = {k_new}.」 + 기존 패배 배율 문장. 값 없음: 「실력값은 티어를 중심으로 이번 시즌 내전 ELO를 조금 섞어 계산해요.」 |
+| `lib/rankings.ts:28` ELO 탭 설명 | 「서버 자체 내전 레이팅입니다. 운영진이 승인한 결과만 반영됩니다.」 | 「티어와 상관없이 모두 {RATING_START_ELO}점에서 시작하는 서버 자체 내전 점수입니다. 운영진이 승인한 결과만 반영되고, 시즌마다 새로 시작합니다.」 |
+| `app/(auth)/layout.tsx:17` 로그인 화면 기능 소개 | 「운영진 승인 결과만 반영 · 시즌 소프트 리셋」 | 「운영진 승인 결과만 반영 · 시즌마다 {RATING_START_ELO}점에서 새로 시작」 |
+| `components/scrims/scrim-new-form.tsx`(02 기본 정보, 희망 포지션 칸 340–350 근처) | 없음 | 20-5 안내 한 줄 |
+| `components/scrims/scrim-detail.tsx` `JoinControls`(PositionPicker 660–671 아래) | 없음 | 20-5 안내 한 줄 |
+| `_workspace/ELO_설명서.md` 1·3·5·6·8절, 9-1 | 티어 시드·소프트 리셋 설명, 9-1 「열린 결정」 | 리더가 새 규칙으로 고치고 9-1을 「결정됨(2026-10-31)」으로 닫는다. 20-1 영향(현재 시즌 혼재)을 적는다 |
+
+그대로 두는 문구: `/rankings` 규칙 문구(「{min_games}경기 이상 … 동점이면 승률 순」), 티어 탭 「티어 점수 = 티어 × 400 + …」, `scrim-detail.tsx:463` `title="실력값"`, 로그인 화면 「티어와 내전 레이팅으로 126가지 조합 중 최적 3안」(:11, 여전히 맞다), 프로필 화면.
+
+### 20-8. 스키마·마이그레이션
+
+**스키마 변경 없음, 마이그레이션 없음.** `schema.prisma`는 `///` 주석 3줄만 고쳤다(`Rating` 모델 설명, `carriedFromSeasonId`, `Season.carriedRatings`). `prisma migrate diff --from-schema-datamodel <HEAD schema> --to-schema-datamodel prisma/schema.prisma --script` 출력 = `-- This is an empty migration.`, `prisma validate` 통과. `ratings.elo`의 DB 기본값은 원래 1000이다(승인은 값을 명시해 넣는다).
+
+기존 데이터: 재계산·정리 스크립트 없음(D193). `carried_from_season_id` 기존 값은 남는다. `rating_history`, `season_standings`, `user_badges`는 손대지 않는다.
+
+### 20-9. 결정 사항 (D182부터)
+
+| # | 결정 | 이유 |
+| --- | --- | --- |
+| D182 | ELO 시작 점수 = shared `RATING_START_ELO`(1000). 모든 새 (사용자, 게임, 시즌) 행. 티어 무관. 설정값 아님. D103의 시드 표는 시작값 용도를 잃고 밸런스 티어 환산값으로만 쓴다 | 사용자 결정 1. 내전 ELO를 「이 서버 안의 내전 실력」으로 만든다. Q1(신규가 이월 멤버보다 높게 시작) 해소 |
+| D183 | 소프트 리셋 폐지. core 함수 3개·상수, shared 기본값, env, `rating-carry.ts` 삭제(20-2). 새 시즌 행도 1000 | 사용자 결정 2. 죽은 코드를 남기면 다시 쓰일 위험이 있고, env가 남으면 운영자가 값을 바꿔도 아무 일이 없어 혼란스럽다 |
+| D184 | `ratings.carried_from_season_id` 컬럼·FK는 남기고 쓰지 않는다. 새 행은 null | 메인 기본값 5. 지우면 `DROP COLUMN` 마이그레이션이 필요하고(QA 규칙 「DROP 없음」), 기존 행의 시작값 출처 감사 기록이 사라진다. 남겨도 비용이 없다. 나중에 정리하려면 별도 마이그레이션 |
+| D185 | 승인 7c(시즌 행 `FOR SHARE` + `closed_at` 검사)와 8단계 사용자 잠금은 유지 | 7c는 닫힌 시즌 standings 오염 방지(D141), 사용자 잠금은 ratings 갱신 직렬화(S3)다. 둘 다 이월과 무관하다 |
+| D186 | 시즌 종료 작업은 동작 변경 없음(standings·뱃지·`closed_at`). D145의 「미달자 값은 이월에 쓰인다」는 문구만 폐기 | 메인 기본값 6. 종료 작업은 원래 ratings를 쓰지 않았다 |
+| D187 | 실력값 `w = 0.2 × min(현재 시즌 경기 수 ÷ 10, 1)`, 경기 수 = 현재 시즌 `ratings` 행 `wins + losses`(없으면 0), ELO 항 = `seasonElo ?? 1000`. K 판정(D106)·`is_new`는 모든 시즌 이력 수 그대로. D107 변경 | 사용자 결정 3, 메인 기본값 1. 시즌마다 1000으로 돌아가므로 지난 시즌 경기 수로 비중을 주면 정보 없는 1000이 섞인다. rated 반영마다 wins·losses 중 정확히 하나가 1 늘어 `wins + losses` = 그 시즌 반영 경기 수이고, 이미 읽는 행이라 쿼리가 늘지 않는다 |
+| D188 | 0.2·10은 shared 상수(`BALANCE_ELO_WEIGHT_MAX`, `BALANCE_FULL_WEIGHT_GAMES`), env 아님. 화면은 `rating_policy.elo_weight_max`·`full_weight_games`로만 쓴다(밸런스·요약 두 응답). 요약의 `soft_reset_ratio`는 삭제 | 메인 기본값 2, D124 노출 규칙. ⓘ가 요약 `rating_policy`만 보므로 요약에도 넣는다 |
+| D189 | 밸런스의 티어 값은 화면에서 「티어 환산값」이라 부른다. 코드 식별자(`tierSeed`, `RATING_SEED_BY_TIER`, `tierSeedRating`, `loadTierSeeds`)는 유지하고 주석만 고친다. 단 `computeSkill` 입력 `gamesPlayed`는 `seasonGames`로 바꾼다 | 메인 기본값 3. 「티어 점수」는 티어 랭킹의 `tierScore`(티어 × 400 + …, 화면 규칙 문구)와 겹쳐 다른 숫자가 같은 이름이 된다. 식별자 일괄 변경은 동작 변경과 섞여 리뷰 범위만 키운다. `seasonGames`는 뜻이 바뀌었으므로 이름을 바꿔 옛 호출부를 컴파일 오류로 잡는다 |
+| D190 | 라인 추천은 새 엔드포인트 `GET /me/position-suggestions?game=` 하나로 내린다. `ScrimViewer`에 넣지 않는다 | 작성 화면은 내전이 없어 viewer가 없다. 추천은 (사용자, 게임) 값이라 내전과 무관하고, `ScrimDetail`은 상태 변경 응답 12곳이 함께 쓰므로 viewer에 넣으면 모든 쓰기 응답에 조회 2회가 붙는다. 두 화면이 같은 경로·같은 훅을 쓴다 |
+| D191 | 추천 = 요청자 그 게임 대표 계정의 저장된 최근 20경기 → `computeMainPosition` → `games.positions` 안 값, 최대 2개. 외부 호출·동기화 등록 없음. 대상 아님·연동 없음·기록 없음은 `[]` | 메인 기본값 7. 프로필 `main_position`과 같은 계산이라 사용자가 보는 「주 포지션」과 기본값이 일치한다. 게임 코드 분기 대신 `has_positions`·`positions`로 판단(설계 원칙 3) |
+| D192 | 화면은 사용자가 건드리기 전 빈 선택일 때만 추천으로 채우고, 이미 신청한 값·사용자 변경을 덮지 않는다. 서버는 받은 값을 그대로 저장한다 | 메인 기본값 7. 「본인이 바꿀 수 있다」와 「서버가 몰래 채우지 않는다」를 동시에 지킨다. 늦게 도착한 응답이 사용자 선택을 덮는 경합을 막는다 |
+| D193 | 이미 승인된 경기·현재 시즌 기존 `ratings` 행은 다시 계산하지 않는다. 변경 뒤 새로 만들어지는 행부터 1000 | 메인 기본값 4. 영향(현재 시즌 혼재)은 20-1, 처리 여부는 Q11 |
+| D194 | ⓘ는 「시작 점수」를 상수 문구로 바꾸고 「팀을 나눌 때는요」를 더한다(20-7). 현재 시즌 혼재 같은 과도기 안내는 ⓘ에 넣지 않는다 | 사용자 취지(티어는 팀 나눌 때만)를 점수 설명 자리에서 함께 보여 준다. 과도기 문구는 시즌이 바뀌면 틀린 말이 되므로 설명서·공지에 둔다(Q11) |
+| D195 | api와 web은 같은 커밋으로 함께 배포한다(20-14). 응답 필드가 바뀌어 한쪽만 배포된 동안 요약·밸런스 응답 parse가 실패할 수 있다 | 19절과 같은 방식. 필수 필드로 두어 잘못된 값이 화면에 조용히 섞이지 않게 한다 |
+
+### 20-10. 확인 필요 (추가)
+
+17절 Q1·Q5는 20절로, Q9·Q10은 2026-10-31 사용자 확정으로 닫혔다(추천안 그대로, 코드 변경 없음).
+
+**사용자 답변(2026-10-31):** Q11 실제 운영 데이터가 아직 없으므로 그대로 둔다(재계산·스크립트 없음). Q12 「티어 환산값」 확정. Q13 그대로 추천(「최근 {n}경기 기준」 표시, 본인 변경 가능) 확정. 세 항목 모두 아래 「현재 계약 · 추천」대로 구현한다.
+
+| # | 질문 | 현재 계약 · 추천 | 다른 선택지 |
+| --- | --- | --- | --- |
+| Q11 | 현재 시즌에 이미 있는 ELO 행은 예전 규칙(티어 시드·소프트 리셋)으로 시작한 값이라, 이번 시즌이 끝날 때까지 기존 멤버(예: 다이아 1800 근처)와 새로 반영되는 멤버(1000)가 같은 랭킹에 섞인다. 괜찮은가? | 그대로 두고 다음 시즌부터 전원 1000(추천, 메인 기본값 4). 설명서·공지에 안내 | (a) 운영진이 현재 시즌을 일찍 끝내고 새 시즌을 시작한다(시즌 수정 화면은 S6, 지금은 DB 수동 작업 필요) (b) 일회성 스크립트로 현재 시즌 `rating_history`를 1000 시작으로 다시 재생해 `ratings`·이력을 고친다(되돌리기 어렵고 승인 순서 재현 검증이 필요하다) |
+| Q12 | 밸런스에 쓰는 티어 값을 화면에서 「티어 환산값」이라고 부른다(「티어 점수」는 티어 랭킹의 다른 식과 겹친다). 이 이름이 괜찮은가? | 「티어 환산값」(추천, D189) | 「티어 기준 점수」 등 다른 말. 문구만 바뀐다 |
+| Q13 | 라인 추천은 이미 저장된 최근 20경기만 쓴다. 전적 동기화가 오래 멈춘 멤버는 예전 라인이 추천된다. 괜찮은가? | 그대로(추천, D191). 안내 문구에 「최근 {n}경기 기준」을 보여 주고 본인이 바꿀 수 있다 | 동기화가 N일보다 오래됐으면 추천하지 않는다(기준일 상수 추가) |
+
+### 20-11. 명세 문서 갱신 필요
+
+명세(`게임 커뮤니티 대시보드 개발 문서.md`)는 고치지 않았다. 사용자가 반영할 목록:
+
+| 위치 | 지금 문구 | 바꿀 내용 |
+| --- | --- | --- |
+| 7-1 셋째 항목(169행) | 「첫 레이팅은 연동된 티어로 시드를 정합니다 … 티어 연동이 없으면 1000입니다.」 | 티어와 상관없이 전원 1000에서 시작하고 시즌마다 1000으로 초기화 |
+| 7-1 식(165행) | `R' = R + K(S − E)`(대칭) | 패배 쪽 변동에 패배 배율(기본 0.5)을 곱한다(19절에서 바뀐 것, 아직 미반영) |
+| 7-2 1번(176행) | `실력값 = w × 내전 레이팅 + (1 − w) × 티어 시드`, `w = 내전 경기 수 ÷ 10(최대 1)` | `w × 내전 ELO + (1 − w) × 티어 환산값`, `w = 0.2 × min(이번 시즌 내전 경기 수 ÷ 10, 1)`, 티어 비중 80% 이상 |
+| 7-2 3번(178행) | 희망 포지션 비용만 있음 | 희망 포지션 기본값 = 라이엇 대표 계정 최근 20경기 주·보조 라인, 본인이 변경 가능 |
+| 7-3 마지막 문단(192행) | 「레이팅은 `1000 + (기존 − 1000) × 0.5`처럼 절반만 남기는 소프트 리셋을 적용합니다.」 | 「레이팅은 전원 1000으로 초기화합니다.」 |
+| 6장 API 표(104행 근처 `/me/*`) | 없음 | `GET /me/position-suggestions?game=` — 참가 신청·작성 화면의 희망 포지션 기본값 |
+
+### 20-12. 담당
+
+의존: **logic → backend**, **logic → frontend 목 부분**(`computeSkill` 새 시그니처). frontend의 화면 문구·추천 훅은 바로 시작한다.
+
+**logic (domain-logic-dev) — `packages/core/src/**`**
+
+| 파일 | 작업 |
+| --- | --- |
+| `balance.ts` | `balanceEloWeight` 추가, `computeSkill` 입력 `seasonGames`·규칙 변경(20-3), `BalancePlayer.rating` 주석, 머리 주석 D187 |
+| `balance.test.ts` | `computeSkill` 기존 테스트(112행~)를 20-3 표로 교체, `balanceEloWeight` 테스트 |
+| `season.ts` | `softResetElo`·`seasonStartElo`·`pickPreviousRating` 삭제, `SEASON_SOFT_RESET_CENTER` import 삭제 |
+| `season.test.ts` | 238–370행 근처 세 describe 삭제 |
+| `config.ts` | `SEASON_SOFT_RESET_CENTER`와 S4 시즌 전환 상수 절 삭제, `RATING_SEED_BY_TIER`·`RATING_SEED_DEFAULT` 주석 「밸런스 티어 환산값(D189), ELO 시작값 아님」 |
+| `rating.ts` | `tierSeedRating` 주석 같은 취지 |
+| `index.ts` | 삭제 3개 export 제거, `balanceEloWeight` 추가 |
+| dist | 재빌드. 보고서 `_workspace/02_domain-logic-dev_report.md`에 20절 추가분 |
+
+**backend (backend-dev) — `apps/api/**`**
+
+| 파일 | 작업 |
+| --- | --- |
+| `src/config/env.ts`, `env.spec.ts` | `SEASON_SOFT_RESET_RATIO`·`seasonSoftResetRatio` 삭제, 관련 테스트(160–177행) 삭제, 「`SEASON_SOFT_RESET_RATIO`가 env에 남아 있어도 기동 성공」 테스트 추가 |
+| `src/modules/scrims/scrim-results.service.ts` | 9단계 20-4, import 정리, 클래스 주석(152–153행 「소프트 리셋 또는 시드」) |
+| `src/modules/ratings/rating-carry.ts` | 삭제 |
+| `src/modules/ratings/rating-inputs.service.ts` | 20-4 표(`seasonGames` 필드 추가, 이전 시즌 조회 삭제), 주석 |
+| `src/modules/ratings/rating-seed.ts` | 주석만(밸런스 티어 환산값) |
+| `src/modules/scrims/scrim-teams.service.ts` | `rating_policy.elo_weight_max` |
+| `src/modules/dashboard/dashboard.service.ts` | `rating_policy` 20-4 |
+| `src/modules/rankings/season-closer.ts` | 23행 주석(소프트 리셋 언급) |
+| `src/modules/profile/recent-matches.ts`(새), `profile.service.ts` | `loadMatches`를 공용 함수로 이동 |
+| `src/modules/profile/position-suggestions.service.ts`(새), `profile.controller.ts`, `profile.module.ts` | 20-5 엔드포인트 |
+| `test/season-transition.e2e.spec.ts` | 6-1 이월 테스트(55–120행, 395–420행 근처)를 「새 시즌 첫 행 = 1000, carried null, 지난 시즌 1421이어도 1000, 다이아 신규도 1000」으로 교체. 시즌 경계 skill(478행 근처): 지난 시즌 경기가 많아도 새 시즌 0경기면 skill = 티어 환산값 |
+| `test/scrim-results.e2e.spec.ts:175`, `test/loss-ratio.e2e.spec.ts:243`, `test/dashboard.e2e.spec.ts:77` | `rating_policy` 기대값 |
+| `test/db/season-close.db.e2e.spec.ts:204, 237` | carried 기대값 → null·1000(작성만, DB 없음) |
+| 새 테스트 | 승인 e2e: 현재 시즌 기존 행(1800)은 그대로 이어지고 새 멤버만 1000(D193). skill: 현재 시즌 0·5·10경기(w 0·0.1·0.2), 밸런스·상세 skill 일치. 추천 e2e: 롤 경기 있음 → 2개·`sample_size`·`synced_at`, 1개만, 롤체·스팀 → [], 계정 없음 → [], 깨진 summary 행 건너뜀, `game` 누락 400, 동기화 등록 안 함(enqueuer 미호출), 같은 사용자 프로필 `main_position`과 같은 값, 다른 사용자 계정 값이 섞이지 않음 |
+| 보고서 | `_workspace/02_backend-dev_s4.md`에 20절 추가분 |
+
+**frontend (frontend-dev) — `apps/web/**`**
+
+| 파일 | 작업 |
+| --- | --- |
+| `src/lib/elo-info.ts`, `elo-info.test.ts` | 20-7 ⓘ 문구, 새 섹션, 테스트(소프트 리셋 ratio 케이스 삭제, `elo_weight_max` 0·0.2, 값 없음) |
+| `src/lib/dashboard.ts`, `dashboard.test.ts` | `softResetText` → `seasonResetText`, 테스트 33–44행 교체 |
+| `src/components/shell/season-card.tsx` | 42행 |
+| `src/lib/scrim-results.ts`, `scrim-results.test.ts` | `skillFormulaText`, 테스트 59–64행 픽스처 `elo_weight_max` |
+| `src/lib/rankings.ts` | 28행 |
+| `src/app/(auth)/layout.tsx` | 17행 |
+| `src/lib/api/scrims.ts`, `src/lib/hooks/scrims.ts`(또는 같은 위치 훅 파일) | `getMyPositionSuggestions(game)`, `usePositionSuggestions(game, enabled)` |
+| `src/components/scrims/scrim-new-form.tsx` | 20-5 기본값·「건드림」 상태·안내 |
+| `src/components/scrims/scrim-detail.tsx` | `JoinControls` 20-5 기본값·안내 |
+| `src/lib/api/mock/ratings.ts` | 새 행 시작값 `RATING_START_ELO`(335행), `skillInfo`의 `computeSkill` 입력 `seasonGames`(192–199행, 현재 시즌 행 wins + losses), `rating` 폴백 1000, `ratingPolicyView`에 `elo_weight_max`(138행), 주석(142행) |
+| `src/lib/api/mock/rankings.ts` | `SEASON_SOFT_RESET_RATIO_DEFAULT` import(30행)·`soft_reset_ratio`(388행) 삭제, `full_weight_games`·`elo_weight_max` 추가, 57행 주석 |
+| 목 추천 엔드포인트 | `GET /me/position-suggestions` — 목 게임 계정의 최근 전적(`mock/game-accounts.ts`의 `mainPosition` 계산)과 같은 값. 목 시나리오에서 롤 연동 없음 → [] |
+| `src/lib/api/mock/scrims.ts:168` | `SEED_VERSION` 6 → 7(저장된 목 ratings가 티어 시드로 시작했다) |
+| 테스트 | `mock/rankings.test.ts:190`, `mock/scrim-results.test.ts:85` 기대값, 추천 기본값(채움·건드린 뒤 미적용·게임 변경 시 다시 채움·참가 중이면 저장값 유지·추천 실패 시 빈 선택) |
+| 확인 | 다크·라이트 × 데스크톱·모바일: 작성 폼·상세 참가 영역 안내, ⓘ 새 섹션, 사이드바 시즌 카드. 보고서 `_workspace/02_frontend-dev_s4.md` |
+
+**리더:** `_workspace/ELO_설명서.md`(20-7 마지막 행), 사용자 보고(20-1 영향, Q11–Q13).
+
+### 20-13. qa 대조 항목
+
+- 시작값: 승인 경로에 `RATING_START_ELO` 외 시작값 계산이 없는지. `rating.create`/`createMany`가 승인 9단계에만 있는지(기존 규칙). `carriedFromSeasonId`에 값을 쓰는 코드가 없는지.
+- 삭제 확인: 코드 전체(목·테스트 포함)에 `softResetElo`, `seasonStartElo`, `pickPreviousRating`, `SEASON_SOFT_RESET`, `seasonSoftResetRatio`, `soft_reset_ratio`, `loadPreviousRatings`가 남지 않았는지(이력 문서 `_workspace/**` 제외).
+- 7c `lockSeasonForRating`과 사용자 잠금이 그대로 있는지, 6-5 4·6–9행 테스트가 그대로 통과하는지.
+- w: core 20-3 표 수치, `rating-inputs`의 `seasonGames` = 현재 시즌 행 `wins + losses`, `isNew`는 여전히 모든 시즌 이력 수. 밸런스 응답 `members[].skill` = 상세 `players[].skill`(같은 now).
+- 응답: 밸런스 `rating_policy.elo_weight_max` = 0.2, 요약 `rating_policy`에 `soft_reset_ratio` 없음·`full_weight_games` 10·`elo_weight_max` 0.2. 웹 훅 parse가 실제 응답과 맞는지.
+- env ↔ `.env.example` ↔ `config/env.ts`: `SEASON_SOFT_RESET_RATIO`가 셋 모두에 없는지. 남은 env가 기동을 막지 않는지.
+- 추천: 엔드포인트 ↔ `ApiPath` ↔ 웹 클라이언트·목 일대일. 외부 호출·`enqueue` 없음. 프로필 `main_position`과 같은 값. 서버가 참가·작성 요청의 빈 포지션을 채우지 않는지(서비스 코드에 추천 호출이 없는지).
+- 화면: 20-7 표 전 행. 「소프트 리셋」·「티어 시드」 표기가 화면 소스에 남지 않았는지(테스트·목 주석 제외). 숫자 1000·0.2·10 리터럴과 `*_DEFAULT` import가 화면 코드에 없는지(목 제외).
+- 추천 기본값: 사용자 변경 후 늦게 온 응답이 덮지 않음, 참가 중 저장값 우선, 게임 변경 시 다시 채움, 추천 실패 시 빈 선택·오류 없음. 390px 폭에서 안내 줄바꿈.
+- 스키마: `schema.prisma` diff가 주석뿐이고 새 마이그레이션 폴더가 없는지.
+
+### 20-14. 배포 순서 영향
+
+1. api·web을 **같은 커밋으로 함께** 배포한다(D195). 한쪽만 배포된 동안: 옛 web + 새 api → 요약 parse 실패(옛 스키마가 `soft_reset_ratio` 필수) → 홈 오류·사이드바 시즌 카드 숨김, 밸런스는 정상. 새 web + 옛 api → 요약·밸런스 parse 실패(`elo_weight_max` 없음), 추천 404 → 빈 선택(화면은 막히지 않음). 둘 다 배포가 끝나면 풀린다.
+2. 마이그레이션 없음 → `prisma migrate deploy`는 할 일이 없다. 시드(`seed.ts`) 변경 없음.
+3. Railway api 서비스 변수에서 `SEASON_SOFT_RESET_RATIO`를 지운다. 남겨 둬도 무시되지만 바꿔도 효과가 없어 혼란을 준다.
+4. 배포 직후 현재 시즌 기존 행은 그대로라 랭킹 숫자가 갑자기 바뀌지 않는다. 새로 반영되는 멤버만 1000에서 시작한다(Q11).
+5. web Dockerfile 복사 범위 변경 없음(새 워크스페이스 패키지 없음).
+6. 랭킹 캐시는 다음 5분 주기에 새 값으로 갱신된다. 캐시 payload 형식 변경 없음.
+
+### 20-15. 이번 변경과 기준선
+
+architect가 바꾼 것: `packages/shared/src/scrims.ts`, `scrim-results.ts`, `dashboard.ts`, `seasons.ts`, `paths.ts`, `contract.s3.test.ts`, `contract.s4.test.ts`, `.env.example`, `apps/api/prisma/schema.prisma`(주석 3줄), 이 문서.
+
+검증:
+
+- `corepack pnpm --filter @gcd/shared typecheck` 통과. shared dist 재빌드.
+- shared 테스트 **99 통과**(5파일, 이전 92 + 이번 7). 이 PC Node 20.11에서는 저장소 `vitest.config.ts`가 로드되지 않아(`ERR_REQUIRE_ESM`, 패키지 engines ≥ 22) 저장소 밖 임시 `.mjs` 설정(`include: ['src/**/*.test.ts']`, 같은 내용)으로 `npx vitest run --config <tmp>`를 실행하고 지웠다.
+- `prisma migrate diff`(HEAD schema → 현재) = 빈 마이그레이션, `prisma validate` 통과.
+- core typecheck 통과(아직 core는 바뀌지 않았다). **api typecheck는 예상대로 실패한다**(`src/config/env.ts:17` `SEASON_SOFT_RESET_RATIO_DEFAULT` 없음). **web typecheck도 예상대로 실패한다**(`season-card.tsx:42`, `elo-info.ts:63`, `mock/rankings.ts:30`, `mock/ratings.ts:138`, `elo-info.test.ts`, `scrim-results.test.ts`). backend·frontend 작업으로 해소된다. typecheck로 드러나지 않는 것: `dashboard.service.ts`·`scrim-teams.service.ts`는 객체를 `parse`에 넘기므로 새 필수 필드가 빠져도 컴파일되고 **실행 때 응답 parse가 실패한다**(backend 20-4).
+
+## 21. S4 후속 변경 3 — Q8 요약 부분 실패 (사용자 결정, 2026-10-31)
+
+Q2·Q3·Q4·Q6·Q7은 17절 추천안 확정이다. 코드 변경 없음. Q4의 `users.left_at`은 S5에서 넣는다. 이 절은 Q8만 구현한다. 2절·8-2의 이전 동작 문장보다 이 절이 우선한다.
+
+### 21-1. 규칙 (D196–D201)
+
+| 상황 | `top_rankers` | `top_rankers_state` | 화면 |
+| --- | --- | --- | --- |
+| 시작한 시즌이 없음(`resolveSeasonAt ?? latestStartedSeason`이 null). games가 비어도 이쪽이 우선(D201) | null | `no_season` | 「아직 시즌이 없어요」 |
+| `games` 행이 없음 | null | `unavailable` | 「순위를 불러오지 못했어요」. 서버 error 로그 |
+| `eloView`가 던짐(빈 캐시 첫 계산 실패 포함) | null | `unavailable` | 같은 문구. 서버 error 로그. 그 게임에서 루프를 멈춘다(D198) |
+| 순위 블록이 있음. 행이 0개여도 | 객체 | `ready` | 기존 빈 상태 문구 |
+
+- 요약의 나머지(시즌 카드, 모집, 통계, 최근 결과, `me`)는 그대로 200이다.
+- `GET /rankings/*`의 빈 캐시 첫 계산 실패 500은 그대로다.
+- 값이 있는 캐시의 갱신 실패(`stale: true`)는 이 절과 무관하다. 그때 `top_rankers`는 ready다.
+- 게임을 sort_order 순으로 본다. 행이 있는 게임을 만나면 그 블록으로 ready를 반환하고 뒤 게임은 보지 않는다. 계산이 한 번이라도 던지면 앞 게임의 빈 블록으로 대체하지 않고 전체 unavailable이다(D198).
+- 재시도 대기 시간은 두지 않는다. 다음 요약 요청이 같은 첫 계산을 다시 시도하고, 키별 in-flight 중복 제거는 랭킹과 같다(D201).
+- `me`는 감싸지 않는다(D199). `eloEntryOf`는 캐시만 읽고 첫 계산을 하지 않는다. 캐시가 없으면 지금처럼 elo는 ratings 값, rank는 null이다. 캐시 읽기 자체가 실패하면 통계·모집 조회와 같이 요약 500이다.
+
+### 21-2. 응답
+
+shared는 반영됐다. `GetDashboardSummaryResponse`는 `top_rankers_state` 기준 판별 유니언이다. ready는 `top_rankers` 객체, `no_season`·`unavailable`은 null. 다른 조합은 parse 실패(D197). `.strict()`가 필요한 테스트는 `GetDashboardSummaryBody.strict()`로 알 수 없는 키를 거른 뒤 유니언으로 조합을 검사한다.
+
+### 21-3. 담당
+
+**backend:** `dashboard.service.ts`의 `topRankers`가 `{ top_rankers, top_rankers_state }`를 반환. 실패·games 없음은 `Logger.error` 한 줄(원인 로그는 `RankingsReader`가 이미 남긴다). `test/dashboard.e2e.spec.ts`: 시즌 없음 = `no_season`, lol 첫 계산 실패 = 200·`unavailable`·season·stats·me 유지·rank null, 실패를 풀면 ready, lol은 빈 블록인데 tft 계산이 실패하면 unavailable(lol로 대체하지 않음), games 행을 비우면 unavailable, 시즌도 없고 games도 없으면 `no_season`.
+
+**frontend:** `lib/rankings.ts`에 `TOP_RANKERS_UNAVAILABLE_TEXT`. 홈 `TopRankersPanel`은 state로 빈 문구를 고른다(`no_season`은 기존 `SEASON_NONE_TEXT`). 목 `dashboardResponse`가 state를 넣고, 시나리오 `top_unavailable`는 요약 200·`unavailable`·`me.rank` null, `/rankings/tier`·`/rankings/elo`는 500. 사이드바 시즌 카드는 그대로(`season`만 본다).
+
+### 21-4. 배포
+
+api와 web을 같은 커밋으로 배포한다(D200). 새 웹 + 옛 api는 `top_rankers_state`가 없어 요약 parse가 실패하고 시즌 카드가 숨는다. 옛 웹 + 새 api는 알 수 없는 필드를 버리고 `top_rankers: null`을 「아직 시즌이 없어요」로 보여, 실패와 시즌 없음을 구분하지 못한다.

@@ -1,8 +1,10 @@
 import {
+  BALANCE_ELO_WEIGHT_MAX,
   BALANCE_FULL_WEIGHT_GAMES,
   BALANCE_OPTIONS_MAX,
   BALANCE_PLAYERS_MAX,
   BALANCE_PLAYERS_MIN,
+  RATING_START_ELO,
   type PositionPreference,
 } from '@gcd/shared';
 import { BALANCE_POSITION_COST_WEIGHT, POSITION_PREFERENCE_COST } from './config';
@@ -11,13 +13,14 @@ import { expectedScore, meanRating, roundHalfAwayFromZero } from './rating';
 // =============================================================================
 // S3 팀 자동 밸런스(문서 7-2, 계약 S3 7-4, D107·D108). I/O 없음, 결정적(같은 입력 → 같은 출력).
 // core 결과는 반올림 전 값이다. 표시용 반올림은 backend 직렬화에서 한다.
+// S4 20절(D187): 실력값은 티어 환산값 중심, 내전 ELO 비중은 현재 시즌 경기 수에 따라 최대 BALANCE_ELO_WEIGHT_MAX.
 // =============================================================================
 
 export type BalancePlayer = {
   userId: string;
   /** 실력값(computeSkill, 정수) */
   skill: number;
-  /** 현재 시즌 레이팅(없으면 시드). elo_preview·rating_avg용 */
+  /** 현재 시즌 ELO(행이 없으면 RATING_START_ELO). elo_preview·rating_avg용 */
   rating: number;
   preferredPositions: readonly string[];
 };
@@ -61,17 +64,25 @@ function cmpSeq(a: readonly number[], b: readonly number[]): number {
 }
 
 /**
- * 실력값(D107) = round(w × rating + (1 − w) × tierSeed), rating = seasonElo ?? tierSeed,
- * w = min(gamesPlayed / BALANCE_FULL_WEIGHT_GAMES, 1).
+ * 실력값의 내전 ELO 비중(D187) = BALANCE_ELO_WEIGHT_MAX × min(seasonGames, F) ÷ F, F = BALANCE_FULL_WEIGHT_GAMES.
+ * 곱한 뒤 나눠 부동소수 오차를 줄인다(1경기 = 0.02). seasonGames가 0 이상의 정수가 아니면 RangeError.
  */
-export function computeSkill(input: { seasonElo: number | null; gamesPlayed: number; tierSeed: number }): number {
-  const { seasonElo, gamesPlayed, tierSeed } = input;
-  if (!Number.isInteger(gamesPlayed) || gamesPlayed < 0) {
-    throw new RangeError(`gamesPlayed: 0 이상의 정수 (${gamesPlayed})`);
+export function balanceEloWeight(seasonGames: number): number {
+  if (!Number.isInteger(seasonGames) || seasonGames < 0) {
+    throw new RangeError(`seasonGames: 0 이상의 정수 (${seasonGames})`);
   }
-  const rating = seasonElo ?? tierSeed;
-  const w = Math.min(gamesPlayed / BALANCE_FULL_WEIGHT_GAMES, 1);
-  return roundHalfAwayFromZero(w * rating + (1 - w) * tierSeed);
+  return (BALANCE_ELO_WEIGHT_MAX * Math.min(seasonGames, BALANCE_FULL_WEIGHT_GAMES)) / BALANCE_FULL_WEIGHT_GAMES;
+}
+
+/**
+ * 실력값(D187) = round(w × elo + (1 − w) × tierSeed), w = balanceEloWeight(seasonGames),
+ * elo = seasonElo ?? RATING_START_ELO. tierSeed는 밸런스 티어 환산값(D189)이다.
+ */
+export function computeSkill(input: { seasonElo: number | null; seasonGames: number; tierSeed: number }): number {
+  const { seasonElo, seasonGames, tierSeed } = input;
+  const w = balanceEloWeight(seasonGames);
+  const elo = seasonElo ?? RATING_START_ELO;
+  return roundHalfAwayFromZero(w * elo + (1 - w) * tierSeed);
 }
 
 /** preferred[0] = position → first, preferred[1] → second, 그 외 other */

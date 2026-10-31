@@ -93,3 +93,60 @@ QA 판정(`_workspace/03_qa-verifier_backend.md`) 중 테스트 결함 2건을 �
 
 - 수정 뒤 `corepack pnpm --filter api typecheck`, `corepack pnpm --filter api build` 통과. api 테스트 470 passed / 42 skipped. Node 20.11이라 같은 내용의 임시 `.mjs` 설정으로 실행하고 지웠다.
 - 처음 보고한 「기존 결함」의 등록 수는 QA가 `HEAD AppModule`로 재측정했다(ScheduleModule 2개, cron 8개, 기대 4개). 실제 배포 환경의 실행 횟수는 여전히 측정하지 않았다.
+
+## 20절(S4 후속 변경 2)
+
+계약 20-1~20-6, 20-9(D182–D195), 20-10(Q11–Q13 추천안), 20-12 backend 표대로 구현했다. 스키마·마이그레이션·shared·core·web은 건드리지 않았다.
+
+### 변경
+
+| 파일 | 내용 |
+| --- | --- |
+| `src/modules/scrims/scrim-results.service.ts` | 승인 9단계: 빠진 행을 `elo: RATING_START_ELO`로 `createMany(skipDuplicates)`. `carriedFromSeasonId`는 넣지 않는다(null). `seasonStartElo`·`tierSeedRating`·`loadPreviousRatings`·`loadTierSeeds` import 삭제. 7a·7b·7c(`lockSeasonForRating`)·8(사용자 잠금)·10–13 그대로(D185). 클래스 주석 |
+| `src/modules/ratings/rating-carry.ts` | **삭제** |
+| `src/modules/ratings/rating-inputs.service.ts` | `SkillInput.seasonGames`(현재 시즌 행 wins + losses, 없으면 0) 추가, `seasonElo` = 현재 시즌 행 값 또는 null(이전 시즌 조회 삭제), `computeSkill({ seasonElo, seasonGames, tierSeed })`, `rating = seasonElo ?? RATING_START_ELO`(전에는 `?? tierSeed`). `gamesPlayed`(모든 시즌 이력 수)는 `isNew`에만 |
+| `src/modules/scrims/scrim-teams.service.ts` | 밸런스 `rating_policy.elo_weight_max: BALANCE_ELO_WEIGHT_MAX` |
+| `src/modules/dashboard/dashboard.service.ts` | 요약 `rating_policy`: `soft_reset_ratio` 삭제, `full_weight_games`·`elo_weight_max` 추가 |
+| `src/config/env.ts`, `env.spec.ts` | `SEASON_SOFT_RESET_RATIO`·`SEASON_SOFT_RESET_RATIO_DEFAULT` import·`AppConfig.seasonSoftResetRatio` 삭제. 비율 테스트 삭제, 「env에 남아 있어도(0.5·0.25·half·-1) 기동 성공, 설정이 없을 때와 같다」 테스트 추가 |
+| `src/modules/profile/recent-matches.ts`(새) | `loadRecentLolMatches(db, gameAccountId)` — `ProfileService.loadMatches`를 그대로 옮김 |
+| `src/modules/profile/profile.service.ts` | 위 함수 사용(동작 변경 없음) |
+| `src/modules/profile/position-suggestions.service.ts`(새), `profile.controller.ts`, `profile.module.ts` | `GET /me/position-suggestions?game=`(20-5). `GameCatalog.ids()`로 game id → games 행 → `has_positions` false면 빈 응답 → 대표 계정(`isPrimary`) → `loadRecentLolMatches` → `computeMainPosition` → `games.positions` 안 값, 최대 2개. `SyncEnqueuer`·외부 클라이언트를 주입하지 않는다 |
+| `rating-seed.ts`, `ratings.module.ts`, `rankings/season-closer.ts` | 주석만(티어 환산값, 소프트 리셋 언급 삭제) |
+
+참가 신청·작성 서비스는 바꾸지 않았다(추천 호출 없음, 빈 포지션 그대로 저장).
+
+### 응답 예시
+
+```json
+GET /me/position-suggestions?game=lol
+{ "game": "lol", "positions": ["mid", "top"], "sample_size": 6, "synced_at": "2026-10-27T20:00:00.000Z" }
+
+GET /me/position-suggestions?game=tft   (또는 계정 없음)
+{ "game": "tft", "positions": [], "sample_size": 0, "synced_at": null }
+```
+
+### 테스트
+
+| 파일 | 내용 |
+| --- | --- |
+| `test/season-transition.e2e.spec.ts` | 6-1 교체: 지난 시즌 1421·1512·800이어도 새 행 1000·carried null·지난 행 불변, 다이아 신규 1000, 자동 생성 시즌 1000, **현재 시즌 기존 행 1800은 이어지고 새 멤버만 1000(D193)**, 승인이 현재 시즌 ratings만 읽고 createMany 데이터에 carried 없음, `SEASON_SOFT_RESET_RATIO` 남아도 1000. 6-3 미달자 다음 시즌 1000. 6-5 starts [1000, 1000]·carried [null, null](두 순서 결과 동일 유지). 읽기: 지난 시즌 10경기여도 새 시즌 0경기면 skill = 티어 환산값·is_new false, 현재 시즌 0·5·10·25경기 → 1800·1720·1640·1640, ELO 1400·10경기 → 1720, 현재 시즌 없으면 티어 환산값 |
+| `test/scrim-results.e2e.spec.ts` | 밸런스 `rating_policy` `elo_weight_max` 0.2, 신규 다이아 `rating` 1000(skill 1800 그대로). 승인 테스트: GOLD도 1000 시작 → ±20, carried null. **새 테스트**: 0·5·10·25경기 실력값과 밸런스 `members[].skill` = 상세 `players[].skill` |
+| `test/loss-ratio.e2e.spec.ts`, `test/dashboard.e2e.spec.ts` | 요약 `rating_policy` 기대값 |
+| `test/position-suggestions.e2e.spec.ts`(새, 7건) | 롤 2개·sample_size·synced_at, 깨진 summary·win null 건너뜀, 프로필 `main_position`과 같은 값, `SyncEnqueuer.enqueue` 미호출·큐 비어 있음(전적이 7시간 지난 상태에서), 1개만, 기록 없음, 롤체·스팀·계정 없음 [], 부계정·다른 사용자 미혼입, 대표 변경 반영, `games.positions` 필터, game 누락·모르는 값 400, 인증 없음 401 |
+| `test/db/season-close.db.e2e.spec.ts` | carried → null, 시작 1000(작성만, DB 없음) |
+
+### 결과
+
+- `corepack pnpm --filter api typecheck` 통과, `corepack pnpm --filter api build` 통과(dist에 남은 옛 `rating-carry.js`는 지웠다, dist는 gitignore).
+- api 테스트 **498 passed / 42 skipped / 0 failed**(37파일 중 7 skip = DB e2e). 두 번 실행해 같은 결과. Node 20.11이라 저장소 밖 `/tmp`에 같은 내용의 `.mjs` 설정(`unplugin-swc`는 절대 경로 ESM import)으로 실행하고 지웠다.
+- 삭제 확인 rg(`softResetElo|seasonStartElo|pickPreviousRating|SEASON_SOFT_RESET|seasonSoftResetRatio|soft_reset_ratio|loadPreviousRatings`, apps/api, dist 제외): 남은 것은 계약이 요구한 「env에 남아 있어도 기동」 테스트 2곳의 `SEASON_SOFT_RESET_RATIO` 문자열(`src/config/env.spec.ts`, `test/season-transition.e2e.spec.ts`)뿐이다.
+
+### 계약과 다른 점·판단
+
+- 20-13 삭제 확인 항목과 20-12 「남아 있어도 기동 성공 테스트」가 충돌한다. 테스트 쪽을 택해 테스트 2곳에 키 문자열이 남는다. QA rg에서 이 두 곳은 예외로 봐야 한다.
+- 추천 응답에서 대표 계정은 있는데 포지션 근거가 없을 때 `synced_at`은 계정 `matchesSyncedAt`을 준다(20-5 5번을 그대로 적용). 1번(포지션 없는 게임)·2번(계정 없음)만 null.
+- `SkillInput.rating` 폴백이 `tierSeed` → 1000으로 바뀌어 밸런스 `members[].rating`과 `rating_avg`·`elo_preview`가 행 없는 멤버에서 달라진다(20-4 표대로).
+
+### 미확인
+
+- DB e2e(`test/db/*`) 실행 안 함(DB·Docker 없음). Node 22로 돌린 결과 아님.

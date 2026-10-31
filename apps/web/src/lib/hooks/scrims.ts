@@ -28,6 +28,7 @@ import {
   withdrawScrimResult,
   cancelScrim,
   createScrim,
+  getMyPositionSuggestions,
   getMyScrimRestriction,
   getScrim,
   joinScrim,
@@ -56,6 +57,7 @@ export const scrimKeys = {
   list: (q: { game?: GameCode; status: ScrimListStatus }) => ['scrims', 'list', q.game ?? 'all', q.status] as const,
   detail: (id: string) => ['scrims', 'detail', id] as const,
   restriction: ['me', 'scrim-restriction'] as const,
+  positionSuggestions: (game: GameCode | null) => ['me', 'position-suggestions', game] as const,
   steamApps: (q: string) => ['steam-apps', q.toLowerCase()] as const,
 };
 
@@ -124,6 +126,20 @@ export function useMyScrimRestriction() {
     queryFn: ({ signal }) => getMyScrimRestriction(signal),
     staleTime: 60_000,
     retry: noRetryOn4xx,
+  });
+}
+
+/**
+ * GET /me/position-suggestions?game= — 포지션 받는 게임일 때만(enabled). 기본 선택에만 쓰므로
+ * 실패해도 다시 시도하지 않고 화면은 빈 선택 그대로 둔다(계약 20-5).
+ */
+export function usePositionSuggestions(game: GameCode | null, enabled: boolean) {
+  return useQuery({
+    queryKey: scrimKeys.positionSuggestions(game),
+    queryFn: ({ signal }) => getMyPositionSuggestions(game!, signal),
+    enabled: enabled && game !== null,
+    staleTime: 5 * 60_000,
+    retry: false,
   });
 }
 

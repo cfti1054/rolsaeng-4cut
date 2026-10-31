@@ -158,27 +158,22 @@ describe('환경 변수', () => {
     }
   });
 
-  it('S4 기본값·검증(계약 S4 13절): 비율 0.5(0–1 실수), 최소 경기 5, 작업 켜짐', () => {
-    const d = loadConfig({ ...REQUIRED, SEASON_SOFT_RESET_RATIO: '', RANKING_ELO_MIN_GAMES: '' });
-    expect(d.seasonSoftResetRatio).toBe(0.5);
+  it('S4 기본값·검증(계약 S4 13절): 최소 경기 5, 작업 켜짐', () => {
+    const d = loadConfig({ ...REQUIRED, RANKING_ELO_MIN_GAMES: '' });
     expect(d.ranking).toEqual({ eloMinGames: 5, jobsEnabled: true });
-    const c = loadConfig({
-      ...REQUIRED,
-      SEASON_SOFT_RESET_RATIO: '0.25',
-      RANKING_ELO_MIN_GAMES: '3',
-      RANKING_JOBS_ENABLED: 'false',
-    });
-    expect(c.seasonSoftResetRatio).toBe(0.25);
+    const c = loadConfig({ ...REQUIRED, RANKING_ELO_MIN_GAMES: '3', RANKING_JOBS_ENABLED: 'false' });
     expect(c.ranking).toEqual({ eloMinGames: 3, jobsEnabled: false });
-    expect(loadConfig({ ...REQUIRED, SEASON_SOFT_RESET_RATIO: '0' }).seasonSoftResetRatio).toBe(0);
-    expect(loadConfig({ ...REQUIRED, SEASON_SOFT_RESET_RATIO: '1' }).seasonSoftResetRatio).toBe(1);
-    for (const v of ['-0.1', '1.1', 'half']) {
-      expect(() => loadConfig({ ...REQUIRED, SEASON_SOFT_RESET_RATIO: v })).toThrow(/SEASON_SOFT_RESET_RATIO/);
-    }
     for (const v of ['0', '1.5']) {
       expect(() => loadConfig({ ...REQUIRED, RANKING_ELO_MIN_GAMES: v })).toThrow(/RANKING_ELO_MIN_GAMES/);
     }
     expect(() => loadConfig({ ...REQUIRED, RANKING_JOBS_ENABLED: '1' })).toThrow(/RANKING_JOBS_ENABLED/);
+  });
+
+  it('없어진 SEASON_SOFT_RESET_RATIO(계약 20-2)가 env에 남아 있어도 기동 성공하고 설정에 나타나지 않는다', () => {
+    const base = loadConfig({ ...REQUIRED });
+    for (const v of ['0.5', '0.25', 'half', '-1']) {
+      expect(loadConfig({ ...REQUIRED, SEASON_SOFT_RESET_RATIO: v })).toEqual(base);
+    }
   });
 
   it('rankingJobsEnabledFromEnv: 모듈 구성용(잘못된 값은 true, 기동은 loadConfig가 막는다)', () => {

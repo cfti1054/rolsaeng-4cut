@@ -1,7 +1,6 @@
 import { SEASON_BADGE_PLACES, autoSeasonName, type SeasonBadgePlace } from '@gcd/shared';
-import { DAY_MS, KST_OFFSET_MS, SEASON_SOFT_RESET_CENTER } from './config';
+import { DAY_MS, KST_OFFSET_MS } from './config';
 import { buildEloRanking } from './ranking';
-import { roundHalfAwayFromZero } from './rating';
 
 // =============================================================================
 // S3 시즌(계약 S3 6절·7-5, D116). 구간은 반열림 [startsAt, endsAt). 시각은 인자로 받는다.
@@ -119,58 +118,9 @@ export function planAutoSeason(input: {
 }
 
 // =============================================================================
-// S4 시즌 전환·종료(계약 S4 6절, D140–D145). 리셋 값은 이전 행의 순수 함수이고 비율은 인자로 받는다.
+// S4 시즌 종료·표시(계약 S4 6절, D141–D145). 레이팅 이월(소프트 리셋)은 없다(20절 D183):
+// 새 시즌 행은 모두 RATING_START_ELO(@gcd/shared)로 시작한다.
 // =============================================================================
-
-function assertRatio(ratio: number): void {
-  if (typeof ratio !== 'number' || !(ratio >= 0 && ratio <= 1)) {
-    throw new RangeError(`ratio: 0 이상 1 이하여야 함 (${ratio})`);
-  }
-}
-
-/** 1000 + 반올림((elo − 1000) × ratio). 변동분을 반올림해 1000 기준 대칭이다. ratio ∉ [0, 1]이면 RangeError */
-export function softResetElo(elo: number, ratio: number): number {
-  assertRatio(ratio);
-  return SEASON_SOFT_RESET_CENTER + roundHalfAwayFromZero((elo - SEASON_SOFT_RESET_CENTER) * ratio);
-}
-
-/** 새 시즌 첫 행의 시작값(6-1): 이전 행이 있으면 소프트 리셋, 없으면 티어 시드. 시드 경로에서도 ratio를 검사한다 */
-export function seasonStartElo(input: { previousElo: number | null; tierSeed: number; ratio: number }): number {
-  const { previousElo, tierSeed, ratio } = input;
-  assertRatio(ratio);
-  return previousElo === null ? tierSeed : softResetElo(previousElo, ratio);
-}
-
-/**
- * 시작값을 줄 이전 시즌 행(6-1, D142). 행의 시즌 중 startsAt < target에서 startsAt 최신 → endsAt 최신 → seasonId ASC.
- * seasons에 없는 행은 무시한다. 연속 빈 시즌은 가장 최근 행 하나만 고르므로 리셋이 1회다.
- */
-export function pickPreviousRating<R extends { seasonId: string }>(input: {
-  rows: readonly R[];
-  seasons: readonly SeasonLike[];
-  targetStartsAt: Date;
-}): R | null {
-  const { rows, seasons, targetStartsAt } = input;
-  assertValidDate(targetStartsAt, 'targetStartsAt');
-  const target = targetStartsAt.getTime();
-  const seasonById = new Map(seasons.map((s) => [s.id, s]));
-
-  let best: { row: R; season: SeasonLike } | null = null;
-  for (const row of rows) {
-    const season = seasonById.get(row.seasonId);
-    if (season === undefined || season.startsAt.getTime() >= target) continue;
-    if (best === null) {
-      best = { row, season };
-      continue;
-    }
-    const byStart = season.startsAt.getTime() - best.season.startsAt.getTime();
-    const byEnd = season.endsAt.getTime() - best.season.endsAt.getTime();
-    if (byStart > 0 || (byStart === 0 && (byEnd > 0 || (byEnd === 0 && season.id < best.season.id)))) {
-      best = { row, season };
-    }
-  }
-  return best?.row ?? null;
-}
 
 /** 종료 작업 대상(6-3 2번): closedAt 없음 && endsAt + graceMs ≤ now. endsAt ASC, id ASC. 입력을 바꾸지 않는다 */
 export function selectSeasonsToClose<T extends SeasonLike & { closedAt: Date | null }>(

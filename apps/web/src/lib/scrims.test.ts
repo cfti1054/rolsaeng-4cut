@@ -28,6 +28,8 @@ import {
   scrimSteps,
   startBlockedReason,
   toPreferredPositions,
+  positionSuggestionFill,
+  positionSuggestionHint,
 } from './scrims';
 
 // 2026-10-28(수) 12:00 KST
@@ -269,5 +271,48 @@ describe('수정 PATCH 조립', () => {
     expect(buildScrimPatch(steam, { ...same, steamAppId: 570 })).toEqual({ steam_app_id: 570 });
     expect(buildScrimPatch(steam, { ...same, steamAppId: 730 })).toBeNull();
     expect(buildScrimPatch(steam, { ...same, steamAppId: null })).toBeNull();
+  });
+});
+
+describe('라인 추천 기본값(S4 20-5, D192)', () => {
+  const LOL = ['top', 'jungle', 'mid', 'bot', 'support'];
+  const base = {
+    eligible: true,
+    touched: false,
+    game: 'lol' as const,
+    allowed: LOL,
+    first: null,
+    second: null,
+    suggestion: { game: 'lol' as const, positions: ['mid', 'top'], sample_size: 18 },
+  };
+  it('빈 선택이고 건드리기 전이면 1지망·2지망을 채운다', () => {
+    expect(positionSuggestionFill(base)).toEqual({ first: 'mid', second: 'top', sampleSize: 18 });
+  });
+  it('추천이 1개면 1지망만', () => {
+    expect(positionSuggestionFill({ ...base, suggestion: { ...base.suggestion, positions: ['bot'], sample_size: 4 } })).toEqual({ first: 'bot', second: null, sampleSize: 4 });
+  });
+  it('사용자가 건드린 뒤 늦게 온 추천은 쓰지 않는다(지운 경우 포함)', () => {
+    expect(positionSuggestionFill({ ...base, touched: true })).toBeNull();
+    expect(positionSuggestionFill({ ...base, touched: true, first: 'support' })).toBeNull();
+  });
+  it('이미 값이 있으면(참가 중 저장값 등) 덮지 않는다, 신청 전이 아니면 채우지 않는다', () => {
+    expect(positionSuggestionFill({ ...base, first: 'jungle' })).toBeNull();
+    expect(positionSuggestionFill({ ...base, second: 'jungle' })).toBeNull();
+    expect(positionSuggestionFill({ ...base, eligible: false })).toBeNull();
+  });
+  it('추천 없음·로딩·오류·다른 게임 응답이면 빈 선택 그대로', () => {
+    expect(positionSuggestionFill({ ...base, suggestion: undefined })).toBeNull();
+    expect(positionSuggestionFill({ ...base, suggestion: { game: 'lol', positions: [], sample_size: 0 } })).toBeNull();
+    expect(positionSuggestionFill({ ...base, suggestion: { ...base.suggestion, game: 'tft' } })).toBeNull();
+  });
+  it('게임을 바꾸면(건드림 해제·빈 선택) 그 게임 추천으로 다시 채운다', () => {
+    const after = { ...base, touched: false, first: null, second: null, suggestion: { game: 'lol' as const, positions: ['support'], sample_size: 9 } };
+    expect(positionSuggestionFill(after)).toEqual({ first: 'support', second: null, sampleSize: 9 });
+  });
+  it('게임 포지션에 없는 값은 버린다', () => {
+    expect(positionSuggestionFill({ ...base, suggestion: { ...base.suggestion, positions: ['carry', 'mid'] } })).toEqual({ first: 'mid', second: null, sampleSize: 18 });
+  });
+  it('안내 문구', () => {
+    expect(positionSuggestionHint(18)).toBe('솔로 랭크 최근 18경기 기준으로 골라 뒀어요. 바꿔도 돼요.');
   });
 });

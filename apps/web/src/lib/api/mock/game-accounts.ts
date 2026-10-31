@@ -1,6 +1,9 @@
 import {
   ApiPath,
+  GAME_SEED,
   GameAccountView,
+  GetMyPositionSuggestionsQuery,
+  GetMyPositionSuggestionsResponse,
   IsoDateTime,
   LinkGameAccountRequest,
   LolPosition,
@@ -90,6 +93,8 @@ export interface MockS1Options {
 export interface MockS1Context {
   method: string;
   path: string;
+  /** 쿼리 문자열(GET /me/position-suggestions?game=) */
+  search?: URLSearchParams;
   body: unknown;
   me: Me;
   now: number;
@@ -558,6 +563,28 @@ export function handleS1(ctx: MockS1Context): Response | null {
     }
     ctx.save(state);
     return new Response(null, { status: 204 });
+  }
+
+  // GET /me/position-suggestions?game= (계약 20-5). 저장된 전적만 읽는다(동기화 등록 없음)
+  if (path === ApiPath.myPositionSuggestions && method === 'GET') {
+    const parsed = GetMyPositionSuggestionsQuery.safeParse({ game: ctx.search?.get('game') ?? undefined });
+    if (!parsed.success) {
+      return error('VALIDATION_FAILED', '요청 형식이 올바르지 않습니다.', {
+        details: parsed.error.issues.map((i) => ({ path: i.path.join('.') || 'game', message: i.message })),
+      });
+    }
+    const { game } = parsed.data;
+    const seed = GAME_SEED.find((g) => g.code === game);
+    const row = seed?.has_positions ? state.rows.find((r) => r.game === game && r.is_primary) : undefined;
+    const main = row ? mainPosition(state.matches[row.id] ?? []) : null;
+    const positions = main ? main.positions.map((p) => p.position).filter((p) => seed!.positions.includes(p)).slice(0, 2) : [];
+    const res: GetMyPositionSuggestionsResponse = {
+      game,
+      positions,
+      sample_size: main && positions.length > 0 ? main.sample_size : 0,
+      synced_at: row?.sync.matches_synced_at ?? null,
+    };
+    return json(200, GetMyPositionSuggestionsResponse.parse(res));
   }
 
   // GET /users/:id/profile

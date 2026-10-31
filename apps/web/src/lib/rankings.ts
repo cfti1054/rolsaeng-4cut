@@ -1,6 +1,7 @@
 import {
   GameCode,
   RANKING_CACHE_INTERVAL_MIN,
+  RATING_START_ELO,
   TierRankingGame,
   Uuid,
   type EloRankingEntry,
@@ -25,7 +26,11 @@ export type RankingTab = 'tier' | 'elo';
 /** 활성 탭. 기본은 ELO(목업). 설명 문구는 목업 그대로 */
 export const RANKING_TABS: readonly { value: RankingTab; label: string; description: string }[] = [
   { value: 'tier', label: '티어', description: '라이엇 API 기준 솔로 랭크 티어 순위입니다. 연동 계정 동기화 때 갱신됩니다.' },
-  { value: 'elo', label: '내전 ELO', description: '서버 자체 내전 레이팅입니다. 운영진이 승인한 결과만 반영됩니다.' },
+  {
+    value: 'elo',
+    label: '내전 ELO',
+    description: `티어와 상관없이 모두 ${RATING_START_ELO}점에서 시작하는 서버 자체 내전 점수입니다. 운영진이 승인한 결과만 반영되고, 시즌마다 새로 시작합니다.`,
+  },
 ];
 
 /** S5에서 열리는 탭. 숫자를 그리지 않는다 */
@@ -82,6 +87,12 @@ export function rankingStatusText(r: { synced_at: string | null; stale: boolean;
 export const TIER_RULE_TEXT = '티어 점수 = 티어 × 400 + 디비전 × 100 + LP';
 export const TIER_EMPTY_TEXT = '라이엇 계정을 연동한 멤버가 아직 없어요';
 export const SEASON_NONE_TEXT = '아직 시즌이 없어요';
+export const TOP_RANKERS_UNAVAILABLE_TEXT = '순위를 불러오지 못했어요';
+
+/** 홈 상위 랭커가 없을 때. no_season과 unavailable을 같은 문구로 두지 않는다(21절) */
+export function topRankersEmptyText(state: 'no_season' | 'unavailable'): string {
+  return state === 'unavailable' ? TOP_RANKERS_UNAVAILABLE_TEXT : SEASON_NONE_TEXT;
+}
 
 /** 종료 시즌은 그때 확정된 순위라, 지금 설정값 min_games를 기준처럼 보이면 틀릴 수 있다(계약 13절) */
 export function eloRuleText(r: Pick<GetEloRankingResponse, 'min_games' | 'is_final'>): string {

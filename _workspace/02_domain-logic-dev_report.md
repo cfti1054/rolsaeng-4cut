@@ -98,6 +98,36 @@ export 시그니처는 바꾸지 않았다.
 | backend | `apps/api/src/config/env.ts`(`rating`), `scrim-teams.service.ts:104`, `scrim-views.service.ts:408` |
 | frontend | `apps/web/src/lib/api/mock/ratings.ts`(`mockEloPolicy`, `previews`의 previewTeamElo 호출) |
 
+## 20절(S4 후속 변경 2): 시작 1000·소프트 리셋 폐지·실력값 w (D182–D189)
+
+**변경 파일:** `packages/core/src/balance.ts`, `balance.test.ts`, `season.ts`, `season.test.ts`, `config.ts`, `rating.ts`(주석), `index.ts`, `dist/**`(재빌드).
+
+| 구분 | 내용 |
+| --- | --- |
+| 새 함수 | `balanceEloWeight(seasonGames: number): number` = `BALANCE_ELO_WEIGHT_MAX × min(seasonGames, F) ÷ F`(곱한 뒤 나눔). 0 이상 정수가 아니면 RangeError |
+| 시그니처 변경 | `computeSkill(input: { seasonElo: number \| null; seasonGames: number; tierSeed: number })`. 입력 `gamesPlayed` → `seasonGames`. `w = balanceEloWeight(seasonGames)`, `elo = seasonElo ?? RATING_START_ELO`. 범위 오류는 `balanceEloWeight`의 RangeError |
+| 삭제 | `softResetElo`, `seasonStartElo`, `pickPreviousRating`(season.ts, 내부 `assertRatio`도), 상수 `SEASON_SOFT_RESET_CENTER`(config.ts) |
+| 주석 | `RATING_SEED_BY_TIER`·`RATING_SEED_DEFAULT`·`tierSeedRating` → 「밸런스 티어 환산값(D189), ELO 시작값 아님」. `BalancePlayer.rating` → 「현재 시즌 ELO(행이 없으면 RATING_START_ELO)」. balance·season 머리 주석 |
+
+shared 상수 `RATING_START_ELO`, `BALANCE_ELO_WEIGHT_MAX`, `BALANCE_FULL_WEIGHT_GAMES`를 import만 했다. shared는 고치지 않았다(고칠 필요도 없었다).
+
+**테스트:** `computeSkill` 기존 describe를 20-3 표 9행(`it.each`) + null ≡ `RATING_START_ELO` + 범위 오류(−1, 1.5, NaN)로 교체. `balanceEloWeight` 0·1·5·10·11 값과 −1·1.5·NaN RangeError. 0.5 반올림 경계 테스트는 계약대로 두지 않았다. season.test.ts에서 세 describe(softResetElo, seasonStartElo, pickPreviousRating)와 import를 삭제(`shuffled`·`mulberry32`는 다른 테스트가 써서 유지).
+
+**검증:**
+
+- `corepack pnpm --filter @gcd/core typecheck` 통과, `corepack pnpm --filter @gcd/core build`로 dist 재빌드(`dist/balance.js`에 `balanceEloWeight` 있음).
+- 테스트: 저장소 `vitest.config.ts`가 Node 20.11에서 `ERR_REQUIRE_ESM`으로 로드되지 않아, 같은 내용의 임시 설정 `/tmp/gcd-core-vitest.mjs`(`resolve.conditions`·`ssr.resolve` `source`, `include: ['src/**/*.test.ts']`)로 `npx vitest run --config /tmp/gcd-core-vitest.mjs` 실행 후 삭제. **9파일 355개 전부 통과**.
+- `rg 'softResetElo|seasonStartElo|pickPreviousRating|SEASON_SOFT_RESET' packages/core`(dist 포함) 결과 없음.
+
+**core 바깥 사용처(backend·frontend가 고칠 것, 작업 시점 rg):**
+
+| 담당 | 위치 |
+| --- | --- |
+| backend | `scrim-results.service.ts:7, 218`(`seasonStartElo`), `rating-inputs.service.ts:2, 81, 87`(`seasonStartElo`, `computeSkill({ gamesPlayed })`), `rating-carry.ts`(`pickPreviousRating`, 파일 삭제 대상), `config/env.ts:17, 137–139, 269`, `env.spec.ts:162–176`, `test/dashboard.e2e.spec.ts:66`, `test/season-transition.e2e.spec.ts:136–137` |
+| frontend | `lib/elo-info.ts:1, 19–20, 53`(`softResetElo`, `SEASON_SOFT_RESET_CENTER`), `lib/api/mock/ratings.ts:198`(`computeSkill({ gamesPlayed })`), `lib/api/mock/rankings.ts:30, 388` |
+
+**해석:** 없음. 계약 20-3 그대로 구현했다.
+
 ## 미실행
 
 - 저장소 `vitest.config.ts`와 `pnpm --filter core test`를 그대로 실행하지 않았다(위 임시 설정 사용). Node 22 이상에서 돌린 결과가 아니다.

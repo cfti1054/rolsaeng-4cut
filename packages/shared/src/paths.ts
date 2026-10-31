@@ -50,6 +50,8 @@ export const ApiPath = {
   rankingsTier: '/rankings/tier',
   rankingsElo: '/rankings/elo',
   dashboardSummary: '/dashboard/summary',
+  // S4 후속 변경 2 라인 추천(계약 S4 20절 D190)
+  myPositionSuggestions: '/me/position-suggestions',
 } as const;
 export type ApiPath = (typeof ApiPath)[keyof typeof ApiPath];
 

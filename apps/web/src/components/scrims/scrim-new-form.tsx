@@ -21,6 +21,7 @@ import { cn } from '@/lib/cn';
 import { errorMessage } from '@/lib/errors';
 import { GAME_SCRIM_META } from '@/lib/games';
 import { useMe } from '@/lib/hooks/auth';
+import { usePositionDefaults } from '@/lib/hooks/position-defaults';
 import { useCreateScrim, useGames } from '@/lib/hooks/scrims';
 import { useNow } from '@/lib/hooks/use-now';
 import { routes } from '@/lib/routes';
@@ -94,12 +95,25 @@ export function ScrimNewForm() {
   const effPositions = !!game?.has_positions && usePositions;
   const effBalance = !!game?.has_teams && autoBalance;
   const needsApp = !!game?.requires_steam_app;
+  const positionDefaults = usePositionDefaults({
+    game: game?.code ?? null,
+    enabled: !!game?.has_positions,
+    eligible: effPositions,
+    allowed: game?.positions ?? [],
+    first,
+    second,
+    fill: (a, b) => {
+      setFirst(a);
+      setSecond(b);
+    },
+  });
 
   const pickGame = (g: GameView) => {
     setGameCode(g.code);
     setCapacity(g.capacity.default);
     setFirst(null);
     setSecond(null);
+    positionDefaults.reset();
     setErrors((e) => ({ ...e, game: undefined, steam_app_id: undefined, capacity: undefined, host_preferred_positions: undefined }));
   };
 
@@ -341,9 +355,11 @@ export function ScrimNewForm() {
                     onChange={(a, b) => {
                       setFirst(a);
                       setSecond(b);
+                      positionDefaults.touch();
                       setErrors((x) => ({ ...x, host_preferred_positions: undefined }));
                     }}
                   />
+                  {positionDefaults.hint && <p className="m-0 text-xs text-faint">{positionDefaults.hint}</p>}
                   {errors.host_preferred_positions && (
                     <div id={ids.pos}>
                       <InlineError>{errors.host_preferred_positions}</InlineError>

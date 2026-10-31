@@ -2,13 +2,11 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { computeMainPosition, isMatchesCacheStale } from '@gcd/core';
 import {
   GetUserProfileResponse,
-  LolMatchSummary,
   PROFILE_RECENT_MATCHES_LIMIT,
   type ProfileBadge,
   ProfileRecentMatches,
   ProfileTierCard,
   RANKED_QUEUE_BY_GAME,
-  RECENT_MATCHES_MAX,
   RecentLolMatch,
   parseSeasonBadgeCode,
 } from '@gcd/shared';
@@ -21,6 +19,7 @@ import { SyncEnqueuer } from '../game-accounts/sync-enqueuer.service';
 import { seasonRef } from '../ratings/seasons.service';
 import { DEV_DISCORD_ID_PREFIX, discordAvatarUrl } from '../users/me.mapper';
 import { ProfileScrimService } from './profile-scrim.service';
+import { type StoredLolMatch, loadRecentLolMatches } from './recent-matches';
 
 /** 최근 실패가 이 시간 안이면 프로필 조회로 전적 갱신을 다시 넣지 않는다(D50) */
 export const PROFILE_REFRESH_ERROR_BACKOFF_MS = 30 * 60 * 1000;
@@ -68,7 +67,7 @@ export class ProfileService {
     let mainPosition: GetUserProfileResponse['main_position'] = null;
     let recent: ProfileRecentMatches | null = null;
     if (lol) {
-      const matches = await this.loadMatches(lol);
+      const matches = await loadRecentLolMatches(this.prisma, lol.id);
       mainPosition = computeMainPosition(matches.map((m) => m.summary.position));
       recent = ProfileRecentMatches.parse({
         items: await this.toRecentItems(matches.slice(0, PROFILE_RECENT_MATCHES_LIMIT)),
@@ -129,25 +128,7 @@ export class ProfileService {
     });
   }
 
-  /** 대표 lol 행의 최신 20경기(형식이 깨진 summary 행은 건너뜀) */
-  private async loadMatches(lol: AccountRow) {
-    const rows = await this.prisma.recentMatch.findMany({
-      where: { gameAccountId: lol.id },
-      orderBy: [{ playedAt: 'desc' }, { id: 'asc' }],
-      take: RECENT_MATCHES_MAX,
-    });
-    const out: { id: string; playedAt: Date; win: boolean; summary: LolMatchSummary }[] = [];
-    for (const r of rows) {
-      const summary = LolMatchSummary.safeParse(r.summary);
-      if (!summary.success || r.win === null) continue;
-      out.push({ id: r.id, playedAt: r.playedAt, win: r.win, summary: summary.data });
-    }
-    return out;
-  }
-
-  private async toRecentItems(
-    matches: { id: string; playedAt: Date; win: boolean; summary: LolMatchSummary }[],
-  ): Promise<RecentLolMatch[]> {
+  private async toRecentItems(matches: StoredLolMatch[]): Promise<RecentLolMatch[]> {
     const items: RecentLolMatch[] = [];
     for (const m of matches) {
       let champ: Awaited<ReturnType<DataDragon['champion']>> = null;

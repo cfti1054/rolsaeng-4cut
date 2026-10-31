@@ -32,7 +32,10 @@ function assertCount(v: number, name: string): void {
   }
 }
 
-/** 티어 시드(D103). UNRANKED·null·undefined → RATING_SEED_DEFAULT(1000). 디비전·LP는 보지 않는다 */
+/**
+ * 밸런스 티어 환산값(D103·D189), ELO 시작값 아님(시작값은 RATING_START_ELO).
+ * UNRANKED·null·undefined → RATING_SEED_DEFAULT(1000). 디비전·LP는 보지 않는다
+ */
 export function tierSeedRating(tier: RankTier | null | undefined): number {
   if (tier == null || tier === 'UNRANKED') return RATING_SEED_DEFAULT;
   return RATING_SEED_BY_TIER[tier] ?? RATING_SEED_DEFAULT;

@@ -12,6 +12,7 @@ import {
   type SubmitScrimResultRequest,
   CancelScrimResponse,
   CreateScrimResponse,
+  GetMyPositionSuggestionsResponse,
   GetMyScrimRestrictionResponse,
   GetScrimResponse,
   JoinScrimResponse,
@@ -111,6 +112,12 @@ export function searchSteamApps(q: string, signal?: AbortSignal) {
 /** GET /me/scrim-restriction */
 export function getMyScrimRestriction(signal?: AbortSignal) {
   return apiClient.request(ApiPath.myScrimRestriction, GetMyScrimRestrictionResponse, { signal });
+}
+
+/** GET /me/position-suggestions?game= — 1지망·2지망 기본 선택(계약 S4 20-5) */
+export function getMyPositionSuggestions(game: GameCode, signal?: AbortSignal) {
+  const q = new URLSearchParams({ game });
+  return apiClient.request(`${ApiPath.myPositionSuggestions}?${q.toString()}`, GetMyPositionSuggestionsResponse, { signal });
 }
 
 // -----------------------------------------------------------------------------

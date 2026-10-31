@@ -1,6 +1,7 @@
 import type {
   GameCapacityRange,
   GameCode,
+  GetMyPositionSuggestionsResponse,
   NoShowPolicyView,
   OpenPosition,
   ScrimCancelReason,
@@ -359,6 +360,34 @@ export function toPreferredPositions(first: string | null, second: string | null
 
 export function samePositions(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+/**
+ * 라인 추천으로 1지망·2지망 기본 선택을 채울 값(계약 S4 20-5, D192). 채우지 않으면 null.
+ * - 포지션을 받는 상태(eligible)이고, 사용자가 아직 건드리지 않았고, 둘 다 비어 있을 때만
+ * - 추천이 아직 없거나(로딩·오류) 다른 게임 것이거나 비어 있으면 채우지 않는다(빈 선택 그대로)
+ * - 그 게임 포지션에 없는 값은 버린다
+ */
+export function positionSuggestionFill(input: {
+  eligible: boolean;
+  touched: boolean;
+  game: GameCode | null;
+  allowed: readonly string[];
+  first: string | null;
+  second: string | null;
+  suggestion: Pick<GetMyPositionSuggestionsResponse, 'game' | 'positions' | 'sample_size'> | undefined;
+}): { first: string; second: string | null; sampleSize: number } | null {
+  const { suggestion: s } = input;
+  if (!input.eligible || input.touched || input.first !== null || input.second !== null) return null;
+  if (!s || s.game !== input.game) return null;
+  const picked = s.positions.filter((p) => input.allowed.includes(p));
+  if (picked.length === 0) return null;
+  return { first: picked[0]!, second: picked[1] ?? null, sampleSize: s.sample_size };
+}
+
+/** 추천으로 채운 상태 그대로일 때 고르는 칸 아래 안내(20-5) */
+export function positionSuggestionHint(sampleSize: number): string {
+  return `솔로 랭크 최근 ${sampleSize}경기 기준으로 골라 뒀어요. 바꿔도 돼요.`;
 }
 
 /** 「미드 / 탑」 */

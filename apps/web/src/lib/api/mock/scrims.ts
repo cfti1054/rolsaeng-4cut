@@ -165,7 +165,7 @@ const MockPlayer = z.object({
 type MockPlayer = z.infer<typeof MockPlayer>;
 
 /** 시드 형식 버전. 바뀌면 저장된 목 DB를 버리고 다시 만든다(S3 필드·시나리오 추가) */
-const SEED_VERSION = 6;
+const SEED_VERSION = 7;
 
 export const MockS2State = z.object({
   /** 시드를 만든 사용자 id. 다른 사용자로 로그인하면 다시 만든다 */
@@ -475,8 +475,6 @@ function seed(me: Me, now: number, opts?: MockS2Options): MockS2State {
     { id: id(), name: '시즌 1', starts_at: prevStart.toISOString(), ends_at: curStart.toISOString() },
     { id: id(), name: '시즌 2', starts_at: curStart.toISOString(), ends_at: addKstMonths(curStart, 3).toISOString() },
   );
-  const refOf = (uid2: string) => userRef(uid2, me);
-  const seedOf = (game: GameCode) => (userId: string) => tierSeedOf(game, refOf(userId), userId === me.id);
   const rowsIn = (scrimId: string) => state.players.filter((p) => p.scrim_id === scrimId);
   const lolPositions = gameOf('lol').positions;
   /** 팀·포지션 저장(슬롯 순서대로 블루 5 · 레드 5, 포지션은 1지망) */
@@ -514,7 +512,6 @@ function seed(me: Me, now: number, opts?: MockS2Options): MockS2State {
       result,
       now: at,
       approverId: approver,
-      tierSeed: seedOf(s.game),
       policy,
       newId: id,
     });
@@ -1196,7 +1193,6 @@ export function handleS2(ctx: MockS2Context): Response | null {
         result: pendingRow,
         now,
         approverId: me.id,
-        tierSeed: tierSeed(s.game),
         policy: eloPolicy,
         seasonLengthMonths: ctx.opts?.ratings?.seasonLengthMonths,
         newId: () => crypto.randomUUID(),

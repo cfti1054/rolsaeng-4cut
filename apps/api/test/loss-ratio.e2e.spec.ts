@@ -240,12 +240,13 @@ describe('rating_policy·기존 행(D171, D172)', () => {
     const res = await call(app, 'GET', '/dashboard/summary', admin.token);
     expect(res.status).toBe(200);
     expect(GetDashboardSummaryResponse.parse(await res.json()).rating_policy).toEqual({
-      soft_reset_ratio: 0.5,
       min_games: 5,
       k_base: 32,
       k_new: 32,
       new_player_games: 10,
       loss_ratio: 0.5,
+      full_weight_games: 10,
+      elo_weight_max: 0.2,
     });
   });
 

@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest';
+import * as shared from './index';
 import {
   ApiPath,
+  BALANCE_ELO_WEIGHT_MAX,
+  BALANCE_FULL_WEIGHT_GAMES,
   EloRankingCachePayload,
+  GetMyPositionSuggestionsQuery,
+  GetMyPositionSuggestionsResponse,
+  RATING_START_ELO,
+  RatingPolicyView,
   ErrorCode,
   GAME_SEED,
+  GetDashboardSummaryBody,
   GetDashboardSummaryResponse,
   GetEloRankingQuery,
   GetEloRankingResponse,
@@ -15,7 +23,6 @@ import {
   SEASON_BADGE_PLACES,
   SEASON_BADGE_SEED,
   SEASON_CLOSE_GRACE_SEC,
-  SEASON_SOFT_RESET_RATIO_DEFAULT,
   TierRankingEntry,
   TierRankingGame,
   parseSeasonBadgeCode,
@@ -54,8 +61,7 @@ describe('S4 경로·오류·상수', () => {
   it('티어 랭킹 게임 = 랭크 큐가 있는 게임', () => {
     expect([...TierRankingGame.options].sort()).toEqual(Object.keys(RANKED_QUEUE_BY_GAME).sort());
   });
-  it('소프트 리셋 비율 기본값(문서 7-3), 종료 유예 > 승인 트랜잭션 상한 15초', () => {
-    expect(SEASON_SOFT_RESET_RATIO_DEFAULT).toBe(0.5);
+  it('종료 유예 > 승인 트랜잭션 상한 15초', () => {
     expect(SEASON_CLOSE_GRACE_SEC).toBeGreaterThan(15);
   });
 });
@@ -135,11 +141,12 @@ describe('GET /rankings/elo', () => {
 describe('GET /dashboard/summary', () => {
   const base = {
     season: { ...season, days_left: 34, progress: 0.667 },
-    rating_policy: { soft_reset_ratio: 0.5, min_games: 5, k_base: 32, k_new: 40, new_player_games: 10, loss_ratio: 0.5 },
+    rating_policy: { min_games: 5, k_base: 32, k_new: 40, new_player_games: 10, loss_ratio: 0.5, full_weight_games: 10, elo_weight_max: 0.2 },
     next_scrim: null,
     recruiting: [],
     stats: { recruiting_scrims: 3, scrims_this_week: 11, week_start: '2026-10-26T00:00:00.000+09:00' },
     top_rankers: { game: 'lol', season, is_final: false, items: [eloRow], synced_at: T, stale: false },
+    top_rankers_state: 'ready',
     recent_results: [
       {
         scrim_id: ID,
@@ -166,7 +173,14 @@ describe('GET /dashboard/summary', () => {
     expect(GetDashboardSummaryResponse.safeParse(at(1.1)).success).toBe(false);
   });
   it('시즌 공백·첫 화면: null 필드 허용', () => {
-    const r = GetDashboardSummaryResponse.parse({ ...base, season: null, top_rankers: null, me: null, recent_results: [] });
+    const r = GetDashboardSummaryResponse.parse({
+      ...base,
+      season: null,
+      top_rankers: null,
+      top_rankers_state: 'no_season',
+      me: null,
+      recent_results: [],
+    });
     expect(r.season).toBeNull();
   });
   it('봇 데이터 필드는 없다(S5)', () => {
@@ -178,6 +192,41 @@ describe('GET /dashboard/summary', () => {
   it('상위 랭커 6명 거부', () => {
     const items = Array.from({ length: 6 }, () => eloRow);
     expect(GetDashboardSummaryResponse.safeParse({ ...base, top_rankers: { ...base.top_rankers, items } }).success).toBe(false);
+  });
+
+  describe('top_rankers_state(21절, D196–D198)', () => {
+    const block = base.top_rankers;
+    const parse = (top_rankers: unknown, top_rankers_state: unknown) =>
+      GetDashboardSummaryResponse.safeParse({ ...base, top_rankers, top_rankers_state });
+    it('ready ↔ 객체, 행 0개도 ready', () => {
+      expect(parse(block, 'ready').success).toBe(true);
+      const r = parse({ ...block, items: [] }, 'ready');
+      expect(r.success && r.data.top_rankers_state === 'ready' && r.data.top_rankers.items).toEqual([]);
+    });
+    it('no_season·unavailable ↔ null', () => {
+      expect(parse(null, 'no_season').success).toBe(true);
+      expect(parse(null, 'unavailable').success).toBe(true);
+    });
+    it('맞지 않는 조합 거부', () => {
+      expect(parse(null, 'ready').success).toBe(false);
+      expect(parse(block, 'no_season').success).toBe(false);
+      expect(parse(block, 'unavailable').success).toBe(false);
+    });
+    it('필수: 없거나 모르는 값이면 거부', () => {
+      const { top_rankers_state: _s, ...noState } = base;
+      expect(GetDashboardSummaryResponse.safeParse(noState).success).toBe(false);
+      expect(parse(block, 'stale').success).toBe(false);
+    });
+    it('부분 실패여도 나머지 필드는 그대로(시즌 카드·모집·통계)', () => {
+      const r = GetDashboardSummaryResponse.parse({ ...base, top_rankers: null, top_rankers_state: 'unavailable' });
+      expect(r.season?.days_left).toBe(34);
+      expect(r.stats.recruiting_scrims).toBe(3);
+      expect(r.me?.rank).toBe(3);
+    });
+    it('모양 검사용 Body는 조합을 보지 않고 strict로 쓸 수 있다', () => {
+      expect(GetDashboardSummaryBody.strict().safeParse({ ...base, top_rankers: null }).success).toBe(true);
+      expect(GetDashboardSummaryBody.strict().safeParse({ ...base, extra: 1 }).success).toBe(false);
+    });
   });
 });
 
@@ -205,5 +254,47 @@ describe('프로필 뱃지(S4)', () => {
   it('순위 뱃지 범위 밖 거부', () => {
     const bad = { id: ID, code: 'x', name: 'x', description: null, earned_at: T, season: null, game: null, place: 4 };
     expect(GetUserProfileResponse.safeParse({ ...base, badges: [bad] }).success).toBe(false);
+  });
+});
+
+describe('S4 후속 변경 2: 시작 점수·밸런스 비중·라인 추천(20절)', () => {
+  it('시작 점수 1000, ELO 최대 비중 0.2, 기준 경기 수 10(설정값 아님)', () => {
+    expect(RATING_START_ELO).toBe(1000);
+    expect(BALANCE_ELO_WEIGHT_MAX).toBe(0.2);
+    expect(BALANCE_FULL_WEIGHT_GAMES).toBe(10);
+  });
+  it('소프트 리셋 상수는 없다(D183)', () => {
+    expect((shared as Record<string, unknown>).SEASON_SOFT_RESET_RATIO_DEFAULT).toBeUndefined();
+  });
+  it('요약 rating_policy: soft_reset_ratio 없음, 밸런스 비중 필수', () => {
+    const policy = GetDashboardSummaryBody.shape.rating_policy;
+    const ok = { min_games: 5, k_base: 32, k_new: 40, new_player_games: 10, loss_ratio: 0.5, full_weight_games: 10, elo_weight_max: 0.2 };
+    expect(policy.parse({ ...ok, soft_reset_ratio: 0.5 })).not.toHaveProperty('soft_reset_ratio');
+    const { elo_weight_max: _w, ...noWeight } = ok;
+    expect(policy.safeParse(noWeight).success).toBe(false);
+    expect(policy.safeParse({ ...ok, elo_weight_max: 1.2 }).success).toBe(false);
+  });
+  it('밸런스 rating_policy: elo_weight_max 필수, 0–1', () => {
+    const ok = { k_base: 32, k_new: 40, new_player_games: 10, loss_ratio: 0.5, full_weight_games: 10, elo_weight_max: 0.2 };
+    expect(RatingPolicyView.parse(ok).elo_weight_max).toBe(0.2);
+    const { elo_weight_max: _w, ...noWeight } = ok;
+    expect(RatingPolicyView.safeParse(noWeight).success).toBe(false);
+    expect(RatingPolicyView.safeParse({ ...ok, elo_weight_max: -0.1 }).success).toBe(false);
+  });
+  it('GET /me/position-suggestions 경로·쿼리', () => {
+    expect(ApiPath.myPositionSuggestions).toBe('/me/position-suggestions');
+    expect(GetMyPositionSuggestionsQuery.safeParse({}).success).toBe(false);
+    expect(GetMyPositionSuggestionsQuery.parse({ game: 'lol' }).game).toBe('lol');
+  });
+  it('추천 응답: 0–2개, 중복 금지, 근거 수 ≤ 20', () => {
+    const ok = { game: 'lol', positions: ['mid', 'top'], sample_size: 18, synced_at: T };
+    expect(GetMyPositionSuggestionsResponse.parse(ok).positions).toEqual(['mid', 'top']);
+    expect(GetMyPositionSuggestionsResponse.parse({ ...ok, game: 'tft', positions: [], sample_size: 0, synced_at: null }).positions).toEqual([]);
+    expect(GetMyPositionSuggestionsResponse.safeParse({ ...ok, positions: ['mid', 'mid'] }).success).toBe(false);
+    expect(GetMyPositionSuggestionsResponse.safeParse({ ...ok, positions: ['mid', 'top', 'bot'] }).success).toBe(false);
+    expect(GetMyPositionSuggestionsResponse.safeParse({ ...ok, sample_size: 21 }).success).toBe(false);
+  });
+  it('S4 후속 변경 2도 오류 코드를 추가하지 않는다', () => {
+    expect(ErrorCode.options).toHaveLength(43);
   });
 });

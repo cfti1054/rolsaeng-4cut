@@ -4,12 +4,13 @@ import { GameAccountsModule } from '../game-accounts/game-accounts.module';
 import { RankingsModule } from '../rankings/rankings.module';
 import { RatingsModule } from '../ratings/ratings.module';
 import { ProfileController } from './profile.controller';
+import { PositionSuggestions } from './position-suggestions.service';
 import { ProfileScrimService } from './profile-scrim.service';
 import { ProfileService } from './profile.service';
 
 @Module({
   imports: [GameAccountsModule, RatingsModule, RankingsModule],
   controllers: [ProfileController],
-  providers: [ProfileService, ProfileScrimService, JwtGuard],
+  providers: [ProfileService, ProfileScrimService, PositionSuggestions, JwtGuard],
 })
 export class ProfileModule {}

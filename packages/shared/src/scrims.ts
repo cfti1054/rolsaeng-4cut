@@ -3,6 +3,7 @@ import { PaginationQuery, paginated } from './common/pagination';
 import { IsoDateTime, Uuid } from './common/primitives';
 import { ScrimCancelReason, ScrimPlayerStatus, ScrimResultStatus, ScrimStatus, ScrimTeam } from './constants/enums';
 import { GameCode } from './constants/games';
+import { RECENT_MATCHES_MAX } from './constants/riot';
 import { SeasonRef } from './seasons';
 import { SteamAppId, SteamAppRef } from './steam-apps';
 
@@ -59,7 +60,17 @@ export const SCRIM_ELO_NEW_PLAYER_GAMES_DEFAULT = 10;
  * 화면 문구는 응답 rating_policy.loss_ratio를 쓴다(D169, D176).
  */
 export const SCRIM_ELO_LOSS_RATIO_DEFAULT = 0.5;
-/** 밸런스 실력값 가중치 w = min(경기 수 ÷ 이 값, 1)(문서 7-2 1번). 설정값 아님(core 상수와 같은 값) */
+/**
+ * 내전 ELO 시작 점수. 티어와 무관하게 모든 (사용자, 게임, 시즌) ratings 행이 이 값으로 시작하고,
+ * 새 시즌마다 다시 이 값에서 시작한다(소프트 리셋 없음, 계약 S4 20절 D182·D183). 설정값 아님
+ */
+export const RATING_START_ELO = 1000;
+/**
+ * 밸런스 실력값에서 내전 ELO의 최대 비중(계약 S4 20절 D187). 티어 비중은 최소 1 − 이 값.
+ * w = BALANCE_ELO_WEIGHT_MAX × min(현재 시즌 경기 수 ÷ BALANCE_FULL_WEIGHT_GAMES, 1). 설정값 아님
+ */
+export const BALANCE_ELO_WEIGHT_MAX = 0.2;
+/** w가 최대(BALANCE_ELO_WEIGHT_MAX)에 닿는 현재 시즌 내전 경기 수. 설정값 아님(D187) */
 export const BALANCE_FULL_WEIGHT_GAMES = 10;
 /** 밸런스 결과 안 최대 개수(문서 7-2 4번) */
 export const BALANCE_OPTIONS_MAX = 3;
@@ -178,8 +189,8 @@ export const EloPreview = z.object({
 export type EloPreview = z.infer<typeof EloPreview>;
 
 /**
- * 한 팀의 전력 요약. 실력값(skill) = w × 내전 레이팅 + (1 − w) × 티어 시드(정수, core computeSkill).
- * rating_avg = 팀원 현재 시즌 레이팅(없으면 시드) 평균(반올림) — ELO 기대 승률 계산에 쓰는 값.
+ * 한 팀의 전력 요약. 실력값(skill) = w × 내전 ELO + (1 − w) × 티어 환산값(정수, core computeSkill, D187).
+ * rating_avg = 팀원 현재 시즌 ELO(행이 없으면 RATING_START_ELO) 평균(반올림) — ELO 기대 승률 계산에 쓰는 값.
  */
 export const ScrimTeamSide = z.object({
   /** 팀 인원 */
@@ -361,7 +372,7 @@ export const ScrimPlayerView = z.object({
   no_show_marked_at: IsoDateTime.nullable(),
   /** S3. 배정 포지션의 희망 순위(team·position이 있고 use_positions 내전일 때), 그 외 null */
   position_preference: PositionPreference.nullable(),
-  /** S3. 이 게임 실력값(core computeSkill, 정수). 목업 ROSTER 숫자 */
+  /** S3. 이 게임 실력값(core computeSkill, 정수, w는 현재 시즌 경기 수 기준 D187). 목업 ROSTER 숫자 */
   skill: z.number().int(),
   /** S3. 이 게임 승인된 rated 내전 경기 수 < rating_policy.new_player_games(신규 K 적용 대상). 목업 「NEW」 */
   is_new: z.boolean(),
@@ -398,7 +409,10 @@ export const ScrimViewer = z.object({
   status: MyScrimStatus.nullable(),
   /** 대기 중이면 내 순번(1부터), 아니면 null */
   waitlist_order: z.number().int().min(1).nullable(),
-  /** 내 희망 포지션(참가·대기 중일 때). 아니면 [] */
+  /**
+   * 내 희망 포지션(참가·대기 중일 때). 아니면 [].
+   * 비어 있을 때 화면의 1지망·2지망 기본 선택은 GET /me/position-suggestions로 채운다(D190, 이 필드에 넣지 않는다)
+   */
   preferred_positions: z.array(z.string()),
   is_host: z.boolean(),
   /** 노쇼 제한 해제 시각. 제한 중이 아니면 null(제한 상세는 GET /me/scrim-restriction) */
@@ -621,3 +635,30 @@ export type ScrimRestriction = z.infer<typeof ScrimRestriction>;
 
 export const GetMyScrimRestrictionResponse = ScrimRestriction;
 export type GetMyScrimRestrictionResponse = z.infer<typeof GetMyScrimRestrictionResponse>;
+
+// -----------------------------------------------------------------------------
+// GET /me/position-suggestions?game= — 참가 신청·작성 화면의 1지망·2지망 기본 선택(계약 S4 20절 D190–D192)
+// -----------------------------------------------------------------------------
+
+/** game 필수. 모르는 값은 VALIDATION_FAILED */
+export const GetMyPositionSuggestionsQuery = z.object({
+  game: GameCode,
+});
+export type GetMyPositionSuggestionsQuery = z.infer<typeof GetMyPositionSuggestionsQuery>;
+
+/**
+ * 요청자 본인의 추천 라인. 서버는 저장된 전적만 읽는다(외부 API 호출·동기화 등록 없음).
+ * - 출처: 그 게임 대표(is_primary) 계정의 recent_matches 최신 RECENT_MATCHES_MAX(20)경기 → core computeMainPosition
+ *   → games.positions에 있는 값만, 순서 유지(= 프로필 main_position과 같은 계산)
+ * - positions: 1지망부터 0–2개. has_positions가 아닌 게임·계정 없음·포지션 있는 경기 없음이면 []
+ * - 화면은 기본 선택으로만 쓴다. 참가 신청·작성 요청은 사용자가 보낸 값을 그대로 저장한다(서버가 채우지 않는다)
+ */
+export const GetMyPositionSuggestionsResponse = z.object({
+  game: GameCode,
+  positions: PreferredPositions,
+  /** 근거 경기 수(포지션이 있는 경기, computeMainPosition sample_size). 근거가 없으면 0 */
+  sample_size: z.number().int().min(0).max(RECENT_MATCHES_MAX),
+  /** 근거 전적의 마지막 동기화 시각(대표 계정 matches_synced_at). 계정이 없거나 동기화 전이면 null */
+  synced_at: IsoDateTime.nullable(),
+});
+export type GetMyPositionSuggestionsResponse = z.infer<typeof GetMyPositionSuggestionsResponse>;

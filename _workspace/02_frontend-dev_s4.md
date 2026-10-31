@@ -116,3 +116,54 @@
 - 결함 2에 따른 추가: 키보드 포커스가 안에 있는 동안 페이지가 스크롤되면 닫지 않고 위치를 다시 계산한다(마우스 고정은 기존대로 닫힘). 이때 버튼이 화면 밖이어도 패널은 화면 안에 둔다(tipPosition).
 - 결함 4는 지시대로 수정하지 않았다.
 - 최종 검증: typecheck·build(일반 모드) exit 0, 테스트 23파일 242개 통과(임시 vitest 설정 사용 후 삭제). 브라우저는 목 production, 위 표 범위. 터치: 패널 안 탭 유지, 버튼 탭 닫기(라이트).
+
+## 20절(S4 후속 변경 2) — 시작 점수 1000, 소프트 리셋 폐지, 실력값 비중, 라인 추천 (D182–D195)
+
+### 화면 문구 (20-7)
+
+| 위치 | 전 | 후 |
+| --- | --- | --- |
+| ⓘ 무슨 점수인가요 | …라이엇 티어와는 따로 계산하고, 게임과 시즌마다 따로 쌓여요. | 우리 서버 내전 결과로만 정해지는 점수예요. 라이엇 티어와 상관없이 모두 같은 점수에서 시작하고, 게임과 시즌마다 따로 쌓여요. |
+| ⓘ 시작 점수는 어떻게 정하나요(값 유무 같음) | 소프트 리셋·티어 시드 문장 | 모든 멤버가 티어와 상관없이 {RATING_START_ELO}점에서 시작해요. 새 시즌이 시작되면 모두 다시 {RATING_START_ELO}점이 돼요. 지난 시즌 순위는 시즌 최종 순위와 뱃지로 남아요. |
+| ⓘ 팀을 나눌 때는요(새, 5번째) | 없음 | 값 있음: 계약 문구(N = round(elo_weight_max × 100)), N = 0이면 「팀 자동 밸런스는 티어만으로 나눠요.」, 값 없음: 「…내전 ELO는 조금만 섞어요.」 |
+| ⓘ 승패 예시 기준 | RATING_SEED_DEFAULT | RATING_START_ELO |
+| 사이드바 시즌 카드 | softResetText(ratio) | seasonResetText() = 「종료 시 모두 {RATING_START_ELO}점으로 초기화」(HALF_RATIO 삭제, policy 미사용) |
+| 밸런스 실력값 설명 | 실력값 = w × 내전 레이팅 + (1 − w) × 티어 시드, w = 내전 경기 수 ÷ F (최대 1). … | 실력값 = w × 내전 ELO + (1 − w) × 티어 환산값. w는 이번 시즌 내전 경기 수에 따라 0에서 N%까지 늘어요(F경기부터 N%). K = …(+ 패배 배율 문장). 값 없음: 「실력값은 티어를 중심으로 이번 시즌 내전 ELO를 조금 섞어 계산해요.」 |
+| /rankings ELO 탭 설명 | 서버 자체 내전 레이팅입니다. … | 티어와 상관없이 모두 {RATING_START_ELO}점에서 시작하는 서버 자체 내전 점수입니다. 운영진이 승인한 결과만 반영되고, 시즌마다 새로 시작합니다. |
+| 로그인 기능 소개 | 운영진 승인 결과만 반영 · 시즌 소프트 리셋 | 운영진 승인 결과만 반영 · 시즌마다 {RATING_START_ELO}점에서 새로 시작 |
+
+- 숫자는 shared `RATING_START_ELO`와 응답 `rating_policy`(`full_weight_games`, `elo_weight_max`)만. 화면 코드(목 제외)에 1000·0.2·10 리터럴, `*_DEFAULT` import, 「소프트 리셋」·「티어 시드」 없음(rg 확인, 남은 1000은 ms 변환뿐).
+
+### 라인 추천 (20-5, D190–D192)
+
+- 클라이언트 `getMyPositionSuggestions(game)`(lib/api/scrims.ts, `GetMyPositionSuggestionsResponse` parse), 훅 `usePositionSuggestions(game, enabled)`(lib/hooks/scrims.ts, 키 `['me','position-suggestions',game]`, staleTime 5분, retry false, 오류 표시 없음).
+- 순수 함수 `positionSuggestionFill`·`positionSuggestionHint`(lib/scrims.ts) + 화면 공용 훅 `usePositionDefaults`(lib/hooks/position-defaults.ts, 새 파일): 「건드림」·「채움」 상태를 들고, 채움 조건 = eligible && 건드리기 전 && 1·2지망 둘 다 빈 값 && 응답 game 일치 && 그 게임 positions 안 값 1개 이상.
+- 작성 폼: enabled = game.has_positions, eligible = effPositions. PositionPicker 변경 → touch(), pickGame → reset()(빈 선택 + 다시 채움).
+- 상세 JoinControls: enabled = eligible = use_positions && can_join && !inRoster. 참가·대기 중이면 저장값(useState 초기값)만 쓰고 요청도 하지 않는다.
+- 안내 「솔로 랭크 최근 {sample_size}경기 기준으로 골라 뒀어요. 바꿔도 돼요.」: 채운 뒤 건드리기 전에만, 고르는 칸 바로 아래(text-xs text-faint).
+
+### 목 (NEXT_PUBLIC_API_MOCK)
+
+- ratings.ts: 새 행 elo = RATING_START_ELO(applyApproval의 tierSeed 입력 삭제, 호출 2곳·미사용 seedOf 정리), skillInfo = computeSkill({ seasonElo, seasonGames: 현재 시즌 행 wins + losses, tierSeed }), rating 폴백 RATING_START_ELO, ratingPolicyView.elo_weight_max. isNew는 기존(모든 시즌 이력 수).
+- rankings.ts: SEASON_SOFT_RESET_RATIO_DEFAULT·soft_reset_ratio 삭제, full_weight_games·elo_weight_max 추가, 머리 주석.
+- game-accounts.ts + backend.ts: `GET /me/position-suggestions` — 대표 계정 저장 전적 → 프로필과 같은 mainPosition → games.positions 안 값 최대 2개, sample_size, synced_at = matches_synced_at. 동기화 등록 없음. 연동 없음·롤체·스팀 → []. game 누락·모르는 값 → VALIDATION_FAILED.
+- scrims.ts: SEED_VERSION 6 → 7.
+
+### 테스트 변경
+
+- elo-info.test.ts: 제목 5개, 시작 점수 상수 문구(값 유무 같음), 리셋·시드·아이언 문구 없음, elo_weight_max 0.2·0.35·0, 값 없음 숫자는 1000점만.
+- dashboard.test.ts: softResetText 2개 → seasonResetText 1개. scrim-results.test.ts: 픽스처 elo_weight_max, 문구 전체·N·F 변화·값 없음.
+- scrims.test.ts: 추천 기본값 8개(채움, 1개면 1지망만, 건드린 뒤 미적용, 저장값 있으면 미적용·eligible false, 응답 없음·빈 배열·다른 게임, 게임 변경 후 다시 채움, 목록 밖 값 버림, 안내 문구).
+- mock: rankings.test.ts·scrim-results.test.ts rating_policy 기대값. 새: 첫 이력 elo_before 전부 1000(시즌 2개 이상), skillInfo w(5경기 1720, 지난 시즌만 뛴 경우 1800·rating 1000, 15경기 760), 추천 엔드포인트(연동 없음 [], 동기화 후 프로필 main_position·sample_size·synced_at과 일치, 갱신 횟수 불변, tft·steam [], 400).
+- 시드가 전원 1000 시작으로 바뀌어 값에 기대던 기존 테스트 2개 수정: rankings.test.ts 「ELO 순위 변동」(시드에 이번 주 경기가 있어 처음부터 변동이 생김 → baselineEloRanks로 대조), game-accounts.test.ts 프로필 badges(로그인 사용자가 시즌 1 1위가 되어 뱃지가 생김 → 배열인지만).
+
+### 검증
+
+- `corepack pnpm --filter web typecheck` exit 0, `corepack pnpm --filter web build` exit 0.
+- 테스트 23파일 254개 통과. Node 20.11에서 저장소 vitest 설정이 ERR_REQUIRE_ESM이라 /tmp 임시 .mjs(같은 내용)로 실행 후 삭제.
+- 브라우저(목 dev, :3100): 로그인 화면 문구, 사이드바 시즌 카드(다크·라이트 데스크톱), ⓘ 새 섹션·시작 점수·ELO 탭 설명(다크·라이트 데스크톱), 작성 폼: 연동 후 탑/정글 + 안내(10경기) → 1지망 미드로 바꾸면 안내 사라짐 → 롤체 → 롤로 돌아오면 다시 탑/정글 + 안내. 상세(화요일 저녁 5:5 내전): 탑/정글 + 안내 → 미드로 바꿔 참가 → 참가 중 미드/정글·안내 없음 → 참가 취소하면 다시 추천. 390px 라이트(작성 폼)·다크(상세): 안내 1줄, 가로 넘침 없음. 모바일 머리는 시즌 이름·D-day만이라 초기화 문구가 없다(기존 그대로).
+- 미확인: 실제 api 연동(backend 작업 중), 추천 요청 실패 화면(단위·코드 경로로만 확인).
+
+### 계약과 다르게 한 것
+
+- 없음. 해석: 상세 참가 영역의 요청 enabled는 「포지션 받는 게임」보다 좁게 eligible과 같게 했다(참가 중에는 추천을 쓰지 않으므로 요청할 필요가 없다).

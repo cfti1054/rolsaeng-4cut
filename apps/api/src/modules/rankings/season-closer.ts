@@ -20,7 +20,7 @@ export type SeasonCloseRun = { acquired: boolean; closed: number; skipped: numbe
 
 /**
  * 시즌 종료 처리(계약 S4 6-3, D141·D144·D145). 최종 순위와 뱃지를 시즌당 한 트랜잭션으로 기록하고 closed_at을 찍는다.
- * 소프트 리셋은 여기서 하지 않는다. ratings를 쓰지 않고 다음 시즌도 만들지 않는다(D140, D143).
+ * ratings를 쓰지 않고 다음 시즌도 만들지 않는다(D140, D143, D186). 새 시즌 ratings 행은 첫 승인 때 RATING_START_ELO로 생긴다(D182).
  * 잠금: season-close(try) → 시즌 행 FOR NO KEY UPDATE. 내전·사용자 잠금을 잡지 않아 승인과 교착이 없다(6-3).
  * 이 서비스는 항상 등록되고, cron은 RankingJobsScheduler(RANKING_JOBS_ENABLED)가 건다.
  */

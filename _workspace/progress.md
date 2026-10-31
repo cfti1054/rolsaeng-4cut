@@ -188,3 +188,33 @@
 **배포 순서:** 웹이 `loss_ratio`를 필수로 읽으므로 API를 먼저 배포한다. 새 웹 + 옛 API면 요약 parse 실패
 
 **확인 필요:** Q9 패배 배율로 랭킹이 경기 수도 반영, Q10 ⓘ 이유 문구 「지는 부담을 줄여 내전에 편하게 참여하도록」. 시작 점수 전원 1000 안은 결정 대기(`_workspace/ELO_설명서.md` 9-1)
+
+## S4 후속 변경 2(사용자 결정) — 2026-10-31 — 판정: pass (DB e2e·실서버 미확인)
+
+**사용자 결정:** ELO는 티어와 무관하게 전원 1000에서 시작하고 새 시즌마다 1000으로 완전 초기화(소프트 리셋 폐지). 팀 밸런스 실력값 = w × 내전 ELO + (1 − w) × 티어 환산값, w는 이번 시즌 경기 수에 따라 0에서 0.2까지 선형(10경기부터 20%, 티어 비중 최소 80%). 롤 1지망·2지망 기본값 = 라이엇 대표 계정 솔로 랭크 최근 20경기 주·보조 라인, 본인이 바꿀 수 있고 서버는 받은 값만 저장. Q11 운영 데이터 없음(재계산 안 함), Q12 「티어 환산값」, Q13 저장된 최근 20경기로 그대로 추천. 결정 D182–D195(계약 20절). Q1·Q5는 이 결정으로 닫힘.
+
+**구현:** core `balanceEloWeight`·`computeSkill({ seasonGames })`, 소프트 리셋 함수 3개·상수 삭제. api 승인 9단계 새 행 = `RATING_START_ELO`, `rating-carry.ts` 삭제, `carried_from_season_id`는 컬럼만 유지(값 안 씀), env `SEASON_SOFT_RESET_RATIO` 삭제, `GET /me/position-suggestions`. web ⓘ·시즌 카드·랭킹·로그인 문구, 작성·참가 화면 추천 기본값, 목 `SEED_VERSION` 7. 스키마·마이그레이션 없음. 설명서 `_workspace/ELO_설명서.md` 갱신.
+
+**리더 직접 실행:** `-r typecheck` 4개 Done / shared 99·core 355·web 254·api 498 passed / 42 skipped(DB e2e) / `-r build` exit 0. 임시 vitest 설정은 패키지 안에 두고 실행 후 삭제(Node 20.11, `/tmp` 설정은 패키지 vitest를 못 찾음). Node 22 실행 없음.
+
+**QA:** core·api pass(결함 0, `_workspace/03_qa-verifier_s4_followup2_core_api.md`). web pass(minor 1, `_workspace/03_qa-verifier_s4_followup2_web.md`). 테스트에 남은 `SEASON_SOFT_RESET_RATIO` 문자열 2곳은 「env에 남아 있어도 기동」 테스트라 예외. web 브라우저(목, 다크·라이트 × 데스크톱·390px)에서 추천 채움·변경·참가 저장·시즌 카드·ⓘ 확인.
+
+**남은 결함:** web minor 1 — 「건드린 뒤 늦게 온 추천이 선택을 덮지 않음」은 순수 함수 테스트만 있고 훅 순서 테스트는 없음(web에 React 테스트 환경 없음, 코드 경로상 안전, 수정 안 함). Q8은 이전과 같음.
+
+**미실행·미확인:** DB e2e 42건, migrate deploy, 실제 docker build, 실제 API 연동, 추천 요청 실패·지연 응답의 브라우저 재현, 390px ⓘ.
+
+**배포:** api와 web을 같은 커밋으로 함께(D195). 마이그레이션 없음. Railway의 `SEASON_SOFT_RESET_RATIO`는 지운다(남겨도 무시되지만 효과 없음).
+
+**확인 필요:** 없음. Q9(패배 배율 0.5 유지, `SCRIM_ELO_LOSS_RATIO`로 조정)·Q10(ⓘ 문구 유지)은 2026-10-31 사용자 확정. 코드는 이미 추천안이라 변경 없음.
+
+## S4 후속 변경 3(사용자 결정 Q2–Q8) — 2026-10-31 — 판정: pass (DB e2e·실서버 미확인, QA 서브에이전트는 사용량 한도로 미실행, 리더가 테스트·브라우저로 확인)
+
+**결정:** Q2 시즌 공백 허용, Q3 경계 대기 결과는 다음 시즌, Q4 나간 멤버 제외는 S5의 `users.left_at`(지금은 구현 안 함), Q6 ELO는 시즌만, Q7 뱃지 1–3위. 모두 기존 코드 유지. Q8은 지금 구현(계약 21절, D196–D201).
+
+**Q8 구현:** 요약 응답 `top_rankers_state`. 시즌 없음 `no_season` 「아직 시즌이 없어요」, games 없음·첫 계산 실패 `unavailable` 「순위를 불러오지 못했어요」(요약은 200, 모집·통계·시즌 카드 유지). 한 게임 계산 실패는 앞의 빈 블록으로 대체하지 않음. `GET /rankings/*` 500은 그대로. `me`는 캐시만 읽으므로 감싸지 않음. 목 시나리오 `top_unavailable`.
+
+**리더 직접 실행:** `-r typecheck` 통과. shared 105·api 501 passed / 42 skipped·web 256 passed. 목 모드 브라우저: 기본 홈 TOP 5, `top_unavailable`에서 순위 문구만 바뀌고 모집·결과는 유지·ELO는 보이고 순위 번호는 없음, `no_season`에서 「아직 시즌이 없어요」와 사이드바 「다음 시즌 준비 중」.
+
+**배포:** api·web 같은 커밋(D200). 마이그레이션 없음.
+
+**다음:** Docker에서 DB e2e 후 S5 봇 API, 활동·플레이타임 랭킹, 스팀 플레이타임. S5에 Q4 `users.left_at` 포함.

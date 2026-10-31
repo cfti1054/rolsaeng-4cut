@@ -1,19 +1,16 @@
-import { DASHBOARD_TOP_RANKERS_LIMIT, type DashboardMe, type DashboardRecentResult, type DashboardSeason, type DashboardTopRankers, type ProfileBadge, type ScrimSummary } from '@gcd/shared';
+import { DASHBOARD_TOP_RANKERS_LIMIT, RATING_START_ELO, type DashboardMe, type DashboardRecentResult, type DashboardSeason, type DashboardTopRankers, type ProfileBadge, type ScrimSummary } from '@gcd/shared';
 import { formatYearMonth } from './format';
 import { TEAM_LABEL } from './scrim-results';
 
 /**
  * S4 홈·사이드바·뱃지 표시 로직(순수 함수). 계약 10절.
- * 소프트 리셋 비율·최소 경기 수는 응답(rating_policy)만 쓴다(D101).
+ * 최소 경기 수는 응답(rating_policy)만 쓴다(D101). 시즌 시작 점수는 고정 상수 RATING_START_ELO.
  */
 
 /** 사이드바 시즌 진행 칸 수(목업) */
 export const SEASON_PIPS = 12;
 /** 홈 TOP 랭커를 모바일에서 그리는 수(목업 MobileHome) */
 export const MOBILE_TOP_RANKERS = 3;
-
-/** 「절반」으로 읽어 줄 수 있는 비율 */
-const HALF_RATIO = 1 / 2;
 
 /** `D-34`, 마지막 날 `D-DAY` */
 export function seasonDayText(daysLeft: number): string {
@@ -25,12 +22,9 @@ export function seasonFilledPips(progress: number): number {
   return Math.round(progress * SEASON_PIPS);
 }
 
-export function softResetText(ratio: number): string {
-  if (ratio === HALF_RATIO) return '종료 시 레이팅 절반 소프트 리셋';
-  if (ratio === 1) return '종료 시 레이팅 유지';
-  if (ratio === 0) return '종료 시 레이팅 1000으로 초기화';
-  // 식이 1000 기준이라 「레이팅의 N%」가 아니다(계약 6-1)
-  return `종료 시 1000 기준 차이의 ${Math.round(ratio * 100)}%만 유지`;
+/** 시즌마다 전원 RATING_START_ELO로 새로 시작한다(계약 20절 D183) */
+export function seasonResetText(): string {
+  return `종료 시 모두 ${RATING_START_ELO}점으로 초기화`;
 }
 
 export const SEASON_WAITING_TITLE = '다음 시즌 준비 중';

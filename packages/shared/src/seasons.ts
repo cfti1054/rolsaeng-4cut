@@ -4,7 +4,8 @@ import { IsoDateTime, Uuid } from './common/primitives';
 
 // =============================================================================
 // S3 시즌(문서 5장 seasons): 조회와 「시즌이 없을 때 자동 생성」. 계약: _workspace/S3/01_architect_contract.md 6절
-// S4 시즌 종료 처리·레이팅 이월. 계약: _workspace/01_architect_contract.md 6절
+// S4 시즌 종료 처리. 계약: _workspace/01_architect_contract.md 6절
+// S4 20절(D183): 레이팅 이월(소프트 리셋)은 없다. 새 시즌 행은 모두 RATING_START_ELO(scrims.ts)로 시작한다.
 //
 // 시즌 구간은 반열림 [starts_at, ends_at). 어떤 시각 t가 속한 시즌 = starts_at ≤ t < ends_at인 행.
 // 겹치는 행이 여럿이면 starts_at이 가장 늦은 것, 같으면 id 문자열이 작은 것(core resolveSeasonAt).
@@ -15,12 +16,6 @@ import { IsoDateTime, Uuid } from './common/primitives';
  * 환경 변수 SEASON_AUTO_LENGTH_MONTHS 기본값. 화면에는 쓰지 않는다.
  */
 export const SEASON_AUTO_LENGTH_MONTHS_DEFAULT = 3;
-
-/**
- * 소프트 리셋으로 다음 시즌에 남기는 비율(문서 7-3 `1000 + (기존 − 1000) × 0.5`).
- * 환경 변수 SEASON_SOFT_RESET_RATIO 기본값. 화면은 응답 rating_policy.soft_reset_ratio를 쓴다(D101).
- */
-export const SEASON_SOFT_RESET_RATIO_DEFAULT = 0.5;
 
 /**
  * 시즌 종료 처리 유예(초). ends_at + 이 시간이 지나야 종료 작업이 그 시즌을 다룬다.

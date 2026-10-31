@@ -387,7 +387,7 @@ model Season {
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   ratings        Rating[]         @relation("RatingSeason")
-  /// S4. 이 시즌 값에서 이월된 다음 시즌 행들
+  /// S4. 이 시즌 값에서 이월된 다음 시즌 행들(S4 20절 D184부터 새로 생기지 않는다)
   carriedRatings Rating[]         @relation("RatingCarriedFrom")
   ratingHistory  RatingHistory[]
   standings      SeasonStanding[]
@@ -398,7 +398,7 @@ model Season {
 }
 
 /// 시즌별 내전 레이팅 현재값. 문서 5장. elo는 정수(계산 후 반올림)
-/// S4: 행은 그 시즌 첫 반영 때 한 번만 만든다. 시작값 = 이전 시즌 행이 있으면 소프트 리셋, 없으면 티어 시드(S4 계약 6-1)
+/// S4: 행은 그 시즌 첫 반영 때 한 번만 만든다. 시작값 = 티어와 무관하게 1000(S4 계약 20절 D182, 소프트 리셋 없음)
 model Rating {
   id                  String   @id @default(uuid()) @db.Uuid
   userId              String   @map("user_id") @db.Uuid
@@ -407,7 +407,7 @@ model Rating {
   elo                 Int      @default(1000)
   wins                Int      @default(0)
   losses              Int      @default(0)
-  /// S4. 시작값의 출처 시즌(소프트 리셋). 티어 시드로 시작했으면 null. 감사용
+  /// S4. 시작값의 출처 시즌(소프트 리셋). 감사용. S4 20절(D184)부터 쓰지 않는다: 새 행은 항상 null, 기존 값은 그대로 둔다
   carriedFromSeasonId String?  @map("carried_from_season_id") @db.Uuid
   createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)

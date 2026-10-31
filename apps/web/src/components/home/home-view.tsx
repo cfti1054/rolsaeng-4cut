@@ -26,7 +26,7 @@ import { GAME_META, GAME_SCRIM_META } from '@/lib/games';
 import { useMe } from '@/lib/hooks/auth';
 import { useDashboardSummary } from '@/lib/hooks/rankings';
 import { useNow } from '@/lib/hooks/use-now';
-import { eloEmptyState, rankingStatusText, SEASON_NONE_TEXT } from '@/lib/rankings';
+import { eloEmptyState, rankingStatusText, topRankersEmptyText } from '@/lib/rankings';
 import { routes } from '@/lib/routes';
 import { formatHms, scrimCardAction, scrimNeedLine, scrimWhen } from '@/lib/scrims';
 
@@ -97,7 +97,7 @@ function Dashboard({ d, meId }: { d: GetDashboardSummaryResponse; meId: string |
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[3fr_2fr]">
         <RecruitingPanel scrims={d.recruiting} />
         <div className="order-first min-w-0 xl:order-none">
-          <TopRankersPanel top={d.top_rankers} minGames={d.rating_policy.min_games} meId={meId} />
+          <TopRankersPanel top={d.top_rankers} state={d.top_rankers_state} minGames={d.rating_policy.min_games} meId={meId} />
         </div>
         <RecentResultsPanel results={d.recent_results} />
       </div>
@@ -321,7 +321,17 @@ function RecruitingRow({ s, now }: { s: ScrimSummary; now: number | null }) {
 const TOP_RANK_TONE = ['text-gold-text', 'text-silver-text', 'text-bronze-text'] as const;
 const TOP_BAR_TONE = ['bg-gold-text', 'bg-silver-text', 'bg-bronze-text'] as const;
 
-function TopRankersPanel({ top, minGames, meId }: { top: DashboardTopRankers | null; minGames: number; meId: string | undefined }) {
+function TopRankersPanel({
+  top,
+  state,
+  minGames,
+  meId,
+}: {
+  top: DashboardTopRankers | null;
+  state: 'ready' | 'no_season' | 'unavailable';
+  minGames: number;
+  meId: string | undefined;
+}) {
   const topElo = top?.items[0]?.elo ?? 0;
   const status = top ? rankingStatusText({ synced_at: top.synced_at, stale: top.stale }) : null;
   return (
@@ -341,8 +351,8 @@ function TopRankersPanel({ top, minGames, meId }: { top: DashboardTopRankers | n
       }
       className="h-full"
     >
-      {!top ? (
-        <PanelEmpty>{SEASON_NONE_TEXT}</PanelEmpty>
+      {state !== 'ready' || !top ? (
+        <PanelEmpty>{topRankersEmptyText(state === 'unavailable' ? 'unavailable' : 'no_season')}</PanelEmpty>
       ) : top.items.length === 0 ? (
         <PanelEmpty>{eloEmptyState({ ...top, min_games: minGames })}</PanelEmpty>
       ) : (

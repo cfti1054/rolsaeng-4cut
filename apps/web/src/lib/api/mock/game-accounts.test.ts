@@ -2,6 +2,7 @@ import {
   ApiPath,
   ConfirmRiotVerificationResponse,
   GetMyGameAccountsResponse,
+  GetMyPositionSuggestionsResponse,
   GetUserProfileResponse,
   LinkGameAccountResponse,
   SetPrimaryGameAccountResponse,
@@ -190,10 +191,10 @@ describe('S1 목 백엔드(계약 파싱 통과)', () => {
       tiers: [],
       main_position: null,
       recent_matches: null,
-      // S4: 항상 배열(끝난 시즌 순위가 없거나 입상하지 않으면 [])
-      badges: [],
       user: { discord_linked: true },
     });
+    // S4: 항상 배열(끝난 시즌 순위가 없거나 입상하지 않으면 []). 입상 여부는 내전 목 시드 결과에 달렸다
+    expect(Array.isArray(empty.badges)).toBe(true);
     // S3: scrim 블록은 항상 객체(내전 목 시드에서 계산 — 시즌·레이팅·최근 내전)
     expect(empty.scrim).not.toBeNull();
     expect(empty.sync_quota).not.toBeNull();
@@ -219,5 +220,27 @@ describe('S1 목 백엔드(계약 파싱 통과)', () => {
 
     await expect(profile('00000000-0000-4000-8000-00000000ffff')).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await expect(profile('not-a-uuid')).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+  });
+
+  it('라인 추천(S4 20-5): 연동 없음 → [], 동기화 후 프로필 main_position과 같은 값, 롤체·스팀 → [], game 누락 400', async () => {
+    const { api, me, linkRiot, advance, list } = setup();
+    const suggest = (q: string) => api.request(`${ApiPath.myPositionSuggestions}${q}`, GetMyPositionSuggestionsResponse);
+    expect(await suggest('?game=lol')).toEqual({ game: 'lol', positions: [], sample_size: 0, synced_at: null });
+
+    await linkRiot('main#1');
+    advance(3_100);
+    const syncsBefore = (await list()).sync_quota.used;
+    const r = await suggest('?game=lol');
+    const p = await api.request(fillPath(ApiPath.userProfile, { id: me.id }), GetUserProfileResponse);
+    expect(r.positions.length).toBeGreaterThan(0);
+    expect(r.positions).toEqual(p.main_position!.positions.map((x) => x.position));
+    expect(r.sample_size).toBe(p.main_position!.sample_size);
+    expect(r.synced_at).toBe(p.recent_matches!.synced_at);
+    expect((await list()).sync_quota.used).toBe(syncsBefore); // 동기화 등록 없음
+
+    expect((await suggest('?game=tft')).positions).toEqual([]);
+    expect((await suggest('?game=steam')).positions).toEqual([]);
+    await expect(suggest('')).rejects.toMatchObject({ code: 'VALIDATION_FAILED', status: 400 });
+    await expect(suggest('?game=dota')).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
   });
 });

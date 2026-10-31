@@ -256,7 +256,7 @@ describe('S3 responses', () => {
       player_count: 2,
       partitions_evaluated: 1,
       used_positions: true,
-      rating_policy: { k_base: 32, k_new: 40, new_player_games: 10, loss_ratio: 0.5, full_weight_games: 10 },
+      rating_policy: { k_base: 32, k_new: 40, new_player_games: 10, loss_ratio: 0.5, full_weight_games: 10, elo_weight_max: 0.2 },
     });
     expect(r.options[0]?.total_cost).toBe(150);
     expect(BalanceScrimResponse.safeParse({ ...r, options: [] }).success).toBe(false);

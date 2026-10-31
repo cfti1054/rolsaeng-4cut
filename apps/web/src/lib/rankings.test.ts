@@ -13,6 +13,7 @@ import {
   rankingGames,
   rankingStatusText,
   resolveRankingGame,
+  topRankersEmptyText,
   tierRowText,
 } from './rankings';
 import { routes } from './routes';
@@ -68,6 +69,10 @@ describe('규칙·빈 상태 문구는 응답 min_games를 쓴다', () => {
     expect(eloEmptyState({ ...base, season: null })).toBe('아직 시즌이 없어요');
     expect(eloEmptyState({ ...base, synced_at: null })).toBe('아직 시작하지 않은 시즌이에요');
     expect(eloEmptyState({ ...base, is_final: true })).toBe('이 시즌에 순위에 든 멤버가 없어요');
+  });
+  it('홈 상위 랭커 없음은 시즌 없음과 계산 실패를 구분한다', () => {
+    expect(topRankersEmptyText('no_season')).toBe('아직 시즌이 없어요');
+    expect(topRankersEmptyText('unavailable')).toBe('순위를 불러오지 못했어요');
   });
 });
 

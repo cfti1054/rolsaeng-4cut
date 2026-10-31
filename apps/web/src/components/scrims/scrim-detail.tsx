@@ -18,6 +18,7 @@ import { errorMessage } from '@/lib/errors';
 import { formatFull } from '@/lib/format';
 import { positionLabel } from '@/lib/games';
 import { useMe } from '@/lib/hooks/auth';
+import { usePositionDefaults } from '@/lib/hooks/position-defaults';
 import {
   useCancelScrim,
   useGames,
@@ -610,6 +611,20 @@ function JoinControls({
   const [confirmLeave, setConfirmLeave] = useState(false);
   const inRoster = v.status === 'joined' || v.status === 'waitlist';
   const usePositions = s.options.use_positions;
+  // 참가·대기 중이면 저장된 희망 포지션이 우선이라 추천을 쓰지 않는다(20-5)
+  const canSuggest = usePositions && v.can_join && !inRoster;
+  const positionDefaults = usePositionDefaults({
+    game: s.game.code,
+    enabled: canSuggest,
+    eligible: canSuggest,
+    allowed: s.game.positions,
+    first,
+    second,
+    fill: (a, b) => {
+      setFirst(a);
+      setSecond(b);
+    },
+  });
   const picked = usePositions ? toPreferredPositions(first, second) : [];
   const changed = !samePositions(picked, v.preferred_positions);
   const willWait = s.status === 'full' || s.joined_count >= s.capacity;
@@ -666,9 +681,11 @@ function JoinControls({
           onChange={(a, b) => {
             setFirst(a);
             setSecond(b);
+            positionDefaults.touch();
           }}
         />
       )}
+      {usePositions && positionDefaults.hint && <p className="m-0 -mt-2 text-xs text-faint">{positionDefaults.hint}</p>}
 
       <div className="flex flex-wrap items-center gap-2">
         {v.can_join && (

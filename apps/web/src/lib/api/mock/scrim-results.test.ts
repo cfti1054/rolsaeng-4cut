@@ -9,6 +9,7 @@ import {
   JoinScrimResponse,
   ListScrimsResponse,
   ListSeasonsResponse,
+  RATING_START_ELO,
   RejectScrimResultResponse,
   SaveScrimTeamsResponse,
   SubmitScrimResultResponse,
@@ -20,6 +21,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import { createApiClient } from '../client';
 import { createMockBackend, type MockDb } from './backend';
+import { mockEloPolicy, skillInfo } from './ratings';
 
 const uid = (n: number) => `5c0f0000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
@@ -82,7 +84,7 @@ describe('S3 목: 상세 확장 필드·밸런스·팀 저장', () => {
     expect(r.partitions_evaluated).toBe(126);
     expect(r.options).toHaveLength(3);
     expect(r.used_positions).toBe(true);
-    expect(r.rating_policy).toEqual({ k_base: 32, k_new: 40, new_player_games: 10, loss_ratio: 0.5, full_weight_games: 10 });
+    expect(r.rating_policy).toEqual({ k_base: 32, k_new: 40, new_player_games: 10, loss_ratio: 0.5, full_weight_games: 10, elo_weight_max: 0.2 });
     const costs = r.options.map((o) => o.total_cost);
     expect([...costs].sort((a, b) => a - b)).toEqual(costs);
     const o = r.options[0]!;
@@ -453,5 +455,43 @@ describe('D136 경계: 개인 순위 반영 대상 2명 미만(skip)', () => {
     const p = await t.api.request(fillPath(ApiPath.userProfile, { id: me.id }), GetUserProfileResponse);
     expect(p.scrim!.recent.find((r) => r.scrim_id === withHistory)).toMatchObject({ outcome: 'loss', placement: 5 });
     expect(p.scrim!.recent.find((r) => r.scrim_id === withoutHistory)).toMatchObject({ outcome: 'win', placement: 5 });
+  });
+});
+
+describe('S4 20절 목: 시작 점수 1000·실력값 비중', () => {
+  it('(사용자, 게임, 시즌) 첫 이력의 elo_before는 모두 RATING_START_ELO(티어 무관, 시즌마다 새로)', async () => {
+    const t = setup();
+    await t.ready;
+    await t.find('open', '주말 협곡 2판 연속'); // 시드 생성
+    const history = [...t.db().s2!.history].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+    const firsts = new Map<string, number>();
+    for (const h of history) {
+      const k = `${h.user_id}|${h.game}|${h.season_id}`;
+      if (!firsts.has(k)) firsts.set(k, h.elo_before);
+    }
+    expect(firsts.size).toBeGreaterThan(0);
+    expect(new Set(t.db().s2!.history.map((h) => h.season_id)).size).toBeGreaterThan(1);
+    expect([...firsts.values()].every((v) => v === RATING_START_ELO)).toBe(true);
+  });
+
+  it('skillInfo: 현재 시즌 wins + losses로 w, 행이 없으면 rating 1000·skill = 티어 환산값', () => {
+    const season = { id: uid(900), name: '시즌 2', starts_at: '2026-10-01T00:00:00.000Z', ends_at: '2027-01-01T00:00:00.000Z' };
+    const old = { id: uid(901), name: '시즌 1', starts_at: '2026-07-01T00:00:00.000Z', ends_at: '2026-10-01T00:00:00.000Z' };
+    const now = Date.parse('2026-10-28T03:00:00.000Z');
+    const policy = mockEloPolicy();
+    const st = {
+      results: [],
+      seasons: [old, season],
+      ratings: [
+        { user_id: uid(1), game: 'lol' as const, season_id: season.id, elo: 1000, wins: 3, losses: 2 },
+        { user_id: uid(2), game: 'lol' as const, season_id: old.id, elo: 1400, wins: 20, losses: 5 },
+        { user_id: uid(3), game: 'lol' as const, season_id: season.id, elo: 1400, wins: 8, losses: 7 },
+      ],
+      history: [],
+    };
+    expect(skillInfo(st, { userId: uid(1), game: 'lol', tierSeed: 1800, now, policy })).toMatchObject({ skill: 1720, rating: 1000 });
+    // 지난 시즌만 많이 뛰었으면 이번 시즌 0경기 → w = 0
+    expect(skillInfo(st, { userId: uid(2), game: 'lol', tierSeed: 1800, now, policy })).toMatchObject({ skill: 1800, rating: RATING_START_ELO });
+    expect(skillInfo(st, { userId: uid(3), game: 'lol', tierSeed: 600, now, policy }).skill).toBe(760);
   });
 });

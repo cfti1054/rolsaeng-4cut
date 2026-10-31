@@ -185,7 +185,7 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
     }
 
     // S1 엔드포인트(스팀 콜백은 브라우저 이동이라 목에 없다 — authorize_url이 바로 /settings?steam=linked)
-    if (path.startsWith('/me/game-accounts') || path.startsWith('/users/')) {
+    if (path.startsWith('/me/game-accounts') || path === ApiPath.myPositionSuggestions || path.startsWith('/users/')) {
       const r = authorize(init);
       if (r instanceof Response) return r;
       const db = load();
@@ -193,6 +193,7 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
       const res = handleS1({
         method,
         path,
+        search: url.searchParams,
         body,
         me: r,
         now: now(),

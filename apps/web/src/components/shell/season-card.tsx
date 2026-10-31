@@ -2,7 +2,7 @@
 
 import { Skeleton } from '@/components/ui/primitives';
 import { cn } from '@/lib/cn';
-import { SEASON_PIPS, SEASON_WAITING_NOTE, SEASON_WAITING_TITLE, seasonDayText, seasonFilledPips, softResetText } from '@/lib/dashboard';
+import { SEASON_PIPS, SEASON_WAITING_NOTE, SEASON_WAITING_TITLE, seasonDayText, seasonFilledPips, seasonResetText } from '@/lib/dashboard';
 import { useMe } from '@/lib/hooks/auth';
 import { useDashboardSummary } from '@/lib/hooks/rankings';
 
@@ -13,7 +13,7 @@ export function SeasonCard() {
   // /me가 실패하면 요약 쿼리는 disabled(isPending + idle)로 남는다. 실제로 기다리는 중일 때만 스켈레톤
   if (q.isPending && (q.fetchStatus === 'fetching' || me.isPending)) return <Skeleton className="h-[92px] rounded-2xl" />;
   if (!q.data) return null;
-  const { season, rating_policy: policy } = q.data;
+  const { season } = q.data;
   if (!season) {
     return (
       <div className="flex flex-col gap-1.5 rounded-2xl border border-line bg-surface p-3.5">
@@ -39,7 +39,7 @@ export function SeasonCard() {
           <span key={i} className={cn('h-1.5 rounded-[2px]', i < filled ? 'bg-accent' : 'bg-line-2')} />
         ))}
       </div>
-      <span className="text-xs text-muted">{softResetText(policy.soft_reset_ratio)}</span>
+      <span className="text-xs text-muted">{seasonResetText()}</span>
     </div>
   );
 }

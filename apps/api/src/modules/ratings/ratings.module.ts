@@ -6,7 +6,7 @@ import { RatingsController } from './ratings.controller';
 import { SeasonsService } from './seasons.service';
 
 /**
- * S3 내전 레이팅(계약 S3 10절): 시즌 조회·자동 생성, 레이팅 그래프, 실력값 입력(티어 시드 D103 포함).
+ * S3 내전 레이팅(계약 S3 10절): 시즌 조회·자동 생성, 레이팅 그래프, 실력값 입력(밸런스 티어 환산값 D103·D189 포함).
  * ELO 반영 자체는 scrims/scrim-results.service.ts(승인 트랜잭션)가 이 모듈의 헬퍼로 한다.
  */
 @Module({

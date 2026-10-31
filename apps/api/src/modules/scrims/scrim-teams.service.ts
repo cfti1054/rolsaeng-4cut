@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { type BalanceResult, balanceTeams, previewTeamElo, roundHalfAwayFromZero, validateTeamAssignment } from '@gcd/core';
 import {
+  BALANCE_ELO_WEIGHT_MAX,
   BALANCE_FULL_WEIGHT_GAMES,
   BALANCE_PLAYERS_MAX,
   BALANCE_PLAYERS_MIN,
@@ -122,6 +123,7 @@ export class ScrimTeamsService {
         new_player_games: k.newPlayerGames,
         loss_ratio: k.lossRatio,
         full_weight_games: BALANCE_FULL_WEIGHT_GAMES,
+        elo_weight_max: BALANCE_ELO_WEIGHT_MAX,
       },
     });
   }

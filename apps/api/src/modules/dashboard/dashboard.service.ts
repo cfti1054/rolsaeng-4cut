@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   formatKstMidnight,
   kstWeekWindow,
@@ -8,6 +8,8 @@ import {
   seasonProgress,
 } from '@gcd/core';
 import {
+  BALANCE_ELO_WEIGHT_MAX,
+  BALANCE_FULL_WEIGHT_GAMES,
   DASHBOARD_NEXT_SCRIM_AVATARS_MAX,
   DASHBOARD_RECENT_RESULTS_LIMIT,
   DASHBOARD_RECRUITING_LIMIT,
@@ -16,6 +18,7 @@ import {
   type DashboardNextScrim,
   type DashboardRecentResult,
   type DashboardTopRankers,
+  type DashboardTopRankersState,
   GameCode,
   GetDashboardSummaryResponse,
   type ScrimRatingStatus,
@@ -39,6 +42,8 @@ type CodedGame = Game & { code: GameCode };
  */
 @Injectable()
 export class DashboardService {
+  private readonly log = new Logger(DashboardService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly seasons: SeasonsService,
@@ -76,17 +81,18 @@ export class DashboardService {
           }
         : null,
       rating_policy: {
-        soft_reset_ratio: this.config.seasonSoftResetRatio,
         min_games: this.config.ranking.eloMinGames,
         k_base: this.config.rating.kBase,
         k_new: this.config.rating.kNew,
         new_player_games: this.config.rating.newPlayerGames,
         loss_ratio: this.config.rating.lossRatio,
+        full_weight_games: BALANCE_FULL_WEIGHT_GAMES,
+        elo_weight_max: BALANCE_ELO_WEIGHT_MAX,
       },
       next_scrim: nextScrim,
       recruiting: next ? summaries.slice(1) : summaries,
       stats: await this.stats(now),
-      top_rankers: await this.topRankers(games, current ?? latestStartedSeason(seasons, now), now),
+      ...(await this.topRankers(games, current ?? latestStartedSeason(seasons, now), now)),
       recent_results: await this.recentResults(),
       me: current ? await this.me(viewer.id, games, current) : null,
     });
@@ -129,24 +135,46 @@ export class DashboardService {
     return { recruiting_scrims: recruiting, scrims_this_week: thisWeek, week_start: formatKstMidnight(week.start) };
   }
 
-  /** 8-2. 게임을 sort_order 순으로 읽어 처음 행이 있는 게임, 전부 비면 첫 게임 */
-  private async topRankers(games: readonly CodedGame[], season: Season | null, now: Date): Promise<DashboardTopRankers | null> {
-    if (!season) return null;
+  /**
+   * 8-2·21절. 게임을 sort_order 순으로 읽어 처음 행이 있는 게임, 전부 비면 첫 게임.
+   * 시즌 없음은 no_season. games 없음·eloView 실패는 unavailable(요약 500으로 올리지 않음, D196·D198).
+   */
+  private async topRankers(
+    games: readonly CodedGame[],
+    season: Season | null,
+    now: Date,
+  ): Promise<{ top_rankers: DashboardTopRankers | null; top_rankers_state: DashboardTopRankersState }> {
+    if (!season) return { top_rankers: null, top_rankers_state: 'no_season' };
+    if (games.length === 0) {
+      this.log.error('games 시드 없음: 요약 top_rankers unavailable');
+      return { top_rankers: null, top_rankers_state: 'unavailable' };
+    }
     let picked: DashboardTopRankers | null = null;
     for (const game of games) {
-      const view = await this.rankings.eloView(game, season, now);
-      const block: DashboardTopRankers = {
-        game: game.code,
-        season: seasonRef(season),
-        is_final: view.isFinal,
-        items: view.entries.slice(0, DASHBOARD_TOP_RANKERS_LIMIT),
-        synced_at: view.syncedAt?.toISOString() ?? null,
-        stale: view.stale,
-      };
-      if (block.items.length > 0) return block;
-      picked ??= block;
+      try {
+        const view = await this.rankings.eloView(game, season, now);
+        const block: DashboardTopRankers = {
+          game: game.code,
+          season: seasonRef(season),
+          is_final: view.isFinal,
+          items: view.entries.slice(0, DASHBOARD_TOP_RANKERS_LIMIT),
+          synced_at: view.syncedAt?.toISOString() ?? null,
+          stale: view.stale,
+        };
+        if (block.items.length > 0) return { top_rankers: block, top_rankers_state: 'ready' };
+        picked ??= block;
+      } catch (err) {
+        this.log.error(
+          `요약 top_rankers 계산 실패 game=${game.code} season=${season.id}: ${err instanceof Error ? err.message : 'unknown'}`,
+        );
+        return { top_rankers: null, top_rankers_state: 'unavailable' };
+      }
     }
-    return picked;
+    if (!picked) {
+      this.log.error(`요약 top_rankers 블록 없음 season=${season.id}`);
+      return { top_rankers: null, top_rankers_state: 'unavailable' };
+    }
+    return { top_rankers: picked, top_rankers_state: 'ready' };
   }
 
   /** 8-2 사이드바 값. 대표 게임 = 현재 시즌 경기 수 최다(같으면 sort_order, D157). elo·rank는 같은 캐시 행 */

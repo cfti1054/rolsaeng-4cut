@@ -1,3 +1,4 @@
+import { RATING_START_ELO } from '@gcd/shared';
 import type { ReactNode } from 'react';
 import { ThemeToggleButton } from '@/components/theme/theme-controls';
 import { Eyebrow } from '@/components/ui/primitives';
@@ -14,7 +15,7 @@ const FEATURES = [
     mark: 'ELO',
     tile: 'bg-accent/10 text-accent-ink',
     title: '서버 자체 내전 랭킹',
-    desc: '운영진 승인 결과만 반영 · 시즌 소프트 리셋',
+    desc: `운영진 승인 결과만 반영 · 시즌마다 ${RATING_START_ELO}점에서 새로 시작`,
   },
   {
     mark: 'API',

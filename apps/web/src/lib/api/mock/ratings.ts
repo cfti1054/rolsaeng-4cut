@@ -21,12 +21,14 @@ import {
   type TeamsEvaluation,
 } from '@gcd/core';
 import {
+  BALANCE_ELO_WEIGHT_MAX,
   BALANCE_FULL_WEIGHT_GAMES,
   GameCode,
   IsoDateTime,
   PROFILE_RECENT_SCRIMS_LIMIT,
   RANKING_ELO_MIN_GAMES_DEFAULT,
   RATING_HISTORY_POINTS_MAX,
+  RATING_START_ELO,
   SCRIM_ELO_K_BASE_DEFAULT,
   SCRIM_ELO_K_NEW_DEFAULT,
   SCRIM_ELO_LOSS_RATIO_DEFAULT,
@@ -135,11 +137,11 @@ export function mockEloPolicy(o?: MockRatingOptions): EloPolicy {
   );
 }
 export function ratingPolicyView(policy: EloPolicy): RatingPolicyView {
-  return { k_base: policy.kBase, k_new: policy.kNew, new_player_games: policy.newPlayerGames, loss_ratio: policy.lossRatio, full_weight_games: BALANCE_FULL_WEIGHT_GAMES };
+  return { k_base: policy.kBase, k_new: policy.kNew, new_player_games: policy.newPlayerGames, loss_ratio: policy.lossRatio, full_weight_games: BALANCE_FULL_WEIGHT_GAMES, elo_weight_max: BALANCE_ELO_WEIGHT_MAX };
 }
 
 // -----------------------------------------------------------------------------
-// 티어 시드(D103 흉내): 목 멤버별 고정 티어. 나(로그인 사용자)는 에메랄드
+// 밸런스 티어 환산값(D103·D189 흉내, ELO 시작값 아님): 목 멤버별 고정 티어. 나(로그인 사용자)는 에메랄드
 // -----------------------------------------------------------------------------
 
 const MOCK_TIER_BY_NICKNAME: Readonly<Record<string, RankTier>> = {
@@ -188,15 +190,16 @@ export interface SkillInfo {
   isNew: boolean;
 }
 
-/** 실력값 입력 모으기(계약 5-2 4번): 현재 시즌 elo, (user, game) 이력 수, 티어 시드 */
+/** 실력값 입력 모으기(계약 20-4): 현재 시즌 elo·경기 수(wins + losses), (user, game) 모든 시즌 이력 수(K·is_new), 티어 환산값 */
 export function skillInfo(st: S3Data, input: { userId: string; game: GameCode; tierSeed: number; now: number; policy: EloPolicy }): SkillInfo {
   const season = currentSeason(st, input.now);
   const row = season ? st.ratings.find((r) => r.user_id === input.userId && r.game === input.game && r.season_id === season.id) : undefined;
   const seasonElo = row?.elo ?? null;
+  const seasonGames = row ? row.wins + row.losses : 0;
   const games = gamesPlayed(st, input.userId, input.game);
   return {
-    skill: computeSkill({ seasonElo, gamesPlayed: games, tierSeed: input.tierSeed }),
-    rating: seasonElo ?? input.tierSeed,
+    skill: computeSkill({ seasonElo, seasonGames, tierSeed: input.tierSeed }),
+    rating: seasonElo ?? RATING_START_ELO,
     games,
     isNew: games < input.policy.newPlayerGames,
   };
@@ -305,7 +308,6 @@ export function applyApproval(
     result: MockResult;
     now: number;
     approverId: string;
-    tierSeed: (userId: string) => number;
     policy: EloPolicy;
     seasonLengthMonths?: number;
     newId: () => string;
@@ -332,7 +334,7 @@ export function applyApproval(
     const ratingRow = (userId: string): MockRating => {
       let r = st.ratings.find((x) => x.user_id === userId && x.game === input.game && x.season_id === seasonId);
       if (!r) {
-        r = { user_id: userId, game: input.game, season_id: seasonId, elo: input.tierSeed(userId), wins: 0, losses: 0 };
+        r = { user_id: userId, game: input.game, season_id: seasonId, elo: RATING_START_ELO, wins: 0, losses: 0 };
         st.ratings.push(r);
       }
       return r;

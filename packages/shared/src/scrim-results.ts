@@ -35,8 +35,13 @@ export const RatingPolicyView = z.object({
   new_player_games: z.number().int().min(1),
   /** SCRIM_ELO_LOSS_RATIO(기본 0.5). 점수가 내려갈 때 곱하는 배율, 0–1(D169) */
   loss_ratio: z.number().min(0).max(1),
-  /** 실력값 w = min(경기 수 ÷ 이 값, 1). BALANCE_FULL_WEIGHT_GAMES(10, 설정값 아님) */
+  /**
+   * 실력값 w = elo_weight_max × min(현재 시즌 경기 수 ÷ 이 값, 1). BALANCE_FULL_WEIGHT_GAMES(10, 설정값 아님).
+   * S4 20절(D187)부터 경기 수는 모든 시즌 합계가 아니라 현재 시즌 rated 경기 수다
+   */
   full_weight_games: z.number().int().min(1),
+  /** 실력값에서 내전 ELO의 최대 비중. BALANCE_ELO_WEIGHT_MAX(0.2, 설정값 아님, D187·D188). 티어 비중 = 1 − w */
+  elo_weight_max: z.number().min(0).max(1),
 });
 export type RatingPolicyView = z.infer<typeof RatingPolicyView>;
 
@@ -51,7 +56,7 @@ export const BalanceOptionMember = z.object({
   position: z.string().nullable(),
   preference: PositionPreference.nullable(),
   skill: z.number().int(),
-  /** 현재 시즌 레이팅(행이 없으면 시드) */
+  /** 현재 시즌 ELO(행이 없으면 RATING_START_ELO, D182) */
   rating: z.number().int(),
   is_new: z.boolean(),
 });

@@ -13,7 +13,7 @@ import {
   seasonDayText,
   seasonFilledPips,
   secondsUntil,
-  softResetText,
+  seasonResetText,
   topRankersTitle,
   userEloText,
 } from './dashboard';
@@ -30,18 +30,8 @@ describe('시즌 카드', () => {
     expect(seasonFilledPips(0.66)).toBe(8);
     expect(seasonFilledPips(1)).toBe(12);
   });
-  it('소프트 리셋 문구는 비율로 정한다', () => {
-    expect(softResetText(1 / 2)).toBe('종료 시 레이팅 절반 소프트 리셋');
-    expect(softResetText(0.3)).toBe('종료 시 1000 기준 차이의 30%만 유지');
-    expect(softResetText(1)).toBe('종료 시 레이팅 유지');
-    expect(softResetText(0)).toBe('종료 시 레이팅 1000으로 초기화');
-  });
-  it('소프트 리셋 경계: 별도 문구는 정확히 0·0.5·1일 때만, N은 반올림', () => {
-    expect(softResetText(0.51)).toBe('종료 시 1000 기준 차이의 51%만 유지');
-    expect(softResetText(0.49)).toBe('종료 시 1000 기준 차이의 49%만 유지');
-    expect(softResetText(0.999)).toBe('종료 시 1000 기준 차이의 100%만 유지');
-    expect(softResetText(0.001)).toBe('종료 시 1000 기준 차이의 0%만 유지');
-    expect(softResetText(0.125)).toBe('종료 시 1000 기준 차이의 13%만 유지');
+  it('시즌 초기화 문구: 전원 RATING_START_ELO', () => {
+    expect(seasonResetText()).toBe('종료 시 모두 1000점으로 초기화');
   });
   it('모바일 머리', () => {
     expect(mobileSeasonText({ name: '시즌 2', days_left: 34 })).toBe('시즌 2 · D-34');

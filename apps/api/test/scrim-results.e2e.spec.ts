@@ -172,7 +172,14 @@ describe('POST /scrims/:id/balance', () => {
     expect(body.player_count).toBe(4);
     expect(body.partitions_evaluated).toBe(3);
     expect(body.used_positions).toBe(false);
-    expect(body.rating_policy).toEqual({ k_base: 24, k_new: 30, new_player_games: 5, loss_ratio: 1, full_weight_games: 10 });
+    expect(body.rating_policy).toEqual({
+      k_base: 24,
+      k_new: 30,
+      new_player_games: 5,
+      loss_ratio: 1,
+      full_weight_games: 10,
+      elo_weight_max: 0.2,
+    });
     expect(body.options.map((o) => o.rank)).toEqual(body.options.map((_, i) => i + 1));
     const costs = body.options.map((o) => o.total_cost);
     expect(costs).toEqual([...costs].sort((x, y) => x - y));
@@ -183,7 +190,7 @@ describe('POST /scrims/:id/balance', () => {
     // 최선안: (1000 + 1800) vs (1000 + 1200) 보다 방장+다이아 vs 나머지가 아니라 방장+다이아 짝이 전력 차 최소 → 2800 vs 2200은 600, 방장+골드 2200 vs 2800 600, 방장+alice 2000 vs 3000 1000
     expect(body.options[0]?.power_diff).toBe(600);
     const members = body.options.flatMap((o) => [...o.blue.members, ...o.orange.members]);
-    expect(members.find((m) => m.user.id === c.userId)).toMatchObject({ skill: 1800, rating: 1800, is_new: true, position: null, preference: null });
+    expect(members.find((m) => m.user.id === c.userId)).toMatchObject({ skill: 1800, rating: 1000, is_new: true, position: null, preference: null });
     // rated → elo_preview = previewTeamElo(레이팅 평균, K = k_base 24)
     expect(body.options[0]?.blue.elo_preview).not.toBeNull();
     const top = body.options[0];
@@ -191,6 +198,36 @@ describe('POST /scrims/:id/balance', () => {
     expect(top.blue.elo_preview.win - top.blue.elo_preview.lose).toBe(24);
     // 저장하지 않는다
     expect(t.prisma.scrimPlayer.rows.filter((p) => p.scrimId === id).every((p) => p.team === null)).toBe(true);
+  });
+
+  it('실력값 w = 현재 시즌 경기 수(20절, 0·5·10경기 → 0·0.1·0.2), 밸런스 members[].skill = 상세 players[].skill, rating 폴백 1000', async () => {
+    t = await createTestApp({ fixedClock: true });
+    const { host, a, b, c, admin } = await four(t);
+    const season = t.prisma.season.insert({
+      name: '시즌 2',
+      startsAt: new Date('2026-10-01T00:00:00.000Z'),
+      endsAt: new Date('2027-01-01T00:00:00.000Z'),
+      closedAt: null,
+    });
+    const rate = (userId: string, elo: number, wins: number, losses: number) =>
+      t?.prisma.rating.insert({ userId, gameId: t.prisma.gameId('lol'), seasonId: season.id, elo, wins, losses });
+    seedTier(t, a.userId, 'GOLD'); // 1200
+    seedTier(t, b.userId, 'DIAMOND'); // 1800
+    seedTier(t, c.userId, 'DIAMOND');
+    rate(a.userId, 1000, 3, 2); // 0.1 × 1000 + 0.9 × 1200 = 1180
+    rate(b.userId, 1000, 6, 4); // 0.2 × 1000 + 0.8 × 1800 = 1640
+    rate(c.userId, 1400, 20, 5); // 0.2 × 1400 + 0.8 × 1800 = 1720
+    const id = seedScrim(t, host, [a, b, c], { status: 'full' });
+    const d = await getScrim(t, admin, id);
+    const want = { [host.userId]: 1000, [a.userId]: 1180, [b.userId]: 1640, [c.userId]: 1720 };
+    expect(Object.fromEntries(d.players.map((p) => [p.user.id, p.skill]))).toEqual(want);
+    const body = BalanceScrimResponse.parse(await (await balance(t, admin, id)).json());
+    for (const o of body.options) {
+      for (const m of [...o.blue.members, ...o.orange.members]) expect(m.skill).toBe(want[m.user.id]);
+    }
+    const members = body.options.flatMap((o) => [...o.blue.members, ...o.orange.members]);
+    expect(members.find((m) => m.user.id === host.userId)?.rating).toBe(1000);
+    expect(members.find((m) => m.user.id === c.userId)?.rating).toBe(1400);
   });
 
   it('포지션 사용 롤 4명: used_positions true, 팀원 position·preference, rated=false면 elo_preview null', async () => {
@@ -406,7 +443,7 @@ describe('POST /scrims/:id/result/approve', () => {
     expect(t.prisma.scrim.rows.find((s) => s.id === id)?.status).toBe('playing');
   });
 
-  it('rated 팀 게임: 시즌 자동 생성(시즌 1, KST 10월 1일 ~ 3개월), 시드 행(GOLD 1200), ELO·이력·k_factor·wins/losses, finished, 잠금 순서', async () => {
+  it('rated 팀 게임: 시즌 자동 생성(시즌 1, KST 10월 1일 ~ 3개월), 새 행은 티어와 무관하게 1000(GOLD도, D182), ELO·이력·k_factor·wins/losses, finished, 잠금 순서', async () => {
     t = await createTestApp({ fixedClock: true });
     const { host, a, b, c, admin } = await four(t);
     seedTier(t, b.userId, 'GOLD');
@@ -434,7 +471,7 @@ describe('POST /scrims/:id/result/approve', () => {
       startsAt: new Date('2026-09-30T15:00:00.000Z'),
       endsAt: new Date('2026-12-31T15:00:00.000Z'),
     });
-    // blue 평균 1000 vs orange 평균 1100, K 40(신규) → E_blue 0.360 → 승 +26 / 패 −26
+    // 전원 1000 시작 → 평균 1000 vs 1000, K 40(신규) → E_blue 0.5 → 승 +20 / 패 −20
     expect(d).toMatchObject({ status: 'finished', result_status: 'approved', outcome: { winner_team: 'blue', winner: null } });
     expect(d.result).toMatchObject({
       status: 'approved',
@@ -444,21 +481,21 @@ describe('POST /scrims/:id/result/approve', () => {
       season: { name: '시즌 1', starts_at: '2026-09-30T15:00:00.000Z', ends_at: '2026-12-31T15:00:00.000Z' },
     });
     const changes = d.result?.rating_changes ?? [];
-    expect(changes.map((x) => x.delta)).toEqual([26, 26, -26, -26]);
+    expect(changes.map((x) => x.delta)).toEqual([20, 20, -20, -20]);
     expect(changes.map((x) => x.user.id).slice(0, 2)).toEqual(sortIds([host.userId, a.userId]));
     expect(changes.find((x) => x.user.id === b.userId)).toMatchObject({
       team: 'orange',
       placement: null,
       outcome: 'loss',
-      elo_before: 1200,
-      elo_after: 1174,
+      elo_before: 1000,
+      elo_after: 980,
       k_factor: 40,
     });
-    expect(changes.find((x) => x.user.id === host.userId)).toMatchObject({ team: 'blue', outcome: 'win', elo_before: 1000, elo_after: 1026 });
+    expect(changes.find((x) => x.user.id === host.userId)).toMatchObject({ team: 'blue', outcome: 'win', elo_before: 1000, elo_after: 1020 });
     const ratings = t.prisma.rating.rows;
     expect(ratings).toHaveLength(4);
-    expect(ratings.find((r) => r.userId === host.userId)).toMatchObject({ elo: 1026, wins: 1, losses: 0 });
-    expect(ratings.find((r) => r.userId === b.userId)).toMatchObject({ elo: 1174, wins: 0, losses: 1 });
+    expect(ratings.find((r) => r.userId === host.userId)).toMatchObject({ elo: 1020, wins: 1, losses: 0, carriedFromSeasonId: null });
+    expect(ratings.find((r) => r.userId === b.userId)).toMatchObject({ elo: 980, wins: 0, losses: 1, carriedFromSeasonId: null });
     const hist = t.prisma.ratingHistory.rows;
     expect(hist).toHaveLength(4);
     expect(hist.every((h) => h.kFactor === 40 && h.createdAt.toISOString() === now && h.scrimResultId === d.result?.id)).toBe(true);

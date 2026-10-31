@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { BALANCE_FULL_WEIGHT_GAMES, BALANCE_OPTIONS_MAX } from '@gcd/shared';
+import { BALANCE_ELO_WEIGHT_MAX, BALANCE_FULL_WEIGHT_GAMES, BALANCE_OPTIONS_MAX, RATING_START_ELO } from '@gcd/shared';
 import {
+  balanceEloWeight,
   balanceTeams,
   BALANCE_POSITION_COST_WEIGHT,
   bestPositionAssignment,
@@ -109,21 +110,43 @@ function refBalance(players: BalancePlayer[], usePositions: boolean, positions: 
 
 const idsOf = (members: { userId: string }[]) => members.map((m) => m.userId).sort();
 
-describe('computeSkill (D107)', () => {
-  it('w = 경기 수 / 10, 정수 반올림', () => {
+describe('balanceEloWeight (D187)', () => {
+  it('w = 0.2 × min(현재 시즌 경기 수, 10) ÷ 10', () => {
+    expect(BALANCE_ELO_WEIGHT_MAX).toBe(0.2);
     expect(BALANCE_FULL_WEIGHT_GAMES).toBe(10);
-    expect(computeSkill({ seasonElo: 1400, gamesPlayed: 0, tierSeed: 1200 })).toBe(1200);
-    expect(computeSkill({ seasonElo: 1400, gamesPlayed: 5, tierSeed: 1200 })).toBe(1300);
-    expect(computeSkill({ seasonElo: 1400, gamesPlayed: 10, tierSeed: 1200 })).toBe(1400);
-    expect(computeSkill({ seasonElo: 1400, gamesPlayed: 25, tierSeed: 1200 })).toBe(1400);
-    // 0.3 × 1015 + 0.7 × 1000 = 1004.5 → 1005
-    expect(computeSkill({ seasonElo: 1015, gamesPlayed: 3, tierSeed: 1000 })).toBe(1005);
+    expect(balanceEloWeight(0)).toBe(0);
+    expect(balanceEloWeight(1)).toBe(0.02);
+    expect(balanceEloWeight(5)).toBe(0.1);
+    expect(balanceEloWeight(10)).toBe(0.2);
+    expect(balanceEloWeight(11)).toBe(0.2);
   });
-  it('시즌 레이팅 없음 → 시드', () => {
-    expect(computeSkill({ seasonElo: null, gamesPlayed: 7, tierSeed: 1600 })).toBe(1600);
+  it.each([-1, 1.5, Number.NaN])('0 이상 정수가 아니면 RangeError (%s)', (g) => {
+    expect(() => balanceEloWeight(g)).toThrow(RangeError);
   });
-  it('음수 경기 수 RangeError', () => {
-    expect(() => computeSkill({ seasonElo: null, gamesPlayed: -1, tierSeed: 1000 })).toThrow(RangeError);
+});
+
+describe('computeSkill (D187, 20-3 표)', () => {
+  it.each([
+    [1800, 1000, 0, 1800],
+    [1800, 1000, 1, 1784],
+    [1800, 1000, 5, 1720],
+    [1800, 1000, 10, 1640],
+    [1800, 1000, 25, 1640],
+    [600, 1400, 10, 760],
+    [1200, 1500, 10, 1260],
+    [1000, null, 0, 1000],
+    [1800, null, 3, 1752],
+  ] as const)('tierSeed %s, seasonElo %s, seasonGames %s → %s', (tierSeed, seasonElo, seasonGames, skill) => {
+    expect(computeSkill({ seasonElo, seasonGames, tierSeed })).toBe(skill);
+  });
+  it('seasonElo null은 RATING_START_ELO로 본다', () => {
+    expect(RATING_START_ELO).toBe(1000);
+    expect(computeSkill({ seasonElo: null, seasonGames: 3, tierSeed: 1800 })).toBe(
+      computeSkill({ seasonElo: RATING_START_ELO, seasonGames: 3, tierSeed: 1800 }),
+    );
+  });
+  it.each([-1, 1.5, Number.NaN])('seasonGames 범위 오류 RangeError (%s)', (g) => {
+    expect(() => computeSkill({ seasonElo: null, seasonGames: g, tierSeed: 1000 })).toThrow(RangeError);
   });
 });
 

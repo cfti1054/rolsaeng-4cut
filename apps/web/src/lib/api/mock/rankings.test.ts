@@ -78,14 +78,19 @@ describe('S4 목: 랭킹', () => {
   it('ELO 순위 변동 = 이번 KST 주 시작 순위 − 현재 순위(이력으로 되짚음)', async () => {
     const t = await setup();
     const before = await t.elo('lol');
-    expect(before.items.every((e) => e.rank_change === 0)).toBe(true);
-    const myRank = before.me!.rank;
+    // 시드에는 이번 주 경기도 있어 변동이 0이 아닐 수 있다. 주 시작 순위 = 현재 순위 + 변동
+    const baseline = baselineEloRanks(t.db().s2!, 'lol', before.season!, Date.parse('2026-10-25T15:00:00.000Z'));
+    for (const e of before.items) expect(e.rank_change).toBe(baseline[e.user.id] === undefined ? null : baseline[e.user.id]! - e.rank);
+    const myBase = before.me!.rank + before.me!.rank_change!;
+    const top = before.items[0]!;
+    expect(top.user.id).not.toBe(t.me.id);
     // 이번 주에 내 레이팅만 오른 상황: 이력은 그대로, 현재 값만 1위로 올린다
     const row = t.db().s2!.ratings.find((r) => r.user_id === t.me.id && r.game === 'lol' && r.season_id === before.season!.id)!;
-    row.elo = before.items[0]!.elo + 1;
+    row.elo = top.elo + 1;
     const after = await t.elo('lol');
-    expect(after.me).toMatchObject({ rank: 1, rank_change: myRank - 1 });
-    expect(after.items[1]!.rank_change).toBe(-1);
+    expect(after.me).toMatchObject({ rank: 1, rank_change: myBase - 1 });
+    expect(after.items[1]!.user.id).toBe(top.user.id);
+    expect(after.items[1]!.rank_change).toBe(top.rank_change! - 1);
   });
 
   it('ELO 끝난 시즌: is_final, rank_change 전부 null, stale false', async () => {
@@ -187,9 +192,10 @@ describe('S4 목: 요약', () => {
     const d = await t.summary();
     expect(d.season?.name).toBe('시즌 2');
     expect(d.season!.days_left).toBeGreaterThan(0);
-    expect(d.rating_policy).toEqual({ soft_reset_ratio: 0.5, min_games: 5, k_base: 32, k_new: 40, new_player_games: 10, loss_ratio: 0.5 });
+    expect(d.rating_policy).toEqual({ min_games: 5, k_base: 32, k_new: 40, new_player_games: 10, loss_ratio: 0.5, full_weight_games: 10, elo_weight_max: 0.2 });
     expect(d.stats.recruiting_scrims).toBeGreaterThan(d.recruiting.length);
     expect(d.stats.scrims_this_week).toBeGreaterThan(0);
+    expect(d.top_rankers_state).toBe('ready');
     expect(d.top_rankers?.game).toBe('lol');
     expect(d.top_rankers?.is_final).toBe(false);
     expect(d.top_rankers!.items.length).toBeLessThanOrEqual(5);
@@ -227,7 +233,17 @@ describe('S4 목: 요약', () => {
   it('no_season: top_rankers null, 카드는 남는다', async () => {
     const t = await setup('no_season');
     const d = await t.summary();
-    expect(d).toMatchObject({ season: null, top_rankers: null, me: null });
+    expect(d).toMatchObject({ season: null, top_rankers: null, top_rankers_state: 'no_season', me: null });
+  });
+
+  it('top_unavailable: 요약은 200이고 순위만 없다. 랭킹 조회는 500', async () => {
+    const t = await setup('top_unavailable');
+    const d = await t.summary();
+    expect(d.top_rankers_state).toBe('unavailable');
+    expect(d.top_rankers).toBeNull();
+    expect(d.season).not.toBeNull();
+    expect(d.me).toMatchObject({ rank: null });
+    await expect(t.elo('lol')).rejects.toThrow();
   });
 
   it('empty: 다음 내전·모집·결과 없음, 숫자 0', async () => {
@@ -235,6 +251,7 @@ describe('S4 목: 요약', () => {
     const d = await t.summary();
     expect(d).toMatchObject({ next_scrim: null, recruiting: [], recent_results: [], me: null });
     expect(d.stats).toMatchObject({ recruiting_scrims: 0, scrims_this_week: 0 });
+    expect(d.top_rankers_state).toBe('ready');
     expect(d.top_rankers?.items).toEqual([]);
   });
 });

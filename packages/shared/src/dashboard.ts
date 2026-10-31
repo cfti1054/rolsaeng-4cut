@@ -41,16 +41,18 @@ export type DashboardSeason = z.infer<typeof DashboardSeason>;
 
 /**
  * 화면 문구용 서버 설정값(D101 규칙).
- * soft_reset_ratio: 다음 시즌으로 남기는 비율(SEASON_SOFT_RESET_RATIO). 0.5면 사이드바 「종료 시 레이팅 절반 소프트 리셋」
  * k_base·k_new·new_player_games·loss_ratio: ELO 설명(ⓘ) 문구용(D176). 뜻은 RatingPolicyView와 같다.
+ * full_weight_games·elo_weight_max: ⓘ 「팀을 나눌 때는요」 문구용(S4 20절 D188). 뜻은 RatingPolicyView와 같다.
+ * S4 20절(D183)에서 soft_reset_ratio를 뺐다. 시작 점수는 상수 RATING_START_ELO(시즌마다 전원 초기화)다.
  */
 export const DashboardRatingPolicy = z.object({
-  soft_reset_ratio: z.number().min(0).max(1),
   min_games: z.number().int().min(1),
   k_base: z.number().int().min(1),
   k_new: z.number().int().min(1),
   new_player_games: z.number().int().min(1),
   loss_ratio: z.number().min(0).max(1),
+  full_weight_games: z.number().int().min(1),
+  elo_weight_max: z.number().min(0).max(1),
 });
 export type DashboardRatingPolicy = z.infer<typeof DashboardRatingPolicy>;
 
@@ -83,7 +85,7 @@ export type DashboardStats = z.infer<typeof DashboardStats>;
 /**
  * 상위 랭커 블록. game = games.sort_order 순으로 처음 행이 있는 게임, 모두 비면 첫 게임(items []).
  * season = 현재 시즌, 없으면 가장 최근 시작 시즌. is_final이면 지난 시즌 최종 순위다(제목에 시즌 이름 표시).
- * 시즌이 하나도 없으면 top_rankers 자체가 null.
+ * top_rankers_state가 ready일 때만 객체이고, no_season·unavailable이면 null이다(S4 21절).
  */
 export const DashboardTopRankers = z.object({
   game: GameCode,
@@ -127,8 +129,21 @@ export const DashboardMe = z.object({
 });
 export type DashboardMe = z.infer<typeof DashboardMe>;
 
-/** GET /dashboard/summary 응답 */
-export const GetDashboardSummaryResponse = z.object({
+/**
+ * 상위 랭커 블록 상태(S4 21절, D196–D198). 요약은 이 블록만 부분 실패한다.
+ * - ready: 블록이 있다. 순위 행이 0개여도 ready(items [])
+ * - no_season: 시작한 시즌이 하나도 없다(화면 「아직 시즌이 없어요」)
+ * - unavailable: 첫 계산 실패 또는 games 행 없음(서버 로그. 화면 「순위를 불러오지 못했어요」)
+ * GET /rankings/*는 같은 실패에서 그대로 500이다.
+ */
+export const DashboardTopRankersState = z.enum(['ready', 'no_season', 'unavailable']);
+export type DashboardTopRankersState = z.infer<typeof DashboardTopRankersState>;
+
+/**
+ * 요약 응답의 필드 모양만. top_rankers와 top_rankers_state의 조합은 검사하지 않는다.
+ * `.shape`·`.strict()`가 필요한 곳(테스트)용이다. 응답 parse는 GetDashboardSummaryResponse를 쓴다.
+ */
+export const GetDashboardSummaryBody = z.object({
   /** 현재 시즌. 시즌이 끝나고 다음 시즌이 아직 없으면 null(화면 「다음 시즌 준비 중」, D143) */
   season: DashboardSeason.nullable(),
   rating_policy: DashboardRatingPolicy,
@@ -136,7 +151,17 @@ export const GetDashboardSummaryResponse = z.object({
   recruiting: z.array(ScrimSummary).max(DASHBOARD_RECRUITING_LIMIT),
   stats: DashboardStats,
   top_rankers: DashboardTopRankers.nullable(),
+  top_rankers_state: DashboardTopRankersState,
   recent_results: z.array(DashboardRecentResult).max(DASHBOARD_RECENT_RESULTS_LIMIT),
   me: DashboardMe.nullable(),
 });
+
+/**
+ * GET /dashboard/summary 응답. top_rankers_state로 나뉜다:
+ * ready ↔ top_rankers 객체, no_season·unavailable ↔ top_rankers null. 다른 조합은 parse 실패(D197).
+ */
+export const GetDashboardSummaryResponse = z.discriminatedUnion('top_rankers_state', [
+  GetDashboardSummaryBody.extend({ top_rankers_state: z.literal('ready'), top_rankers: DashboardTopRankers }),
+  GetDashboardSummaryBody.extend({ top_rankers_state: z.enum(['no_season', 'unavailable']), top_rankers: z.null() }),
+]);
 export type GetDashboardSummaryResponse = z.infer<typeof GetDashboardSummaryResponse>;

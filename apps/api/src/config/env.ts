@@ -14,7 +14,6 @@ import {
   SCRIM_ELO_NEW_PLAYER_GAMES_DEFAULT,
   SCRIM_SCHEDULE_MAX_DAYS_AHEAD_DEFAULT,
   SEASON_AUTO_LENGTH_MONTHS_DEFAULT,
-  SEASON_SOFT_RESET_RATIO_DEFAULT,
   SYNC_DAILY_LIMIT_DEFAULT,
 } from '@gcd/shared';
 import { z } from 'zod';
@@ -134,10 +133,6 @@ const EnvSchema = z.object({
     z.coerce.number().int().min(1).max(24).default(SEASON_AUTO_LENGTH_MONTHS_DEFAULT),
   ),
   // ---- S4 (계약 S4 13절) ----
-  SEASON_SOFT_RESET_RATIO: z.preprocess(
-    emptyToUndefined,
-    z.coerce.number().min(0).max(1).default(SEASON_SOFT_RESET_RATIO_DEFAULT),
-  ),
   RANKING_ELO_MIN_GAMES: posInt(RANKING_ELO_MIN_GAMES_DEFAULT),
   RANKING_JOBS_ENABLED: strictBool(true),
 });
@@ -195,8 +190,6 @@ export interface AppConfig {
   rating: { kBase: number; kNew: number; newPlayerGames: number; lossRatio: number };
   /** S3 자동 생성 시즌 길이(개월, 1–24, D116) */
   seasonAutoLengthMonths: number;
-  /** S4 소프트 리셋 비율(0–1, 문서 7-3, D142) */
-  seasonSoftResetRatio: number;
   /** S4 랭킹. eloMinGames = ELO 노출·최종 순위 최소 경기 수. jobsEnabled = false면 종료·캐시 cron 미등록(D164) */
   ranking: { eloMinGames: number; jobsEnabled: boolean };
 }
@@ -266,7 +259,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       lossRatio: e.SCRIM_ELO_LOSS_RATIO,
     },
     seasonAutoLengthMonths: e.SEASON_AUTO_LENGTH_MONTHS,
-    seasonSoftResetRatio: e.SEASON_SOFT_RESET_RATIO,
     ranking: { eloMinGames: e.RANKING_ELO_MIN_GAMES, jobsEnabled: e.RANKING_JOBS_ENABLED },
   };
 }

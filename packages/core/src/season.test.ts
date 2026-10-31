@@ -6,14 +6,11 @@ import {
   computeSeasonStandings,
   kstMonthStart,
   latestStartedSeason,
-  pickPreviousRating,
   planAutoSeason,
   resolveSeasonAt,
   seasonDaysLeft,
   seasonProgress,
-  seasonStartElo,
   selectSeasonsToClose,
-  softResetElo,
   type SeasonLike,
 } from './index';
 
@@ -234,140 +231,6 @@ function shuffled<T>(list: readonly T[], rnd: () => number): T[] {
   }
   return out;
 }
-
-describe('softResetElo (6-1)', () => {
-  it.each([
-    [1421, 1211],
-    [1512, 1256],
-    [1000, 1000],
-    [1001, 1001],
-    [999, 999],
-    [800, 900],
-    [1500, 1250],
-  ])('ratio 0.5: %i → %i', (elo, expected) => {
-    expect(softResetElo(elo, 0.5)).toBe(expected);
-  });
-
-  it('ratio 0 → 1000(−0 없음), ratio 1 → 그대로', () => {
-    expect(softResetElo(1421, 0)).toBe(1000);
-    expect(softResetElo(777, 0)).toBe(1000);
-    expect(softResetElo(1421, 1)).toBe(1421);
-    expect(softResetElo(777, 1)).toBe(777);
-  });
-
-  it('반올림은 1000 기준 대칭', () => {
-    for (let d = 0; d <= 2001; d++) {
-      expect(softResetElo(1000 + d, 0.5) - 1000).toBe(1000 - softResetElo(1000 - d, 0.5));
-    }
-  });
-
-  it('1000 밑으로도 변동분 기준으로 반올림(전체 값 반올림이면 1000이 되는 999)', () => {
-    expect(softResetElo(997, 0.5)).toBe(998); // −1.5 → −2
-    expect(softResetElo(1003, 0.5)).toBe(1002); // +1.5 → +2
-  });
-
-  it('0.5 외 비율의 부동소수 오차에 흔들리지 않는다', () => {
-    expect(softResetElo(1005, 0.3)).toBe(1002); // +1.5 → +2
-    expect(softResetElo(1025, 0.1)).toBe(1003); // +2.5 → +3
-  });
-
-  it('ratio ∉ [0, 1] RangeError', () => {
-    for (const ratio of [-0.01, 1.01, Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(() => softResetElo(1500, ratio)).toThrow(RangeError);
-    }
-  });
-  it('elo가 유한하지 않으면 RangeError', () => {
-    expect(() => softResetElo(Number.NaN, 0.5)).toThrow(RangeError);
-  });
-});
-
-describe('seasonStartElo (6-1)', () => {
-  it('이전 값 있음 → 소프트 리셋, 없음 → 시드', () => {
-    expect(seasonStartElo({ previousElo: 1421, tierSeed: 1800, ratio: 0.5 })).toBe(1211);
-    expect(seasonStartElo({ previousElo: null, tierSeed: 1800, ratio: 0.5 })).toBe(1800);
-  });
-  it('이전 값 0은 없음이 아니다', () => {
-    expect(seasonStartElo({ previousElo: 0, tierSeed: 1800, ratio: 0.5 })).toBe(500);
-  });
-  it('시드 경로에서도 ratio를 검사한다', () => {
-    expect(() => seasonStartElo({ previousElo: null, tierSeed: 1800, ratio: 2 })).toThrow(RangeError);
-  });
-});
-
-describe('pickPreviousRating (6-1, D142)', () => {
-  const s1 = season('s1', '2026-01-01T00:00:00', '2026-04-01T00:00:00');
-  const s2 = season('s2', '2026-04-01T00:00:00', '2026-07-01T00:00:00');
-  const s3 = season('s3', '2026-07-01T00:00:00', '2026-10-01T00:00:00');
-  const s4 = season('s4', '2026-10-01T00:00:00', '2027-01-01T00:00:00');
-  const seasons = [s1, s2, s3, s4];
-  const row = (seasonId: string, elo: number, games = 10) => ({ seasonId, elo, games });
-  const startElo = (rows: readonly ReturnType<typeof row>[], target: SeasonLike) => {
-    const prev = pickPreviousRating({ rows, seasons, targetStartsAt: target.startsAt });
-    return seasonStartElo({ previousElo: prev?.elo ?? null, tierSeed: 1400, ratio: 0.5 });
-  };
-
-  it('표 1: 직전 시즌 행(5경기 이상) → 소프트 리셋', () => {
-    expect(startElo([row('s1', 1100), row('s2', 1421)], s3)).toBe(1211);
-  });
-  it('표 2: 직전 시즌 행(5경기 미만)도 같은 규칙', () => {
-    expect(startElo([row('s2', 1421, 1)], s3)).toBe(1211);
-    expect(startElo([row('s2', 1421, 0)], s3)).toBe(1211);
-  });
-  it('표 3: 연속 빈 시즌 → 가장 최근 행에 리셋 1회', () => {
-    const rows = [row('s1', 1600)];
-    expect(pickPreviousRating({ rows, seasons, targetStartsAt: s4.startsAt })).toBe(rows[0]);
-    expect(startElo(rows, s4)).toBe(1300); // 2회 적용했다면 1150
-  });
-  it('표 4: 시즌 공백은 영향 없음', () => {
-    const later = season('later', '2028-01-01T00:00:00', '2028-04-01T00:00:00');
-    const rows = [row('s2', 1421)];
-    expect(pickPreviousRating({ rows, seasons: [...seasons, later], targetStartsAt: later.startsAt })).toBe(rows[0]);
-  });
-  it('표 5: 이전 시즌 행 없음 → null, 시드', () => {
-    expect(pickPreviousRating({ rows: [], seasons, targetStartsAt: s3.startsAt })).toBeNull();
-    expect(startElo([], s3)).toBe(1400);
-    // 대상 이후 시즌 행만 있음
-    expect(startElo([row('s4', 1900)], s3)).toBe(1400);
-  });
-  it('대상 시즌 자신과 시작이 같은 시즌은 이전이 아니다(엄격 <)', () => {
-    const rows = [row('s3', 1900)];
-    expect(pickPreviousRating({ rows, seasons, targetStartsAt: s3.startsAt })).toBeNull();
-  });
-  it('시작 1ms 앞이면 이전', () => {
-    const rows = [row('s3', 1900)];
-    const target = new Date(s3.startsAt.getTime() + 1);
-    expect(pickPreviousRating({ rows, seasons, targetStartsAt: target })).toBe(rows[0]);
-  });
-  it('seasons에 없는 행은 무시', () => {
-    const rows = [row('ghost', 2000), row('s1', 1100)];
-    expect(pickPreviousRating({ rows, seasons, targetStartsAt: s4.startsAt })).toBe(rows[1]);
-    expect(pickPreviousRating({ rows: [row('ghost', 2000)], seasons, targetStartsAt: s4.startsAt })).toBeNull();
-  });
-  it('겹친 시즌: startsAt 최신 → endsAt 최신 → seasonId ASC, 입력 순서 무관', () => {
-    const target = kst('2026-12-01T00:00:00');
-    const oldLong = season('old', '2026-01-01T00:00:00', '2026-11-30T00:00:00');
-    const short = season('short', '2026-06-01T00:00:00', '2026-07-01T00:00:00');
-    const longB = season('b', '2026-06-01T00:00:00', '2026-09-01T00:00:00');
-    const longA = season('a', '2026-06-01T00:00:00', '2026-09-01T00:00:00');
-    const all = [oldLong, short, longB, longA];
-    const rows = all.map((s) => ({ seasonId: s.id }));
-    const rnd = mulberry32(7);
-    for (let i = 0; i < 50; i++) {
-      const picked = pickPreviousRating({
-        rows: shuffled(rows, rnd),
-        seasons: shuffled(all, rnd),
-        targetStartsAt: target,
-      });
-      expect(picked?.seasonId).toBe('a');
-    }
-    expect(
-      pickPreviousRating({ rows: rows.slice(0, 3), seasons: all, targetStartsAt: target })?.seasonId,
-    ).toBe('b');
-    expect(
-      pickPreviousRating({ rows: rows.slice(0, 2), seasons: all, targetStartsAt: target })?.seasonId,
-    ).toBe('short');
-  });
-});
 
 describe('selectSeasonsToClose (6-3)', () => {
   const GRACE = 60_000;

@@ -196,12 +196,12 @@ describe.skipIf(!DB_URL)('[DB] 시즌 종료·승인 잠금 e2e (PostgreSQL)', (
       { timeout: 20_000 },
     );
     await held;
-    // carried_from_season_id FK가 같은 시즌 행을 참조한다
+    // 승인 9단계 새 행(20절: RATING_START_ELO, carried 없음)은 닫히는 중인 지난 시즌 잠금에 막히지 않는다
     const next = await prisma.season.create({
       data: { name: '다음', startsAt: new Date(Date.now() - DAY), endsAt: new Date(Date.now() + DAY) },
     });
     const insert = prisma.rating.create({
-      data: { userId: b.userId, gameId: lolId, seasonId: next.id, carriedFromSeasonId: season.id },
+      data: { userId: b.userId, gameId: lolId, seasonId: next.id, elo: 1000 },
     });
     const finished = await Promise.race([insert.then(() => 'done'), sleep(2000).then(() => 'blocked')]);
     release();
@@ -209,7 +209,7 @@ describe.skipIf(!DB_URL)('[DB] 시즌 종료·승인 잠금 e2e (PostgreSQL)', (
     expect(finished).toBe('done');
   });
 
-  it('동시 첫 승인 2건: 사용자 잠금으로 직렬화, 리셋 1회', async () => {
+  it('동시 첫 승인 2건: 사용자 잠금으로 직렬화, 새 행 1개(1000, carried null)', async () => {
     const admin = await login('admin', 'admin');
     const a = await login('a');
     const b = await login('b');
@@ -234,9 +234,9 @@ describe.skipIf(!DB_URL)('[DB] 시즌 종료·승인 잠금 e2e (PostgreSQL)', (
     expect(res.map((r) => r.status)).toEqual([200, 200]);
     const rows = await prisma.rating.findMany({ where: { userId: a.userId, seasonId: cur.id } });
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.carriedFromSeasonId).toBe(prev.id);
+    expect(rows[0]?.carriedFromSeasonId).toBeNull();
     const history = await prisma.ratingHistory.findMany({ where: { userId: a.userId }, orderBy: { createdAt: 'asc' } });
-    expect(history[0]?.eloBefore).toBe(1300);
+    expect(history[0]?.eloBefore).toBe(1000);
     expect(history[1]?.eloBefore).toBe(history[0]?.eloAfter);
   });
 });
