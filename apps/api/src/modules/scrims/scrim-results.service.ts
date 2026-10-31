@@ -70,6 +70,12 @@ export class ScrimResultsService {
       if (s.status !== 'playing') throw new AppError('SCRIM_RESULT_NOT_ALLOWED');
       if (await hasActiveResult(tx, s.id)) throw new AppError('SCRIM_RESULT_EXISTS');
       const game = await loadGame(tx, s.gameId);
+      if (!game.hasResults) {
+        const path = 'winner_team' in body ? 'winner_team' : 'placements';
+        throw new AppError('VALIDATION_FAILED', undefined, {
+          details: [{ path, message: '인원 모집은 승패를 입력하지 않습니다.' }],
+        });
+      }
 
       // 2. 모양 검사(게임 종류와 맞지 않는 본문)
       if (game.hasTeams && 'placements' in body) {
@@ -169,14 +175,15 @@ export class ScrimResultsService {
 
         // 5. 반영 대상(승인 시점 status·team, D115)
         const players = await tx.scrimPlayer.findMany({ where: { scrimId: s.id } });
-        const placements = game.hasTeams ? null : readPlacements(pending.placements);
-        if (!game.hasTeams && placements === null) {
+        const teamResult = pending.winnerTeam !== null;
+        const placements = teamResult ? null : readPlacements(pending.placements);
+        if (!teamResult && placements === null) {
           // 저장 JSON이 깨졌으면 skipped로 확정하지 않는다(되돌리기 없음, D123) → 롤백, 결과 pending 유지(QA minor 3)
           logger.error(`승인 중단: 개인 순위 결과 placements 형식 오류 result=${pending.id}`);
           throw new AppError('INTERNAL_ERROR');
         }
         const selection = selectRatedParticipants({
-          hasTeams: game.hasTeams,
+          hasTeams: teamResult,
           players: players.map((p) => ({ userId: p.userId, status: p.status, team: p.team })),
           placements: placements === null ? null : placements.map((p) => ({ userId: p.user_id, placement: p.placement })),
         });

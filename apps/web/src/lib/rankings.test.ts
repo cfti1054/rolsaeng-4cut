@@ -82,8 +82,8 @@ describe('빈 상태 보조 문구', () => {
   it('종료 시즌에는 앞으로 쌓인다는 안내가 없다', () => {
     const before = Date.parse(season.ends_at) - 1;
     expect(eloEmptyNote({ season, is_final: true }, before)).toBeNull();
-    expect(eloEmptyNote({ season, is_final: false }, before)).toBe('운영진이 내전 결과를 승인하면 순위가 쌓여요.');
-    expect(eloEmptyNote({ season: null, is_final: false }, before)).toBe('첫 내전 결과가 승인되면 시즌이 시작돼요.');
+    expect(eloEmptyNote({ season, is_final: false }, before)).toBe('운영진이 내전/모집 결과를 승인하면 순위가 쌓여요.');
+    expect(eloEmptyNote({ season: null, is_final: false }, before)).toBe('첫 내전/모집 결과가 승인되면 시즌이 시작돼요.');
   });
   it('끝났지만 종료 처리 전 시즌(ends_at <= now)도 없다, 시각을 모르면 내지 않는다', () => {
     const ends = Date.parse(season.ends_at);

@@ -26,6 +26,26 @@ export type ScrimCancelReason = z.infer<typeof ScrimCancelReason>;
 export const ScrimTeam = z.enum(['blue', 'orange']);
 export type ScrimTeam = z.infer<typeof ScrimTeam>;
 
+/**
+ * scrims.tft_mode. 롤체 작성 때만 쓴다. 다른 게임은 null.
+ * double_up: 2인 팀 밸런스를 켤 수 있다. normal·ranked: 개인전, 밸런스 없음.
+ */
+export const TftMode = z.enum(['double_up', 'normal', 'ranked']);
+export type TftMode = z.infer<typeof TftMode>;
+
+export const TFT_MODE_LABEL: Record<TftMode, string> = {
+  double_up: '더블업',
+  normal: '일반',
+  ranked: '랭크',
+};
+
+/** 롤체 모드별 정원(방장 포함). 게임 행 capacity와 별개로 작성·수정 검사가 이 값을 쓴다. */
+export const TFT_MODE_CAPACITY: Record<TftMode, { min: number; max: number; step: number; default: number }> = {
+  double_up: { min: 2, max: 8, step: 2, default: 8 },
+  normal: { min: 2, max: 8, step: 1, default: 8 },
+  ranked: { min: 2, max: 3, step: 1, default: 3 },
+};
+
 /** scrim_results.status — 명세 공백 보완(slice.md 결정) */
 export const ScrimResultStatus = z.enum(['pending', 'approved', 'rejected']);
 export type ScrimResultStatus = z.infer<typeof ScrimResultStatus>;

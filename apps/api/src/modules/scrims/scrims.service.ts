@@ -11,6 +11,8 @@ import {
   validateScrimSchedule,
 } from '@gcd/core';
 import {
+  appliedAutoBalance,
+  appliedRated,
   type CreateScrimRequest,
   type ErrorDetail,
   type JoinScrimRequest,
@@ -21,6 +23,7 @@ import {
   type ScrimDetail,
   type ScrimListStatus,
   type ScrimPlayerStatus,
+  scrimCapacityRange,
   type ScrimStatus,
   type SetScrimNoShowRequest,
   type SteamAppRef,
@@ -87,7 +90,7 @@ export function countJoined(tx: Tx, scrimId: string): Promise<number> {
  * 노쇼 표시·정정은 부르지 않는다(노쇼는 반영 단계에서 빠진다).
  */
 export async function resetTeams(tx: Tx, scrimId: string): Promise<void> {
-  await tx.scrimPlayer.updateMany({ where: { scrimId }, data: { team: null, position: null } });
+  await tx.scrimPlayer.updateMany({ where: { scrimId }, data: { team: null, position: null, duoIndex: null } });
 }
 
 /**
@@ -139,7 +142,7 @@ export class ScrimsService {
     const page = rows.slice(0, q.limit);
     const last = page.at(-1);
     const next = rows.length > q.limit && last ? encodeScrimCursor({ tab, scheduledAt: last.scheduledAt, id: last.id }) : null;
-    return ListScrimsResponse.parse({ items: await this.views.summaries(page, viewer.id, now), next_cursor: next });
+    return ListScrimsResponse.parse({ items: await this.views.summaries(page, viewer, now), next_cursor: next });
   }
 
   /** GET /scrims/:id */
@@ -159,10 +162,14 @@ export class ScrimsService {
     return null;
   }
 
-  private capacityDetail(capacity: number, game: Game): ErrorDetail | null {
-    if (isCapacityInRange(capacity, { min: game.capacityMin, max: game.capacityMax, step: game.capacityStep })) return null;
-    const range = game.capacityMin === game.capacityMax ? `${game.capacityMin}명` : `${game.capacityMin}–${game.capacityMax}명`;
-    const unit = game.capacityStep > 1 ? ` ${game.capacityStep}명 단위` : '';
+  private capacityDetail(capacity: number, game: Game, tftMode: 'double_up' | 'normal' | 'ranked' | null): ErrorDetail | null {
+    const bounds = scrimCapacityRange(
+      { code: game.code, capacityMin: game.capacityMin, capacityMax: game.capacityMax, capacityStep: game.capacityStep },
+      tftMode === 'double_up' || tftMode === 'normal' || tftMode === 'ranked' ? tftMode : null,
+    );
+    if (isCapacityInRange(capacity, bounds)) return null;
+    const range = bounds.min === bounds.max ? `${bounds.min}명` : `${bounds.min}–${bounds.max}명`;
+    const unit = bounds.step > 1 ? ` ${bounds.step}명 단위` : '';
     return { path: 'capacity', message: `이 게임의 정원은 ${range}${unit}입니다.` };
   }
 
@@ -173,13 +180,25 @@ export class ScrimsService {
     if (!game) throw new AppError('INTERNAL_ERROR', undefined, { message: `games 시드 없음: ${body.game}` });
     // 진행 방식 적용값(D77)
     const usePositions = body.use_positions && game.hasPositions;
-    const autoBalance = body.auto_balance && game.hasTeams;
+    const tftMode = game.code === 'tft' ? (body.tft_mode ?? null) : null;
+    if (game.code === 'tft' && tftMode === null) {
+      throw new AppError('VALIDATION_FAILED', undefined, { details: [{ path: 'tft_mode', message: '롤체 모드를 골라 주세요.' }] });
+    }
+    if (game.code !== 'tft' && body.tft_mode != null) {
+      throw new AppError('VALIDATION_FAILED', undefined, { details: [{ path: 'tft_mode', message: '이 게임은 롤체 모드를 고를 수 없습니다.' }] });
+    }
+    const autoBalance = appliedAutoBalance({
+      game: body.game,
+      hasTeams: game.hasTeams,
+      tftMode,
+      requested: body.auto_balance,
+    });
     const scheduledAt = new Date(body.scheduled_at);
 
     const details: ErrorDetail[] = [];
     const sd = this.scheduleDetail(scheduledAt, now);
     if (sd) details.push(sd);
-    const cd = this.capacityDetail(body.capacity, game);
+    const cd = this.capacityDetail(body.capacity, game, tftMode);
     if (cd) details.push(cd);
     const pv = validatePreferredPositions(body.host_preferred_positions, game.positions, usePositions);
     if (!pv.ok) details.push({ path: 'host_preferred_positions', message: pv.message });
@@ -204,9 +223,10 @@ export class ScrimsService {
           capacity: body.capacity,
           status: statusForJoinedCount(1, body.capacity),
           rules: body.rules ?? null,
-          rated: body.rated,
+          rated: appliedRated(game.hasResults, body.rated),
           autoBalance,
           usePositions,
+          tftMode,
           steamAppId: steamApp?.app_id ?? null,
           steamAppName: steamApp?.name ?? null,
         },
@@ -271,7 +291,7 @@ export class ScrimsService {
         if (sd) details.push(sd);
       }
       if (body.capacity !== undefined) {
-        const cd = this.capacityDetail(body.capacity, game);
+        const cd = this.capacityDetail(body.capacity, game, s.tftMode);
         if (cd) details.push(cd);
       }
       if (details.length > 0) throw new AppError('VALIDATION_FAILED', undefined, { details });
@@ -288,8 +308,16 @@ export class ScrimsService {
           scheduledAt,
           capacity: body.capacity,
           rules: body.rules === undefined ? undefined : body.rules,
-          rated: body.rated,
-          autoBalance: body.auto_balance === undefined ? undefined : body.auto_balance && game.hasTeams,
+          rated: body.rated === undefined ? undefined : appliedRated(game.hasResults, body.rated),
+          autoBalance:
+            body.auto_balance === undefined
+              ? undefined
+              : appliedAutoBalance({
+                  game: game.code as 'lol' | 'tft' | 'steam',
+                  hasTeams: game.hasTeams,
+                  tftMode: s.tftMode,
+                  requested: body.auto_balance,
+                }),
           steamAppId: steamApp?.app_id,
           steamAppName: steamApp?.name,
         },
@@ -359,7 +387,7 @@ export class ScrimsService {
         assertPlayerTransition(mine.status, place);
         await tx.scrimPlayer.update({
           where: { id: mine.id },
-          data: { status: place, preferredPositions: body.preferred_positions, joinedAt: now, position: null, team: null },
+          data: { status: place, preferredPositions: body.preferred_positions, joinedAt: now, position: null, team: null, duoIndex: null },
         });
       } else {
         await tx.scrimPlayer.create({
@@ -440,6 +468,17 @@ export class ScrimsService {
       });
     });
     return this.views.detail(id, user, now);
+  }
+
+  /** DELETE /scrims/:id — 운영진만. 승인된 결과가 있으면 409. 행을 지워 목록에서 카드가 사라진다. */
+  async remove(user: AuthUser, id: string): Promise<void> {
+    if (user.role !== 'admin') throw new AppError('FORBIDDEN');
+    await scrimWriteTx(this.prisma, async (tx) => {
+      const s = await lockOrNotFound(tx, id);
+      const approved = await tx.scrimResult.count({ where: { scrimId: s.id, status: 'approved' } });
+      if (approved > 0) throw new AppError('SCRIM_DELETE_NOT_ALLOWED');
+      await tx.scrim.delete({ where: { id: s.id } });
+    });
   }
 
   // ---------------------------------------------------------------------------

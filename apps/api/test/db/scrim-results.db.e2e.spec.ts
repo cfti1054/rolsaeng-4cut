@@ -56,6 +56,7 @@ describe.skipIf(!DB_URL)('[DB] 결과 승인·제출 동시성 e2e (PostgreSQL)'
           name: g.name,
           hasPositions: g.has_positions,
           hasTeams: g.has_teams,
+          hasResults: g.has_results,
           positions: g.positions,
           sortOrder: g.sort_order,
           capacityMin: g.capacity_min,

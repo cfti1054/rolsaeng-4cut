@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { PaginationQuery, paginated } from './common/pagination';
 import { IsoDateTime, Uuid } from './common/primitives';
-import { ScrimCancelReason, ScrimPlayerStatus, ScrimResultStatus, ScrimStatus, ScrimTeam } from './constants/enums';
+import { ScrimCancelReason, ScrimPlayerStatus, ScrimResultStatus, ScrimStatus, ScrimTeam, TFT_MODE_CAPACITY, TftMode } from './constants/enums';
 import { GameCode } from './constants/games';
 import { RECENT_MATCHES_MAX } from './constants/riot';
 import { SeasonRef } from './seasons';
@@ -136,6 +136,8 @@ export const ScrimGameRef = z.object({
   name: z.string(),
   has_positions: z.boolean(),
   has_teams: z.boolean(),
+  /** 승패·순위를 입력하는가. false면 인원 모집. 옛 응답에 없으면 true */
+  has_results: z.boolean().default(true),
   positions: z.array(z.string()),
 });
 export type ScrimGameRef = z.infer<typeof ScrimGameRef>;
@@ -151,6 +153,35 @@ export const ScrimOptions = z.object({
   use_positions: z.boolean(),
 });
 export type ScrimOptions = z.infer<typeof ScrimOptions>;
+
+/**
+ * 저장할 auto_balance.
+ * 롤: 요청 && 팀 게임. 롤체 더블업: 요청값. 롤체 일반·랭크와 스팀: 항상 false.
+ */
+export function appliedAutoBalance(args: {
+  game: GameCode;
+  hasTeams: boolean;
+  tftMode: TftMode | null;
+  requested: boolean;
+}): boolean {
+  if (args.game === 'steam') return false;
+  if (args.game === 'tft') return args.tftMode === 'double_up' && args.requested;
+  return args.requested && args.hasTeams;
+}
+
+/** 저장할 rated. 승패를 받지 않는 게임(스팀 모집)은 항상 false. */
+export function appliedRated(hasResults: boolean, requested: boolean): boolean {
+  return hasResults && requested;
+}
+
+/** 작성·수정 정원 범위. 롤체는 모드 범위, 그 외는 게임 행 범위. */
+export function scrimCapacityRange(
+  game: { code: string; capacityMin: number; capacityMax: number; capacityStep: number },
+  tftMode: TftMode | null,
+): { min: number; max: number; step: number } {
+  if (game.code === 'tft' && tftMode) return TFT_MODE_CAPACITY[tftMode];
+  return { min: game.capacityMin, max: game.capacityMax, step: game.capacityStep };
+}
 
 /**
  * 포지션별 남은 자리(목업 「서폿 1 · 정글 1 구함」). core computeOpenPositions 결과.
@@ -344,6 +375,13 @@ export const ScrimSummary = z.object({
   result_status: ScrimResultStatus.nullable(),
   /** S3. 승인된 결과 요약(status finished일 때만), 그 외 null */
   outcome: ScrimOutcome.nullable(),
+  /** 롤체 모드. 다른 게임은 null */
+  tft_mode: TftMode.nullable(),
+  /**
+   * 운영진이고 승인된 결과가 없을 때만 true. 화면은 true일 때만 삭제 버튼을 그린다.
+   * 서버는 DELETE에서 역할을 다시 검사한다.
+   */
+  can_delete: z.boolean(),
 });
 export type ScrimSummary = z.infer<typeof ScrimSummary>;
 
@@ -368,6 +406,8 @@ export const ScrimPlayerView = z.object({
   joined_at: IsoDateTime,
   position: z.string().nullable(),
   team: ScrimTeam.nullable(),
+  /** 롤체 더블업 2인 팀 번호(1부터). 그 외 null */
+  duo_index: z.number().int().min(1).nullable(),
   /** no_show일 때 운영진이 표시한 시각. 그 외 null */
   no_show_marked_at: IsoDateTime.nullable(),
   /** S3. 배정 포지션의 희망 순위(team·position이 있고 use_positions 내전일 때), 그 외 null */
@@ -482,8 +522,18 @@ export const CreateScrimRequest = z
     use_positions: z.boolean().default(true),
     host_preferred_positions: PreferredPositions.default([]),
     steam_app_id: SteamAppId.nullable().optional(),
+    /** 롤체만 필수. 다른 게임은 없거나 null */
+    tft_mode: TftMode.nullable().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((v, ctx) => {
+    if (v.game === 'tft' && (v.tft_mode === undefined || v.tft_mode === null)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['tft_mode'], message: '롤체 모드를 골라 주세요.' });
+    }
+    if (v.game !== 'tft' && v.tft_mode != null) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['tft_mode'], message: '이 게임은 롤체 모드를 고를 수 없습니다.' });
+    }
+  });
 export type CreateScrimRequest = z.infer<typeof CreateScrimRequest>;
 export type CreateScrimRequestInput = z.input<typeof CreateScrimRequest>;
 

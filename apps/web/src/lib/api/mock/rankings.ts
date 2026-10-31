@@ -336,7 +336,14 @@ function recentResults(st: S3Data, ctx: SummaryCtx): DashboardRecentResult[] {
       {
         scrim_id: s.id,
         title: s.title,
-        game: { code: game.code, name: game.name, has_positions: game.has_positions, has_teams: game.has_teams, positions: [...game.positions] },
+        game: {
+          code: game.code,
+          name: game.name,
+          has_positions: game.has_positions,
+          has_teams: game.has_teams,
+          has_results: game.has_results,
+          positions: [...game.positions],
+        },
         at: at(r),
         result_status: r.status as 'pending' | 'approved',
         outcome: { winner_team: r.winner_team, winner: first ? ctx.userRef(first.user_id) : null },

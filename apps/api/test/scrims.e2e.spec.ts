@@ -53,7 +53,7 @@ async function detailOf(res: Response, status = 200): Promise<ScrimDetail> {
 }
 
 const LOL_BASE = { game: 'lol', title: '금요 내전', capacity: 10, host_preferred_positions: ['mid'] } as const;
-const TFT_BASE = { game: 'tft', title: '롤체 한 판', capacity: 2 } as const;
+const TFT_BASE = { game: 'tft', title: '롤체 한 판', capacity: 2, tft_mode: 'normal' } as const;
 
 async function create(app: TestApp, who: Who, over: Partial<CreateScrimRequestInput> = {}, base: object = LOL_BASE) {
   const res = await call(app, 'POST', '/scrims', who.token, { ...base, scheduled_at: at(app, DAY), ...over });
@@ -95,6 +95,11 @@ describe('GET /games', () => {
     expect(res.status).toBe(200);
     const body = ListGamesResponse.parse(await res.json());
     expect(body.next_cursor).toBeNull();
+    expect(body.items.map((g) => [g.code, g.has_teams, g.has_results])).toEqual([
+      ['lol', true, true],
+      ['tft', false, true],
+      ['steam', false, false],
+    ]);
     expect(body.items.map((g) => [g.code, g.capacity])).toEqual([
       ['lol', { min: 2, max: 10, default: 10, step: 2, start_requires_full: true }],
       ['tft', { min: 2, max: 8, default: 8, step: 1, start_requires_full: false }],
@@ -137,7 +142,14 @@ describe('POST /scrims 작성', () => {
     const a = await login(t, 'alice');
     const d = await create(t, a, { auto_balance: true, use_positions: true }, TFT_BASE);
     expect(d.options).toEqual({ rated: true, auto_balance: false, use_positions: false });
-    expect(d.game).toEqual({ code: 'tft', name: expect.any(String), has_positions: false, has_teams: false, positions: [] });
+    expect(d.game).toEqual({
+      code: 'tft',
+      name: expect.any(String),
+      has_positions: false,
+      has_teams: false,
+      has_results: true,
+      positions: [],
+    });
   });
 
   it('서버 검사 details를 한 번에: 지난 시각·정원 범위 밖·1지망 없음', async () => {

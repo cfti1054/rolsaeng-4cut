@@ -14,7 +14,7 @@ export default function AdminPage() {
       eyebrow="STAFF"
       title="관리자"
       mark="ADM"
-      description="내전 결과 승인, 노쇼 관리, 멤버 관리, 공지 작성이 이 화면에 열릴 예정이에요."
+      description="내전/모집 결과 승인, 노쇼 관리, 멤버 관리, 공지 작성이 이 화면에 열릴 예정이에요."
     />
   );
 }

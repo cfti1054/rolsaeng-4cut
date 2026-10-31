@@ -26,8 +26,10 @@ import {
   saveScrimTeams,
   submitScrimResult,
   withdrawScrimResult,
+  assignScrimDuos,
   cancelScrim,
   createScrim,
+  deleteScrim,
   getMyPositionSuggestions,
   getMyScrimRestriction,
   getScrim,
@@ -253,6 +255,27 @@ export function useSetScrimNoShow(id: string) {
  * POST /scrims/:id/balance — 계산만 한다. 응답은 캐시에 저장하지 않고 화면 상태로만 둔다(저장 전까지).
  * 409(팀 수정 불가·밸런스 불가)면 상세를 다시 받아 버튼 노출을 맞춘다.
  */
+export function useDeleteScrim(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => deleteScrim(id),
+    onSuccess: () => {
+      qc.removeQueries({ queryKey: scrimKeys.detail(id) });
+      void qc.invalidateQueries({ queryKey: scrimKeys.lists });
+      void qc.invalidateQueries({ queryKey: dashboardKeys.summary });
+    },
+  });
+}
+
+export function useAssignScrimDuos(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => assignScrimDuos(id),
+    onSuccess: (d) => applyScrimDetail(qc, d),
+    onError: (err) => handleScrimMutationError(qc, id, err),
+  });
+}
+
 export function useBalanceScrim(id: string) {
   const qc = useQueryClient();
   return useMutation({

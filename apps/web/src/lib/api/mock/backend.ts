@@ -70,6 +70,7 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
   const save = (db: MockDb) => opts.storage.set(db);
 
   function json(status: number, body: unknown): Response {
+    if (status === 204) return new Response(null, { status: 204 });
     return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
   }
   function error(code: ErrorCode, message: string, details?: ErrorBody['details'], retryAfterSec?: number): Response {

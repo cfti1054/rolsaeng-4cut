@@ -231,6 +231,7 @@ describe('S2 목: 참가·취소·대기열', () => {
       no_show_marked_by: null,
       team: null,
       position: null,
+      duo_index: null,
     });
     t.db().s2!.scrims.find((x) => x.id === created.id)!.status = 'full';
     // 방장을 바꿔 내가 나갈 수 있게
@@ -271,7 +272,7 @@ describe('S2 목: 작성·수정·시작·취소', () => {
   it('롤체(팀 없음)는 auto_balance 적용값 false, 시작은 2명부터, 모집 취소 이유 host', async () => {
     const t = setup();
     await t.ready;
-    const d = await t.create({ game: 'tft', title: '롤체 로비', scheduled_at: t.kst(3), capacity: 4, auto_balance: true });
+    const d = await t.create({ game: 'tft', title: '롤체 로비', scheduled_at: t.kst(3), capacity: 4, auto_balance: true, tft_mode: 'normal' });
     expect(d.options).toEqual({ rated: true, auto_balance: false, use_positions: false });
     await expect(
       t.api.request(fillPath(ApiPath.scrimStart, { id: d.id }), StartScrimResponse, { method: 'POST' }),
@@ -284,7 +285,10 @@ describe('S2 목: 작성·수정·시작·취소', () => {
   it('수정: 정원을 참가 인원 아래로 → SCRIM_CAPACITY_BELOW_JOINED, 방장 아님 → FORBIDDEN', async () => {
     const t = setup();
     await t.ready;
-    const d = await t.create({ game: 'steam', title: '스팀 파티', scheduled_at: t.kst(3), capacity: 4, steam_app_id: 578080 });
+    const d = await t.create({ game: 'steam', title: '스팀 파티', scheduled_at: t.kst(3), capacity: 4, steam_app_id: 578080, rated: true, auto_balance: true });
+    expect(d.options).toEqual({ rated: false, auto_balance: false, use_positions: false });
+    expect(d.game).toMatchObject({ has_teams: false, has_results: false });
+    expect(d.viewer.can_edit_teams).toBe(false);
     const patch = (id: string, body: object) =>
       t.api.request(fillPath(ApiPath.scrim, { id }), UpdateScrimResponse, { method: 'PATCH', body });
     t.db().s2!.players.push({
@@ -298,6 +302,7 @@ describe('S2 목: 작성·수정·시작·취소', () => {
       no_show_marked_by: null,
       team: null,
       position: null,
+      duo_index: null,
     });
     await expect(patch(d.id, { capacity: 1 })).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
     await expect(patch(d.id, { capacity: 2 })).resolves.toMatchObject({ capacity: 2, status: 'full' });
@@ -315,6 +320,7 @@ describe('S2 목: 작성·수정·시작·취소', () => {
       no_show_marked_by: null,
       team: null,
       position: null,
+      duo_index: null,
     });
     await expect(patch(d.id, { capacity: 2 })).rejects.toMatchObject({ code: 'SCRIM_CAPACITY_BELOW_JOINED' });
   });
@@ -383,7 +389,7 @@ describe('S2 목: 노쇼 제한·노쇼 표시', () => {
     const err = await t.join(tft.id).catch((e: unknown) => e);
     expect(err).toMatchObject({ code: 'SCRIM_BANNED', status: 403 });
     expect((err as { retryAfterSec?: number }).retryAfterSec).toBeGreaterThan(0);
-    await expect(t.create({ game: 'tft', title: '제한 중 작성', scheduled_at: t.kst(3), capacity: 4 })).rejects.toMatchObject({
+    await expect(t.create({ game: 'tft', title: '제한 중 작성', scheduled_at: t.kst(3), capacity: 4, tft_mode: 'normal' })).rejects.toMatchObject({
       code: 'SCRIM_BANNED',
     });
     const mine = await t.findByTitle('open', '골드 이하 초보 환영 내전');
@@ -480,5 +486,31 @@ describe('S2 목: 백엔드 확정 사항 대조', () => {
     // 제한이 아니어도 정책 값은 채운다(D101)
     expect(r.policy.mark_window_days).toBe(7);
     expect(r.scrim_policy).toEqual({ schedule_max_days_ahead: 30, auto_close_after_min: 60 });
+  });
+
+  it('삭제는 운영진만, 승인된 결과는 409, 성공하면 목록에서 사라진다', async () => {
+    const member = setup();
+    await member.ready;
+    const open = await member.findByTitle('open', '화요일 저녁 5:5 내전');
+    expect(open.can_delete).toBe(false);
+    await expect(member.api.request(fillPath(ApiPath.scrim, { id: open.id }), null, { method: 'DELETE' })).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+      status: 403,
+    });
+
+    const admin = setup({ username: 'admin_del', role: 'admin' });
+    await admin.ready;
+    const target = await admin.findByTitle('open', '화요일 저녁 5:5 내전');
+    expect(target.can_delete).toBe(true);
+    await expect(admin.api.request(fillPath(ApiPath.scrim, { id: target.id }), null, { method: 'DELETE' })).resolves.toBeUndefined();
+    await expect(admin.get(target.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect((await admin.list('open')).items.some((s) => s.id === target.id)).toBe(false);
+
+    const done = (await admin.list('ended')).items.find((s) => s.result_status === 'approved');
+    expect(done?.can_delete).toBe(false);
+    await expect(admin.api.request(fillPath(ApiPath.scrim, { id: done!.id }), null, { method: 'DELETE' })).rejects.toMatchObject({
+      code: 'SCRIM_DELETE_NOT_ALLOWED',
+      status: 409,
+    });
   });
 });

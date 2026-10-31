@@ -73,7 +73,7 @@ export class DashboardService {
       orderBy: [{ scheduledAt: 'asc' }, { id: 'asc' }],
       take: DASHBOARD_RECRUITING_LIMIT,
     });
-    const summaries = await this.views.summaries(next ? [next.scrim, ...recruitingRows] : recruitingRows, viewer.id, now);
+    const summaries = await this.views.summaries(next ? [next.scrim, ...recruitingRows] : recruitingRows, viewer, now);
     const nextScrim: DashboardNextScrim | null =
       next && summaries[0]
         ? { source: next.source, scrim: summaries[0], participants: await this.participants(next.scrim) }
@@ -299,8 +299,8 @@ export class DashboardService {
           at: at.toISOString(),
           result_status: r.status as DashboardRecentResult['result_status'],
           outcome: {
-            winner_team: game.hasTeams ? r.winnerTeam : null,
-            winner: !game.hasTeams && winner && users.has(winner) ? this.views.userRef(users, winner) : null,
+            winner_team: r.winnerTeam,
+            winner: r.winnerTeam || !winner || !users.has(winner) ? null : this.views.userRef(users, winner),
           },
           rating_status: ratingStatus,
           elo_swing:

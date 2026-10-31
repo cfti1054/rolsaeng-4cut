@@ -3,7 +3,7 @@ import { Suspense } from 'react';
 import { ScrimsView } from '@/components/scrims/scrims-view';
 import { Skeleton } from '@/components/ui/primitives';
 
-export const metadata: Metadata = { title: '내전' };
+export const metadata: Metadata = { title: '내전/모집' };
 
 /** 내전 목록(목업 Scrims, 계약 S2 8절). 데이터는 클라이언트에서 GET /scrims(useInfiniteQuery) */
 export default function ScrimsPage() {

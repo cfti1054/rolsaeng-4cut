@@ -5,6 +5,7 @@ import {
   SCRIM_TITLE_MAX_LENGTH,
   ScrimTitle,
   UpdateScrimRequest,
+  appliedAutoBalance,
   type GameView,
   type ScrimDetail,
   type SteamAppRef,
@@ -12,6 +13,7 @@ import {
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Button, InlineError } from '@/components/ui/controls';
 import { isApiError } from '@/lib/api/client';
+import { duoBalanceNote } from '@/lib/elo-info';
 import { useUpdateScrim } from '@/lib/hooks/scrims';
 import { buildScrimPatch, capacityFloor, isoToKstInputs, kstInputsToIso, scheduleMaxMs, scheduleMaxText } from '@/lib/scrims';
 import { scrimErrorText, useRestriction } from './scrim-bits';
@@ -72,8 +74,15 @@ export function ScrimEditDialog({
       scheduledIso: iso,
       capacity,
       rules,
-      rated,
-      autoBalance: game.has_teams && autoBalance,
+      rated: game.has_results ? rated : s.options.rated,
+      autoBalance: game.has_results
+        ? appliedAutoBalance({
+            game: game.code,
+            hasTeams: game.has_teams,
+            tftMode: s.tft_mode,
+            requested: autoBalance,
+          })
+        : s.options.auto_balance,
       steamAppId: game.requires_steam_app ? steamApp?.app_id : null,
     });
     if (!patch) return onClose();
@@ -145,16 +154,29 @@ export function ScrimEditDialog({
         {capacity > s.capacity && s.waitlist_count > 0 && (
           <p className="m-0 text-xs text-faint">정원을 늘리면 대기 1번부터 순서대로 참가 확정돼요.</p>
         )}
-        <div className="flex flex-col gap-2">
-          <Toggle
-            label="팀 자동 밸런스"
-            desc={game.has_teams ? '티어와 내전 레이팅으로 두 팀 전력을 맞춥니다' : '개인전이라 사용하지 않습니다'}
-            checked={game.has_teams && autoBalance}
-            disabled={!game.has_teams}
-            onChange={() => setAutoBalance((v) => !v)}
-          />
-          <Toggle label="시즌 ELO에 반영" desc="운영진 승인 후 레이팅이 바뀝니다" checked={rated} onChange={() => setRated((v) => !v)} />
-        </div>
+        {game.has_results ? (
+          <div className="flex flex-col gap-2">
+            {game.has_teams || s.tft_mode === 'double_up' ? (
+              <Toggle
+                label="팀 자동 밸런스"
+                desc={s.tft_mode === 'double_up' ? duoBalanceNote() : '티어와 내전/모집 레이팅으로 두 팀 전력을 맞춥니다'}
+                checked={autoBalance}
+                onChange={() => setAutoBalance((v) => !v)}
+              />
+            ) : (
+              <Toggle
+                label="팀 자동 밸런스"
+                desc="개인전이라 사용하지 않습니다"
+                checked={false}
+                disabled
+                onChange={() => setAutoBalance(false)}
+              />
+            )}
+            <Toggle label="시즌 ELO에 반영" desc="운영진 승인 후 레이팅이 바뀝니다" checked={rated} onChange={() => setRated((v) => !v)} />
+          </div>
+        ) : (
+          <p className="m-0 text-xs text-muted">인원 모집이라 팀을 나누거나 승패를 입력하지 않아요.</p>
+        )}
         <div className="flex flex-col gap-1.5">
           <label htmlFor={ids.rules} className="text-[13px] text-muted">
             규칙

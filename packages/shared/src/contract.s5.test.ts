@@ -60,7 +60,7 @@ describe('S5 경로·오류·scope', () => {
       expect(ErrorCode.options).toContain(c);
       expect(ERROR_HTTP_STATUS[c as ErrorCode]).toBe(status);
     }
-    expect(ErrorCode.options).toHaveLength(45);
+    expect(ErrorCode.options).toHaveLength(46);
     expect(Object.keys(ERROR_HTTP_STATUS).sort()).toEqual([...ErrorCode.options].sort());
   });
   it('엔드포인트 scope는 모두 ApiKeyScope 값이고 서로 다르다', () => {

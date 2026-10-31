@@ -124,6 +124,16 @@ export function getMyPositionSuggestions(game: GameCode, signal?: AbortSignal) {
 // S3 팀 밸런스·팀 구성·결과(계약 S3 4절). 상태 변경 5개는 ScrimDetail, 밸런스는 계산 결과만
 // -----------------------------------------------------------------------------
 
+/** DELETE /scrims/:id — 운영진. 204 */
+export function deleteScrim(id: string) {
+  return apiClient.request(fillPath(ApiPath.scrim, { id }), null, { method: 'DELETE' });
+}
+
+/** POST /scrims/:id/duos — 롤체 더블업 2인 팀 저장 */
+export function assignScrimDuos(id: string) {
+  return apiClient.request(fillPath(ApiPath.scrimDuos, { id }), GetScrimResponse, { method: 'POST', body: {} });
+}
+
 /** POST /scrims/:id/balance — 3안 계산(저장 안 함). 본문 `{}` */
 export function balanceScrim(id: string) {
   return apiClient.request(fillPath(ApiPath.scrimBalance, { id }), BalanceScrimResponse, { method: 'POST', body: {} });

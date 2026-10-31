@@ -47,10 +47,31 @@ describe('KST 시각', () => {
 
   it('공유 문구: 게임·제목, KST 일시·인원, 마지막 줄 주소', () => {
     const text = scrimShareText(
-      { title: '목요일 칼바람', game: { code: 'lol' }, scheduled_at: '2026-10-29T12:00:00.000Z', capacity: 10, joined_count: 4 },
+      {
+        title: '목요일 칼바람',
+        game: { code: 'lol' },
+        scheduled_at: '2026-10-29T12:00:00.000Z',
+        capacity: 10,
+        joined_count: 4,
+        status: 'recruiting',
+        join_closed: false,
+      },
       'https://example.com/scrims/abc',
     );
-    expect(text).toBe('[롤 협곡 내전] 목요일 칼바람\n10/29(목) 21:00 시작 · 4/10명\nhttps://example.com/scrims/abc');
+    expect(text).toBe(
+      [
+        '⚔️ LOL 협곡 내전',
+        '목요일 칼바람',
+        '',
+        '📅 10월 29일 (목)',
+        '⏰ 21:00 시작',
+        '👥 모집 인원 4 / 10명',
+        '📌 모집 중',
+        '',
+        '🔗 내전 참여하기',
+        'https://example.com/scrims/abc',
+      ].join('\n'),
+    );
     const steam = scrimShareText(
       {
         title: '금요일 밤',
@@ -59,10 +80,27 @@ describe('KST 시각', () => {
         scheduled_at: '2026-10-30T13:00:00.000Z',
         capacity: 4,
         joined_count: 1,
+        status: 'full',
+        join_closed: false,
       },
       'https://example.com/scrims/s',
     );
-    expect(steam.split('\n')[0]).toBe('[스팀 내전 · Lethal Company] 금요일 밤');
+    expect(steam.split('\n')[0]).toBe('🕹️ 스팀 내전 · Lethal Company');
+    expect(steam).toContain('📌 정원 마감');
+    const tft = scrimShareText(
+      {
+        title: '더블업',
+        game: { code: 'tft' },
+        tft_mode: 'double_up',
+        scheduled_at: '2026-11-01T13:00:00.000Z',
+        capacity: 8,
+        joined_count: 2,
+        status: 'recruiting',
+        join_closed: false,
+      },
+      'https://example.com/scrims/t',
+    );
+    expect(tft.split('\n')[0]).toBe('♟️ TFT 더블업 내전');
   });
 
   it('배너 태그: 롤은 정원을 반으로 나눈 대진, 다른 게임은 그대로', () => {
@@ -186,7 +224,7 @@ describe('상세 표시', () => {
   it('헤더 배지', () => {
     expect(scrimDetailBadge({ status: 'full', join_closed: false }).label).toBe('정원 마감 · 팀 구성 중');
     expect(scrimDetailBadge({ status: 'full', join_closed: true }).label).toBe('시작 대기');
-    expect(scrimDetailBadge({ status: 'cancelled', join_closed: true }).label).toBe('취소된 내전');
+    expect(scrimDetailBadge({ status: 'cancelled', join_closed: true }).label).toBe('취소된 내전/모집');
   });
 
   it('시작 불가 이유: 고정 정원 / 2명 이상', () => {

@@ -38,8 +38,8 @@ export const RANKING_TABS: readonly { value: RankingTab; label: string; descript
   { value: 'tier', label: '티어', description: '라이엇 API 기준 솔로 랭크 티어 순위입니다. 연동 계정 동기화 때 갱신됩니다.' },
   {
     value: 'elo',
-    label: '내전 ELO',
-    description: `티어와 상관없이 모두 ${RATING_START_ELO}점에서 시작하는 서버 자체 내전 점수입니다. 운영진이 승인한 결과만 반영되고, 시즌마다 새로 시작합니다.`,
+    label: '내전/모집 ELO',
+    description: `티어와 상관없이 모두 ${RATING_START_ELO}점에서 시작하는 서버 자체 내전/모집 점수입니다. 운영진이 승인한 결과만 반영되고, 시즌마다 새로 시작합니다.`,
   },
   // 음성만 센다(D232)
   { value: 'activity', label: '활동', description: '디스코드 음성 채널 접속 시간 합계예요.' },
@@ -131,9 +131,9 @@ export function eloEmptyState(r: Pick<GetEloRankingResponse, 'season' | 'synced_
  * ends_at이 지났으면 승인은 다음 시즌으로 간다(D116). now를 아직 모르면 문구를 내지 않는다.
  */
 export function eloEmptyNote(r: Pick<GetEloRankingResponse, 'season' | 'is_final'>, now: number | null): string | null {
-  if (!r.season) return '첫 내전 결과가 승인되면 시즌이 시작돼요.';
+  if (!r.season) return '첫 내전/모집 결과가 승인되면 시즌이 시작돼요.';
   if (r.is_final || now === null || Date.parse(r.season.ends_at) <= now) return null;
-  return '운영진이 내전 결과를 승인하면 순위가 쌓여요.';
+  return '운영진이 내전/모집 결과를 승인하면 순위가 쌓여요.';
 }
 
 // -----------------------------------------------------------------------------

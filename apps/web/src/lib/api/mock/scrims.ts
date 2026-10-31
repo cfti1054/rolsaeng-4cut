@@ -8,9 +8,12 @@ import {
   kstMonthStart,
   positionPreferenceOf,
   validatePlacementUsers,
+  balanceDuos,
   validateTeamAssignment,
 } from '@gcd/core';
 import {
+  appliedAutoBalance,
+  appliedRated,
   ApiPath,
   ApproveScrimResultRequest,
   BALANCE_PLAYERS_MAX,
@@ -19,7 +22,9 @@ import {
   GetUserRatingHistoryQuery,
   RejectScrimResultRequest,
   SaveScrimTeamsRequest,
+  scrimCapacityRange,
   ScrimTeam,
+  TftMode,
   SubmitScrimResultRequest,
   type ProfileScrim,
   CreateScrimRequest,
@@ -113,6 +118,7 @@ const MockScrim = z.object({
   use_positions: z.boolean(),
   /** 이 필드 전에 저장된 목 DB도 읽히도록 기본 null */
   steam_app: SteamAppRef.nullable().default(null),
+  tft_mode: TftMode.nullable().default(null),
   started_at: IsoDateTime.nullable(),
   cancelled_at: IsoDateTime.nullable(),
   cancel_reason: ScrimCancelReason.nullable(),
@@ -167,11 +173,12 @@ const MockPlayer = z.object({
   /** S3 팀 구성(PUT /teams). joined·no_show 행에만 의미 */
   team: ScrimTeam.nullable().default(null),
   position: z.string().nullable().default(null),
+  duo_index: z.number().int().nullable().default(null),
 });
 type MockPlayer = z.infer<typeof MockPlayer>;
 
 /** 시드 형식 버전. 바뀌면 저장된 목 DB를 버리고 다시 만든다(S3 필드·시나리오 추가) */
-const SEED_VERSION = 9;
+const SEED_VERSION = 11;
 
 export const MockS2State = z.object({
   /** 시드를 만든 사용자 id. 다른 사용자로 로그인하면 다시 만든다 */
@@ -247,6 +254,7 @@ export function mockGames(): GameView[] {
       name: g.name,
       has_positions: g.has_positions,
       has_teams: g.has_teams,
+      has_results: g.has_results,
       positions: [...g.positions],
       sort_order: g.sort_order,
       capacity: {
@@ -325,8 +333,9 @@ function seed(me: Me, now: number, opts?: MockS2Options): MockS2State {
       id: scrimId,
       status: 'recruiting',
       rules: null,
-      rated: true,
-      auto_balance: game.has_teams,
+      rated: s.game === 'steam' ? false : true,
+      auto_balance: s.game === 'steam' ? false : game.has_teams,
+      tft_mode: s.game === 'tft' ? 'normal' : null,
       use_positions: game.has_positions,
       steam_app: game.requires_steam_app ? steamApp(steamPicks[steamPick++ % steamPicks.length]!) : null,
       started_at: null,
@@ -351,6 +360,7 @@ function seed(me: Me, now: number, opts?: MockS2Options): MockS2State {
         no_show_marked_by: null,
         team: null,
         position: null,
+        duo_index: null,
       });
     }
     if (isOpen(scrim)) scrim.status = joined.length >= scrim.capacity ? 'full' : 'recruiting';
@@ -416,7 +426,7 @@ function seed(me: Me, now: number, opts?: MockS2Options): MockS2State {
     [U['원딜장인']!, []],
     [U['체스왕']!, []],
   ]);
-  add({ game: 'tft', title: '롤체 더블업 4팀', scheduled_at: h(98), capacity: 8, host_id: U['별빛미드']! }, [
+  add({ game: 'tft', title: '롤체 더블업 4팀', scheduled_at: h(98), capacity: 8, host_id: U['별빛미드']!, tft_mode: 'double_up', auto_balance: true }, [
     [U['별빛미드']!, []],
     [U['체스왕']!, []],
     [U['칼바람러']!, []],
@@ -814,7 +824,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
   const skillOf = (game: GameCode, userId: string) =>
     skillInfo(state, { userId, game, tierSeed: tierSeed(game)(userId), now, policy: eloPolicy });
   const resetTeams = (scrimId: string) => {
-    for (const p of rowsOf(scrimId)) Object.assign(p, { team: null, position: null });
+    for (const p of rowsOf(scrimId)) Object.assign(p, { team: null, position: null, duo_index: null });
   };
   const joinedSet = (scrimId: string) => joinedRows(scrimId).map((p) => p.user_id).sort().join(',');
   const outcomeOf = (s: MockScrim): ScrimSummary['outcome'] => {
@@ -859,7 +869,14 @@ export function handleS2(ctx: MockS2Context): Response | null {
     const g = gameOf(s.game);
     return ScrimSummary.parse({
       id: s.id,
-      game: { code: g.code, name: g.name, has_positions: g.has_positions, has_teams: g.has_teams, positions: [...g.positions] },
+      game: {
+        code: g.code,
+        name: g.name,
+        has_positions: g.has_positions,
+        has_teams: g.has_teams,
+        has_results: g.has_results,
+        positions: [...g.positions],
+      },
       title: s.title,
       scheduled_at: s.scheduled_at,
       capacity: s.capacity,
@@ -878,6 +895,8 @@ export function handleS2(ctx: MockS2Context): Response | null {
       created_at: s.created_at,
       result_status: latestResult(state, s.id)?.status ?? null,
       outcome: outcomeOf(s),
+      tft_mode: s.tft_mode,
+      can_delete: isAdmin && latestResult(state, s.id)?.status !== 'approved',
     });
   };
 
@@ -917,6 +936,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
           joined_at: p.joined_at,
           position: p.position,
           team: p.team,
+          duo_index: p.duo_index ?? null,
           no_show_marked_at: p.status === 'no_show' ? p.no_show_marked_at : null,
           position_preference: p.team && p.position && s.use_positions ? positionPreferenceOf(p.preferred_positions, p.position) : null,
           skill: k.skill,
@@ -945,9 +965,22 @@ export function handleS2(ctx: MockS2Context): Response | null {
           (s.status === 'playing' || s.status === 'finished') &&
           now <= Date.parse(s.scheduled_at) + NO_SHOW_MARK_WINDOW_DAYS_DEFAULT * DAY_MS,
         can_edit_teams: canEditTeams,
-        can_balance: canEditTeams && s.auto_balance && eligible >= BALANCE_PLAYERS_MIN && eligible <= BALANCE_PLAYERS_MAX,
+        can_balance:
+          (canEditTeams && s.auto_balance && eligible >= BALANCE_PLAYERS_MIN && eligible <= BALANCE_PLAYERS_MAX) ||
+          (s.tft_mode === 'double_up' &&
+            s.auto_balance &&
+            isManager &&
+            (s.status === 'full' || s.status === 'playing') &&
+            !active &&
+            eligible >= 2 &&
+            eligible <= 8 &&
+            eligible % 2 === 0),
         can_submit_result:
-          isManager && s.status === 'playing' && !active && (g.has_teams ? teamsReady : eligible >= BALANCE_PLAYERS_MIN),
+          g.has_results &&
+          isManager &&
+          s.status === 'playing' &&
+          !active &&
+          (g.has_teams ? teamsReady : eligible >= BALANCE_PLAYERS_MIN),
         can_withdraw_result: !!pendingRow && (pendingRow.submitted_by === me.id || isHost),
         can_review_result: isAdmin && !!pendingRow && pendingRow.submitted_by !== me.id,
       },
@@ -978,10 +1011,15 @@ export function handleS2(ctx: MockS2Context): Response | null {
     return null;
   };
   const notInStore = { path: 'steam_app_id', message: '스팀 상점에서 찾을 수 없는 게임입니다.' };
-  const capacityIssue = (game: GameSeed, cap: number): string | null =>
-    cap < game.capacity_min || cap > game.capacity_max || (cap - game.capacity_min) % game.capacity_step !== 0
-      ? `정원은 ${game.capacity_min}–${game.capacity_max}명${game.capacity_step > 1 ? ` ${game.capacity_step}명 단위` : ''}이에요`
+  const capacityIssue = (game: GameSeed, cap: number, tftMode: TftMode | null): string | null => {
+    const bounds = scrimCapacityRange(
+      { code: game.code, capacityMin: game.capacity_min, capacityMax: game.capacity_max, capacityStep: game.capacity_step },
+      tftMode,
+    );
+    return cap < bounds.min || cap > bounds.max || (cap - bounds.min) % bounds.step !== 0
+      ? `정원은 ${bounds.min}–${bounds.max}명${bounds.step > 1 ? ` ${bounds.step}명 단위` : ''}이에요`
       : null;
+  };
 
   // S4 GET /rankings/tier·elo, /dashboard/summary
   if (isRankingPath(path)) {
@@ -1096,7 +1134,8 @@ export function handleS2(ctx: MockS2Context): Response | null {
     const details: { path: string; message: string }[] = [];
     const si = scheduleIssue(b.scheduled_at);
     if (si) details.push({ path: 'scheduled_at', message: si });
-    const ci = capacityIssue(game, b.capacity);
+    const tftMode = b.game === 'tft' ? (b.tft_mode ?? null) : null;
+    const ci = capacityIssue(game, b.capacity, tftMode);
     if (ci) details.push({ path: 'capacity', message: ci });
     const pi = validatePositions(b.host_preferred_positions, game.positions, usePositions);
     if (pi) details.push({ path: 'host_preferred_positions', message: pi });
@@ -1117,9 +1156,10 @@ export function handleS2(ctx: MockS2Context): Response | null {
       status: 'recruiting',
       host_id: me.id,
       rules: b.rules ?? null,
-      rated: b.rated,
-      auto_balance: b.auto_balance && game.has_teams,
+      rated: appliedRated(game.has_results, b.rated),
+      auto_balance: appliedAutoBalance({ game: b.game, hasTeams: game.has_teams, tftMode, requested: b.auto_balance }),
       use_positions: usePositions,
+      tft_mode: tftMode,
       steam_app: app,
       started_at: null,
       cancelled_at: null,
@@ -1139,6 +1179,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
       no_show_marked_by: null,
       team: null,
       position: null,
+      duo_index: null,
     });
     persist();
     return json(201, detail(s));
@@ -1284,6 +1325,12 @@ export function handleS2(ctx: MockS2Context): Response | null {
       if (!parsed.success) return error('VALIDATION_FAILED', '요청 형식이 올바르지 않습니다.', { details: issues(parsed.error) });
       if (!s || !g) return error('NOT_FOUND', '내전 없음');
       if (!isManager) return error('FORBIDDEN', '방장·운영진만');
+      if (!g.has_results) {
+        const path = 'winner_team' in parsed.data ? 'winner_team' : 'placements';
+        return error('VALIDATION_FAILED', '인원 모집은 승패를 입력하지 않습니다.', {
+          details: [{ path, message: '인원 모집은 승패를 입력하지 않습니다.' }],
+        });
+      }
       if (s.status !== 'playing') return error('SCRIM_RESULT_NOT_ALLOWED', '진행 중 아님');
       if (activeResult(state, s.id)) return error('SCRIM_RESULT_EXISTS', '이미 결과 있음');
       const body = parsed.data;
@@ -1400,7 +1447,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
       const beforeJoin = joinedSet(s.id);
       const placed = joinedRows(s.id).length < s.capacity ? 'joined' : 'waitlist';
       // 재참가 행은 방어적으로 team·position도 지운다(S3 5-1)
-      if (mine) Object.assign(mine, { status: placed, preferred_positions: parsed.data.preferred_positions, joined_at: iso(now), team: null, position: null });
+      if (mine) Object.assign(mine, { status: placed, preferred_positions: parsed.data.preferred_positions, joined_at: iso(now), team: null, position: null, duo_index: null });
       else {
         state.players.push({
           id: crypto.randomUUID(),
@@ -1413,6 +1460,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
           no_show_marked_by: null,
           team: null,
           position: null,
+          duo_index: null,
         });
       }
       settleRoster(s);
@@ -1458,7 +1506,48 @@ export function handleS2(ctx: MockS2Context): Response | null {
     }
   }
 
-  // GET·PATCH /scrims/:id
+  m = matchTemplate(ApiPath.scrimDuos, path);
+  if (m && method === 'POST') {
+    const bad = invalidId('id', m.id!);
+    if (bad) return bad;
+    const s = state.scrims.find((x) => x.id === m!.id);
+    if (!s) return error('NOT_FOUND', '내전 없음');
+    if (s.host_id !== me.id && !isAdmin) return error('FORBIDDEN', '방장·운영진만');
+    if (s.tft_mode !== 'double_up' || !s.auto_balance) return error('SCRIM_BALANCE_UNAVAILABLE', '밸런스 불가');
+    if ((s.status !== 'full' && s.status !== 'playing') || activeResult(state, s.id)) return error('SCRIM_TEAMS_NOT_EDITABLE', '팀 수정 불가');
+    const joined = slotRows(s).filter((p) => p.status === 'joined');
+    if (joined.length < 2 || joined.length > 8 || joined.length % 2 !== 0) return error('SCRIM_BALANCE_UNAVAILABLE', '밸런스 불가');
+    const pairs = balanceDuos(joined.map((p) => ({ userId: p.user_id, skill: skillOf(s.game, p.user_id).skill })));
+    resetTeams(s.id);
+    for (const pair of pairs) {
+      for (const uid of pair.userIds) {
+        const row = rowsOf(s.id).find((p) => p.user_id === uid);
+        if (row) row.duo_index = pair.index;
+      }
+    }
+    s.updated_at = iso(now);
+    persist();
+    return json(200, detail(s));
+  }
+
+  // GET·PATCH·DELETE /scrims/:id
+  m = matchTemplate(ApiPath.scrim, path);
+  if (m && method === 'DELETE') {
+    const bad = invalidId('id', m.id!);
+    if (bad) return bad;
+    if (!isAdmin) return error('FORBIDDEN', '운영진만');
+    const idx = state.scrims.findIndex((x) => x.id === m!.id);
+    if (idx < 0) return error('NOT_FOUND', '내전 없음');
+    const s = state.scrims[idx]!;
+    if (state.results.some((r) => r.scrim_id === s.id && r.status === 'approved')) {
+      return error('SCRIM_DELETE_NOT_ALLOWED', '승인된 결과');
+    }
+    state.scrims.splice(idx, 1);
+    state.players = state.players.filter((p) => p.scrim_id !== s.id);
+    state.results = state.results.filter((r) => r.scrim_id !== s.id);
+    persist();
+    return json(204, null);
+  }
   m = matchTemplate(ApiPath.scrim, path);
   if (m && (method === 'GET' || method === 'PATCH')) {
     const bad = invalidId('id', m.id!);
@@ -1479,7 +1568,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
       if (si) details.push({ path: 'scheduled_at', message: si });
     }
     if (b.capacity !== undefined) {
-      const ci = capacityIssue(game, b.capacity);
+      const ci = capacityIssue(game, b.capacity, s.tft_mode);
       if (ci) details.push({ path: 'capacity', message: ci });
     }
     const app = b.steam_app_id === undefined ? undefined : steamApp(b.steam_app_id);
@@ -1493,8 +1582,10 @@ export function handleS2(ctx: MockS2Context): Response | null {
     if (b.title !== undefined) s.title = b.title;
     if (b.scheduled_at !== undefined) s.scheduled_at = iso(Date.parse(b.scheduled_at));
     if (b.rules !== undefined) s.rules = b.rules ?? null;
-    if (b.rated !== undefined) s.rated = b.rated;
-    if (b.auto_balance !== undefined) s.auto_balance = b.auto_balance && game.has_teams;
+    if (b.rated !== undefined) s.rated = appliedRated(game.has_results, b.rated);
+    if (b.auto_balance !== undefined) {
+      s.auto_balance = appliedAutoBalance({ game: s.game, hasTeams: game.has_teams, tftMode: s.tft_mode, requested: b.auto_balance });
+    }
     if (app) s.steam_app = app;
     if (b.capacity !== undefined) {
       const before = joinedSet(s.id);

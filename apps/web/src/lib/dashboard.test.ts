@@ -40,8 +40,8 @@ describe('시즌 카드', () => {
   });
   it('프로필 레이팅 빈 문구: 시즌 공백이면 기록 없음이라 하지 않는다', () => {
     expect(ratingEmptyText({ season: null })).toEqual({ value: '다음 시즌 준비 중', sub: '현재 진행 중인 시즌이 없어요' });
-    expect(ratingEmptyText({ season: { name: '시즌 2' } })).toEqual({ value: '내전 기록 없음', sub: '시즌 2' });
-    expect(ratingEmptyText(null).value).toBe('내전 기록 없음');
+    expect(ratingEmptyText({ season: { name: '시즌 2' } })).toEqual({ value: '내전/모집 기록 없음', sub: '시즌 2' });
+    expect(ratingEmptyText(null).value).toBe('내전/모집 기록 없음');
   });
   it('사용자 카드', () => {
     expect(userEloText({ elo: 1421, rank: 3 })).toBe('ELO 1421 · #3');

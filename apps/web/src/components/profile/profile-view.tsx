@@ -357,7 +357,7 @@ function SummaryCards({ p, now }: { p: GetUserProfileResponse; now: number | nul
           sub={p.tiers.length ? '최근 솔로 랭크 경기가 쌓이면 나와요' : '라이엇 ID를 연동하면 나와요'}
         />
       )}
-      <SummaryCard mark={scrim.rank === null ? 'ELO' : `#${scrim.rank}`} tone="text-accent-ink" label={<>내전 레이팅<EloInfo /></>} value={scrim.value} sub={scrim.sub} />
+      <SummaryCard mark={scrim.rank === null ? 'ELO' : `#${scrim.rank}`} tone="text-accent-ink" label={<>내전/모집 레이팅<EloInfo /></>} value={scrim.value} sub={scrim.sub} />
     </section>
   );
 }

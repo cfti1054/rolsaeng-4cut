@@ -20,8 +20,8 @@ export function navItems(me: Pick<Me, 'id'> | undefined): NavItem[] {
     { key: 'home', label: '홈', tabLabel: '홈', href: routes.home(), Icon: HomeIcon, match: (p) => p === '/' },
     {
       key: 'scrims',
-      label: '내전',
-      tabLabel: '내전',
+      label: '내전/모집',
+      tabLabel: '내전/모집',
       href: routes.scrims(),
       Icon: SwordsIcon,
       match: (p) => p === '/scrims' || p.startsWith('/scrims/'),

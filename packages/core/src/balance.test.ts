@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BALANCE_ELO_WEIGHT_MAX, BALANCE_FULL_WEIGHT_GAMES, BALANCE_OPTIONS_MAX, RATING_START_ELO } from '@gcd/shared';
 import {
+  balanceDuos,
   balanceEloWeight,
   balanceTeams,
   BALANCE_POSITION_COST_WEIGHT,
@@ -534,5 +535,48 @@ describe('validatePlacementUsers', () => {
       validatePlacementUsers({ eligibleUserIds: ['a', 'b'], placements: [{ userId: 'a' }, { userId: 'z' }, { userId: 'b' }] }),
     ).toEqual([{ path: 'placements.1.user_id', message: expect.any(String) }]);
     expect(validatePlacementUsers({ eligibleUserIds: [], placements: [] })).toEqual([]);
+  });
+});
+
+describe('balanceDuos', () => {
+  it('높은 실력과 낮은 실력을 2명씩 묶고, 홀수·범위 밖은 거부', () => {
+    const pairs = balanceDuos([
+      { userId: 'c', skill: 1200 },
+      { userId: 'a', skill: 1800 },
+      { userId: 'd', skill: 1000 },
+      { userId: 'b', skill: 1600 },
+    ]);
+    expect(pairs).toEqual([
+      { index: 1, userIds: ['a', 'd'], skillSum: 2800 },
+      { index: 2, userIds: ['b', 'c'], skillSum: 2800 },
+    ]);
+    expect(() => balanceDuos([{ userId: 'a', skill: 1 }])).toThrow(RangeError);
+    expect(() => balanceDuos([{ userId: 'a', skill: 1 }, { userId: 'b', skill: 1 }, { userId: 'c', skill: 1 }])).toThrow(RangeError);
+  });
+
+  it('티어만이면 높은 티어끼리 갈라지고, 10경기 ELO 20%가 그 짝을 바꾼다', () => {
+    const row = (userId: string, tierSeed: number, seasonGames: number, seasonElo: number) => ({
+      userId,
+      skill: computeSkill({ tierSeed, seasonGames, seasonElo }),
+    });
+    expect(balanceEloWeight(0)).toBe(0);
+    expect(balanceEloWeight(BALANCE_FULL_WEIGHT_GAMES)).toBe(BALANCE_ELO_WEIGHT_MAX);
+    expect(computeSkill({ tierSeed: 1400, seasonGames: 10, seasonElo: 2000 })).toBe(1520);
+    expect(computeSkill({ tierSeed: 1600, seasonGames: 10, seasonElo: 1000 })).toBe(1480);
+    const pairs = (games: number) =>
+      balanceDuos([
+        row('a', 1600, games, 1000),
+        row('b', 1500, 0, 1500),
+        row('c', 1400, games, 2000),
+        row('d', 1000, 0, 1000),
+      ]).map((p) => p.userIds);
+    expect(pairs(0)).toEqual([
+      ['a', 'd'],
+      ['b', 'c'],
+    ]);
+    expect(pairs(10)).toEqual([
+      ['c', 'd'],
+      ['a', 'b'],
+    ]);
   });
 });

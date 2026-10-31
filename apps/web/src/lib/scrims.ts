@@ -2,6 +2,7 @@ import type {
   GameCapacityRange,
   GameCode,
   GetMyPositionSuggestionsResponse,
+  TftMode,
   NoShowPolicyView,
   OpenPosition,
   ScrimCancelReason,
@@ -14,8 +15,8 @@ import type {
   ScrimSummary,
   UpdateScrimRequestInput,
 } from '@gcd/shared';
-import { SCRIM_MIN_PLAYERS_TO_START } from '@gcd/shared';
-import { GAME_SCRIM_META, positionLabel } from './games';
+import { SCRIM_MIN_PLAYERS_TO_START, TFT_MODE_LABEL } from '@gcd/shared';
+import { positionLabel } from './games';
 import { TEAM_LABEL } from './scrim-results';
 
 /**
@@ -105,20 +106,48 @@ export function kstMonthDayTime(iso: string): string {
   return `${p2(k.m)}.${p2(k.d)} ${p2(k.hh)}:${p2(k.mm)}`;
 }
 
+/** 공유 문구의 상태. 복사한 사람 기준 「참가 중」이 아니라 모집글 상태다 */
+function shareStatusLabel(status: ScrimStatus, joinClosed: boolean): string {
+  switch (status) {
+    case 'recruiting':
+      return joinClosed ? '시작 대기' : '모집 중';
+    case 'full':
+      return joinClosed ? '시작 대기' : '정원 마감';
+    case 'playing':
+      return '진행 중';
+    case 'finished':
+      return '종료';
+    case 'cancelled':
+      return '취소됨';
+  }
+}
+
+function shareHeading(code: GameCode, tftMode: TftMode | null | undefined, steamApp: string | null): string {
+  if (code === 'lol') return '⚔️ LOL 협곡 내전';
+  if (code === 'tft') return `♟️ TFT${tftMode ? ` ${TFT_MODE_LABEL[tftMode]}` : ''} 내전`;
+  return `🕹️ 스팀 내전${steamApp ? ` · ${steamApp}` : ''}`;
+}
+
 /** 메신저 공유용 문구. 카톡·디스코드가 마지막 줄 주소를 링크로 바꾼다 */
 export function scrimShareText(
-  s: Pick<ScrimDetail, 'title' | 'scheduled_at' | 'capacity' | 'joined_count'> & {
+  s: Pick<ScrimDetail, 'title' | 'scheduled_at' | 'capacity' | 'joined_count' | 'status' | 'join_closed'> & {
     game: { code: GameCode };
     steam_app?: ScrimDetail['steam_app'];
+    tft_mode?: TftMode | null;
   },
   url: string,
 ): string {
   const k = kst(Date.parse(s.scheduled_at));
-  const when = `${k.m}/${k.d}(${WEEKDAYS[k.weekday]}) ${p2(k.hh)}:${p2(k.mm)}`;
-  const app = s.steam_app ? ` · ${s.steam_app.name}` : '';
   return [
-    `[${GAME_SCRIM_META[s.game.code].label} 내전${app}] ${s.title}`,
-    `${when} 시작 · ${s.joined_count}/${s.capacity}명`,
+    shareHeading(s.game.code, s.tft_mode, s.steam_app?.name ?? null),
+    s.title,
+    '',
+    `📅 ${k.m}월 ${k.d}일 (${WEEKDAYS[k.weekday]})`,
+    `⏰ ${p2(k.hh)}:${p2(k.mm)} 시작`,
+    `👥 모집 인원 ${s.joined_count} / ${s.capacity}명`,
+    `📌 ${shareStatusLabel(s.status, s.join_closed)}`,
+    '',
+    '🔗 내전 참여하기',
     url,
   ].join('\n');
 }
@@ -209,7 +238,7 @@ export function scrimDetailBadge(
     case 'finished':
       return { label: '종료', tone: 'neutral' };
     case 'cancelled':
-      return { label: '취소된 내전', tone: 'neutral' };
+      return { label: '취소된 내전/모집', tone: 'neutral' };
   }
 }
 

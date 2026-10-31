@@ -51,6 +51,7 @@ describe.skipIf(!DB_URL)('[DB] S5 봇 API e2e (PostgreSQL)', () => {
             name: g?.name ?? code,
             hasPositions: g?.has_positions ?? false,
             hasTeams: g?.has_teams ?? false,
+            hasResults: g?.has_results ?? true,
             positions: [...(g?.positions ?? [])],
             sortOrder: g?.sort_order ?? 0,
           },

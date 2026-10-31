@@ -14,12 +14,14 @@ import { Avatar, Card, EmptyState, ErrorState, Skeleton } from '@/components/ui/
 import { isApiError } from '@/lib/api/client';
 import { copyText } from '@/lib/clipboard';
 import { cn } from '@/lib/cn';
+import { duoBalanceNote } from '@/lib/elo-info';
 import { errorMessage } from '@/lib/errors';
 import { formatFull } from '@/lib/format';
 import { positionLabel } from '@/lib/games';
 import { useMe } from '@/lib/hooks/auth';
 import { usePositionDefaults } from '@/lib/hooks/position-defaults';
 import {
+  useAssignScrimDuos,
   useCancelScrim,
   useGames,
   useJoinScrim,
@@ -53,6 +55,7 @@ import { PositionPicker } from './position-picker';
 import { GameTag, PositionChips, SectionHead, StatusPill, scrimErrorText, useRestriction } from './scrim-bits';
 import { ScrimEditDialog } from './scrim-edit-dialog';
 import { ResultPanel } from './scrim-result';
+import { DeleteScrimButton } from './scrim-card';
 import { NewBadge, TEAM_TONE, TeamsPanel } from './scrim-teams';
 import { SteamAppImage, steamStoreUrl } from './steam-app-picker';
 
@@ -74,11 +77,11 @@ export function ScrimDetailView({ id }: { id: string }) {
         <BackLink />
         <EmptyState
           mark="?"
-          title="내전을 찾을 수 없어요"
+          title="내전/모집을 찾을 수 없어요"
           description="주소가 잘못됐거나 지워진 모집글이에요."
           action={
             <Link href={routes.scrims()} className="text-sm font-semibold">
-              내전 목록으로
+              내전/모집 목록으로
             </Link>
           }
         />
@@ -145,7 +148,10 @@ function DetailBody({
     <>
       <div className="flex items-center justify-between gap-3">
         <BackLink />
-        <ShareButton s={s} onToast={setToast} />
+        <span className="flex items-center gap-2">
+          {s.can_delete && <DeleteScrimButton id={s.id} title={s.title} />}
+          <ShareButton s={s} onToast={setToast} />
+        </span>
       </div>
       <Hero s={s} />
       <HostMenu s={s} onToast={setToast} />
@@ -154,6 +160,7 @@ function DetailBody({
         <div className="flex min-w-0 flex-[2_1_520px] flex-col gap-5">
           <JoinPanel s={s} onToast={setToast} />
           {s.game.has_teams && <TeamsPanel s={s} onToast={setToast} />}
+          {s.tft_mode === 'double_up' && s.options.auto_balance && <DuoPanel s={s} />}
         </div>
       </div>
       <ResultPanel s={s} onToast={setToast} />
@@ -165,7 +172,7 @@ function DetailBody({
 function BackLink() {
   return (
     <Link href={routes.scrims()} className="self-start text-[13px] text-muted no-underline hover:text-text">
-      ← 내전 목록
+      ← 내전/모집 목록
     </Link>
   );
 }
@@ -301,7 +308,7 @@ function Hero({ s }: { s: ScrimDetail }) {
         </ol>
       ) : (
         <div className="rounded-2xl border border-line-2 bg-surface px-4 py-3 text-sm text-muted">
-          <strong className="text-text">취소된 내전</strong> · {s.cancel_reason ? CANCEL_REASON_TEXT[s.cancel_reason] : '모집이 취소됐어요.'}
+          <strong className="text-text">취소된 내전/모집</strong> · {s.cancel_reason ? CANCEL_REASON_TEXT[s.cancel_reason] : '모집이 취소됐어요.'}
           {s.cancelled_at && <span className="text-faint"> ({kstMonthDayTime(s.cancelled_at)})</span>}
         </div>
       )}
@@ -312,6 +319,46 @@ function Hero({ s }: { s: ScrimDetail }) {
           <p className="m-0 mt-2 whitespace-pre-wrap break-words text-sm leading-[1.7] text-muted">{s.rules}</p>
         </details>
       )}
+    </section>
+  );
+}
+
+function DuoPanel({ s }: { s: ScrimDetail }) {
+  const assign = useAssignScrimDuos(s.id);
+  const groups = new Map<number, ScrimPlayerView[]>();
+  for (const p of s.players) {
+    if (p.status !== 'joined' || p.duo_index === null) continue;
+    const list = groups.get(p.duo_index) ?? [];
+    list.push(p);
+    groups.set(p.duo_index, list);
+  }
+  const pairs = [...groups.entries()].sort((a, b) => a[0] - b[0]);
+  return (
+    <section className="flex flex-col gap-3 rounded-[18px] border border-line bg-surface p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="m-0 text-sm font-bold">2인 팀</h2>
+          <p className="m-0 mt-1 text-xs text-muted">{duoBalanceNote()}</p>
+        </div>
+        {s.viewer.can_balance && (
+          <Button variant="primary" onClick={() => assign.mutate()} disabled={assign.isPending}>
+            {assign.isPending ? '나누는 중…' : '팀 나누기'}
+          </Button>
+        )}
+      </div>
+      {pairs.length === 0 ? (
+        <p className="m-0 text-sm text-muted">아직 팀이 없어요. 인원이 짝수 2–8명일 때 나눌 수 있어요.</p>
+      ) : (
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
+          {pairs.map(([index, members]) => (
+            <li key={index} className="rounded-xl border border-line-2 bg-surface-2 px-3 py-2 text-sm">
+              <span className="mr-2 font-display text-xs text-faint">팀 {index}</span>
+              {members.map((m) => m.user.nickname).join(' · ')}
+            </li>
+          ))}
+        </ul>
+      )}
+      {assign.isError && <InlineError>{errorMessage(isApiError(assign.error) ? assign.error.code : 'INTERNAL_ERROR')}</InlineError>}
     </section>
   );
 }
@@ -389,7 +436,7 @@ function HostMenu({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => 
       <ConfirmDialog
         open={dialog === 'cancel'}
         title="모집을 취소할까요?"
-        description={`참가자 ${s.joined_count}명${s.waitlist_count ? `, 대기 ${s.waitlist_count}명` : ''}에게 취소된 내전으로 보여요. 되돌릴 수 없어요.`}
+        description={`참가자 ${s.joined_count}명${s.waitlist_count ? `, 대기 ${s.waitlist_count}명` : ''}에게 취소된 내전/모집으로 보여요. 되돌릴 수 없어요.`}
         confirmLabel="모집 취소"
         pending={cancel.isPending}
         onClose={() => setDialog(null)}
@@ -586,11 +633,11 @@ function ClosedStateText({ s }: { s: ScrimDetail }) {
   const text =
     s.status === 'playing'
       ? mine === 'joined'
-        ? '경기가 진행 중이에요. 즐거운 내전 되세요!'
+        ? '경기가 진행 중이에요. 즐거운 시간 되세요!'
         : '경기가 진행 중이에요. 참가 신청은 마감됐어요.'
       : s.status === 'finished'
-        ? '끝난 내전이에요.'
-        : '취소된 내전이라 참가할 수 없어요.';
+        ? '끝난 내전/모집이에요.'
+        : '취소된 내전/모집이라 참가할 수 없어요.';
   return <p className="m-0 text-sm text-muted">{text}</p>;
 }
 
@@ -658,7 +705,7 @@ function JoinControls({
     <div className="flex flex-col gap-4">
       {restrictedUntil && !inRoster && (
         <Notice title={restrictionUntilText(restrictedUntil)}>
-          제한이 풀리면 다시 참가할 수 있어요. 이미 참가한 내전은 그대로예요.
+          제한이 풀리면 다시 참가할 수 있어요. 이미 참가한 내전/모집은 그대로예요.
         </Notice>
       )}
 

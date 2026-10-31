@@ -12,11 +12,11 @@ describe('ELO 설명 문구', () => {
     expect(s.map((x) => x.heading)).toEqual(['무슨 점수인가요', '언제 바뀌나요', '시작 점수는 어떻게 정하나요', '승패 점수는 왜 다른가요', '팀을 나눌 때는요']);
     const t = text(policy);
     expect(t).toContain('7경기 이상 치르면 랭킹에 나와요.');
-    expect(t).toContain('한 경기 기본 폭은 32점이고, 그 게임 내전이 12경기 미만이면 40점이라');
+    expect(t).toContain('한 경기 기본 폭은 32점이고, 그 게임 내전/모집이 12경기 미만이면 40점이라');
   });
   it('무슨 점수: 티어와 상관없이 같은 점수에서 시작', () => {
     expect(eloInfoSections(policy)[0]!.body).toBe(
-      '우리 서버 내전 결과로만 정해지는 점수예요. 라이엇 티어와 상관없이 모두 같은 점수에서 시작하고, 게임과 시즌마다 따로 쌓여요.',
+      '우리 서버 내전/모집 결과로만 정해지는 점수예요. 라이엇 티어와 상관없이 모두 같은 점수에서 시작하고, 게임과 시즌마다 따로 쌓여요.',
     );
   });
   it('시작 점수: 상수 문구, 값 유무와 같다', () => {
@@ -33,12 +33,12 @@ describe('ELO 설명 문구', () => {
     }
   });
   it('값이 다르면 문구도 달라진다(하드코딩 아님)', () => {
-    expect(text({ ...policy, k_base: 20, k_new: 24, new_player_games: 3, min_games: 2 })).toContain('한 경기 기본 폭은 20점이고, 그 게임 내전이 3경기 미만이면 24점이라');
+    expect(text({ ...policy, k_base: 20, k_new: 24, new_player_games: 3, min_games: 2 })).toContain('한 경기 기본 폭은 20점이고, 그 게임 내전/모집이 3경기 미만이면 24점이라');
     expect(text({ ...policy, k_base: 20 })).toContain('이길 때 +10점, 질 때 −5점');
   });
   it('팀을 나눌 때: elo_weight_max 0.2·0.35·0, full_weight_games는 서버 값', () => {
     expect(eloInfoSections(policy)[4]!.body).toBe(
-      '팀 자동 밸런스는 티어를 중심으로 나누고, 내전 ELO는 이번 시즌 경기 수에 따라 조금씩 섞어요. 이번 시즌 10경기부터 최대 20%이고, 티어 비중은 80% 아래로 내려가지 않아요.',
+      '팀 자동 밸런스는 티어를 중심으로 나누고, 내전/모집 ELO는 이번 시즌 경기 수에 따라 조금씩 섞어요. 이번 시즌 10경기부터 최대 20%이고, 티어 비중은 80% 아래로 내려가지 않아요.',
     );
     expect(eloInfoSections({ ...policy, elo_weight_max: 0.35, full_weight_games: 6 })[4]!.body).toContain('이번 시즌 6경기부터 최대 35%이고, 티어 비중은 65% 아래로');
     expect(eloInfoSections({ ...policy, elo_weight_max: 0 })[4]!.body).toBe('팀 자동 밸런스는 티어만으로 나눠요.');
@@ -64,7 +64,7 @@ describe('ELO 설명 문구', () => {
     const t = text(null);
     expect(t).toContain('일정 경기 수를 채우면 랭킹에 나와요.');
     expect(t).toContain('강한 상대를 이길수록 많이 오르고, 약한 상대에게 질수록 많이 내려가요.');
-    expect(t).toContain('팀 자동 밸런스는 티어를 중심으로 나누고, 내전 ELO는 조금만 섞어요.');
+    expect(t).toContain('팀 자동 밸런스는 티어를 중심으로 나누고, 내전/모집 ELO는 조금만 섞어요.');
     expect(t.replaceAll('1000점', '')).not.toMatch(/\d/);
     expect(eloInfoSections(null)).toHaveLength(5);
   });

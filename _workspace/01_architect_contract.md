@@ -12,6 +12,7 @@
 | 2026-10-31 | **S5 수정 r1**(사용자 결정 + QA 결함): (1) Q3 답 = 활동 랭킹은 음성만. `ACTIVITY_RANKED_TYPES = ['voice']`, 응답 `play_sec` 제거(`total_sec = voice_sec`), 주 게임도 voice 기준, 표 머리 「VOICE TIME」. 봇은 play를 계속 받아 저장(D232, D233). (2) `GET /steam-apps` 보유자 조건을 플레이타임 랭킹과 같게, 화면 기본 게임 `pickDefaultPlaytimeAppId`(D234). (3) 보유자 0명 app도 빈 결과를 캐시에 저장, 플레이타임 `synced_at` non-null(D235). (4) 5-4 잠금 순서를 구현(advisory 먼저)에 맞춰 고침, 2절 NOT_FOUND 행 정리(D236). 마이그레이션·DB enum·오류 코드·엔드포인트 수 변경 없음. 확인 필요 Q3 닫음, Q14–Q16 추가. 작업 목록 14-1절 | architect |
 | 2026-10-31 | **S5 수정 r2**(사용자 결정 2건): (A) 디스코드 연동 코드 기능 제거 — `POST /me/discord-link/code`, `POST /bot/link`, `GET /me/discord-link`(GET /me로 대체), `discord_link_codes` 표(마이그레이션 `20261031120000_s5` 다시 생성, migrate diff 일치), scope `bot:link`, 오류 코드 4개, shared 연동 코드 상수·함수·스키마, core `discordLinkCodeState`. 엔드포인트 신규 11 → 8(웹 2 + 봇 6), 오류 코드 추가 6 → 2(전체 45), scope 7 → 6, core 함수 13 → 12(D237, D238). 5절 전체를 「연동 판정」으로 축소, D236의 5-4 부분은 무효. (B) 활동 랭킹 행에 참고 열 `scrim_count`(그 기간 승인된 내전 참가 수, 정렬 무관, D239). 확인 필요 Q1·Q2·Q11·Q13 닫음, Q17 추가. 작업 목록 14-2절 | architect |
 | 2026-10-31 | **S5 수정 D240**(사용자 결정): play는 「우리 채팅방 사람들과 같이 한 게임」이라는 보장이 없어 모든 활동 집계에서 제외한다(수신·저장만). shared `ACTIVITY_COUNTED_TYPES = ['voice', 'chat']` 추가, 활동 일수(`active_days`)·홈 `community.active_members` SQL이 이를 바인딩. D233 일수 부분 철회, Q14·Q15 닫음. `now_playing`·봇 수신 검증·마이그레이션·응답 모양 변경 없음 | backend |
+| 2026-10-31 | **S2·S3 후속**(사용자 요청): 운영진만 `DELETE /scrims/:id`(승인 결과 있으면 409 `SCRIM_DELETE_NOT_ALLOWED`, 오류 코드 46). 롤체 `tft_mode` double_up·normal·ranked, 더블업만 2인 페어(`POST /scrims/:id/duos`, `duo_index`). 스팀·롤체 일반·랭크는 auto_balance 저장값 false. 스팀 `has_teams`는 유지(수동 팀·팀 승패). 마이그레이션 `20261031200000_scrim_delete_tft_mode`. 상세는 아래 「S2·S3 후속」 | 리더(architect 사용량 한도로 계약 초안 없이 구현) |
 
 ---
 
@@ -938,3 +939,14 @@ r1 영향: 마이그레이션·DB enum·`ActivityType`·봇 요청 스키마·�
 - 7-3 활동 행: 「voice(디스코드 음성 채널 접속) `duration_sec` 합계, 기간 귀속은 시작 시각. play는 저장하지만 랭킹에 쓰지 않음」(Q3 답 = 음성만, D232).
 - 7-3 활동 일수·8장 홈 「이번 주 활동 멤버」: 「voice·chat만 센다. play(게임 실행)는 저장만 하고 어떤 활동 집계에도 쓰지 않음」(D240).
 - 6장 `/steam-apps`(S2 D98) 설명: 「멤버 보유 = 대표·확인된 스팀 계정, 플레이 0분·탈퇴 제외」(D234).
+
+## S2·S3 후속 (2026-10-31)
+
+S5 범위를 바꾸지 않는다. 입력은 `_workspace/00_input/slice.md` 「S2·S3 후속」.
+
+- `DELETE /scrims/:id` → 204. `@Roles('admin')`. 비운영진은 없는 내전도 403. 승인된 결과가 있으면 409 `SCRIM_DELETE_NOT_ALLOWED`(레이팅 기록 유지). 그 외 모집 중·마감·진행 중·취소는 참가자·결과와 함께 행 삭제. 응답 `can_delete`가 true일 때만 목록 카드와 상세에 삭제 버튼을 그린다.
+- 롤체 작성은 `tft_mode` 필수: `double_up` | `normal` | `ranked`. 다른 게임은 보내면 400. 작성 후 변경 없음. 정원은 더블업 2–8 짝수(기본 8), 일반 2–8(기본 8), 랭크 2–3(기본 3).
+- `auto_balance` 저장값: 롤은 기존(요청 && 팀 게임). 더블업만 요청값. 롤체 일반·랭크·스팀은 항상 false. 작성 화면 토글은 롤과 더블업만.
+- 더블업 페어는 `POST /scrims/:id/duos` → ScrimDetail. 방장·운영진, 마감 또는 진행 중, 활성 결과 없음, 참가 확정 짝수 2–8. 실력은 롤과 같은 `computeSkill`(티어 중심, 이번 시즌 경기 수에 따라 ELO 비중 0%→10경기 최대 20%). 그 값의 내림차순으로 강한 사람과 약한 사람을 짝 짓고 `scrim_players.duo_index`(1부터)에 저장. 롤 2팀 `POST /scrims/:id/balance`는 그대로(저장 안 함).
+- 스팀 모집(같은 날 추가). `games.has_teams`와 `games.has_results`는 false. 수동 팀 지정·승패 입력·시즌 ELO 반영을 받지 않는다. `POST /scrims/:id/result`는 `has_results`가 false면 400. 메뉴·목록 제목과 카드·레이팅 문구는 「내전/모집」. 링크 복사는 게임 아이콘(롤 ⚔️, 롤체 ♟️, 스팀 🕹️)과 날짜·시간·인원·상태·참여 링크를 줄로 나눈다. 이미 저장된 `winner_team` 결과는 게임 플래그와 상관없이 그대로 보여 준다.
+- 스키마: enum `tft_mode`, `scrims.tft_mode` nullable, `scrim_players.duo_index` nullable. 마이그레이션 `20261031200000_scrim_delete_tft_mode`. `games.has_results` boolean NOT NULL DEFAULT true, 스팀 행은 `has_teams=false`, `has_results=false`. 마이그레이션 `20261031210000_steam_recruit_no_results`. DROP 없음. 기존 롤체 행의 `tft_mode` null은 허용하고, 새 작성만 모드가 필수다.

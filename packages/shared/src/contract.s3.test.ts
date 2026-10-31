@@ -42,6 +42,7 @@ const player = (u: typeof user, team: 'blue' | 'orange') => ({
   team,
   no_show_marked_at: null,
   position_preference: null,
+  duo_index: null,
   skill: 1400,
   is_new: false,
 });
@@ -64,6 +65,8 @@ const finishedDetail = {
   created_at: T,
   result_status: 'approved',
   outcome: { winner_team: 'blue', winner: null },
+  tft_mode: null,
+  can_delete: false,
   rules: null,
   started_at: T,
   cancelled_at: null,

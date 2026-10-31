@@ -14,6 +14,7 @@ async function main(): Promise<void> {
       name: g.name,
       hasPositions: g.has_positions,
       hasTeams: g.has_teams,
+      hasResults: g.has_results,
       positions: g.positions,
       sortOrder: g.sort_order,
       capacityMin: g.capacity_min,

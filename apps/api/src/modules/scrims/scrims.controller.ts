@@ -118,6 +118,15 @@ export class ScrimsController {
     return this.scrims.start(user, params.id);
   }
 
+  /** DELETE /scrims/:id → 204. 운영진만. 승인된 결과가 있으면 409. */
+  @Delete(ApiPath.scrim)
+  @HttpCode(204)
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  remove(@CurrentUser() user: AuthUser, @Param(idPipe) params: IdParam): Promise<void> {
+    return this.scrims.remove(user, params.id);
+  }
+
   /** POST /scrims/:id/cancel → 200 CancelScrimResponse (방장·운영진) */
   @Post(ApiPath.scrimCancel)
   @HttpCode(200)
@@ -139,6 +148,13 @@ export class ScrimsController {
   }
 
   // ---- S3 팀 구성·결과(계약 S3 4·5절) ----
+
+  /** POST /scrims/:id/duos → 200 ScrimDetail (롤체 더블업 2인 팀 저장) */
+  @Post(ApiPath.scrimDuos)
+  @HttpCode(200)
+  assignDuos(@CurrentUser() user: AuthUser, @Param(idPipe) params: IdParam): Promise<GetScrimResponse> {
+    return this.teams.assignDuos(user, params.id);
+  }
 
   /** POST /scrims/:id/balance → 200 BalanceScrimResponse (방장·운영진, 계산만) */
   @Post(ApiPath.scrimBalance)

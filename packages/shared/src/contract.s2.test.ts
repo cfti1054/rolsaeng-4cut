@@ -61,6 +61,8 @@ const detail = {
   // S3 추가 필드
   result_status: null,
   outcome: null,
+  tft_mode: null,
+  can_delete: false,
   rules: null,
   started_at: null,
   cancelled_at: null,
@@ -78,6 +80,7 @@ const detail = {
       no_show_marked_at: null,
       // S3 추가 필드
       position_preference: null,
+      duo_index: null,
       skill: 1000,
       is_new: true,
     },
@@ -178,6 +181,11 @@ describe('games', () => {
   it('스팀만 게임 선택 필수(D98)', () => {
     expect(GAME_SEED.filter((g) => g.requires_steam_app).map((g) => g.code)).toEqual(['steam']);
   });
+  it('스팀은 인원 모집: 팀 배정과 승패 입력이 없다', () => {
+    const steam = GAME_SEED.find((g) => g.code === 'steam');
+    expect(steam).toMatchObject({ has_teams: false, has_results: false });
+    expect(GAME_SEED.filter((g) => g.code !== 'steam').every((g) => g.has_results)).toBe(true);
+  });
 });
 
 describe('steam apps (D98)', () => {
@@ -216,7 +224,7 @@ describe('scrim requests', () => {
     expect(CreateScrimRequest.safeParse({ ...r, scheduled_at: '2026-10-30T21:00:00' }).success).toBe(false);
   });
   it('rules: 빈 문자열 → null, 1000자 초과 거부', () => {
-    const base = { game: 'tft', title: '롤체 로비', scheduled_at: T, capacity: 8 };
+    const base = { game: 'tft', title: '롤체 로비', scheduled_at: T, capacity: 8, tft_mode: 'normal' as const };
     expect(CreateScrimRequest.parse({ ...base, rules: '   ' }).rules).toBeNull();
     expect(CreateScrimRequest.parse({ ...base, rules: null }).rules).toBeNull();
     expect(CreateScrimRequest.safeParse({ ...base, rules: 'x'.repeat(1001) }).success).toBe(false);

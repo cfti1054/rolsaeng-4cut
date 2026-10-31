@@ -171,6 +171,7 @@ describe('S3 목: 새 참가 확정 시 팀 초기화(5-1, backend 요청 1 수�
         no_show_marked_by: null,
         team: null,
         position: null,
+        duo_index: null,
       }),
     );
     scrim.status = 'full';
@@ -316,6 +317,7 @@ describe('S3 교차 QA 반영', () => {
       auto_balance: false,
       use_positions: false,
       steam_app: null,
+      tft_mode: 'normal',
       started_at: '2026-10-28T01:00:00.000Z',
       cancelled_at: null,
       cancel_reason: null,
@@ -336,6 +338,7 @@ describe('S3 교차 QA 반영', () => {
         no_show_marked_by: i < 2 ? uid(1) : null,
         team: null,
         position: null,
+        duo_index: null,
       }),
     );
     s2.results.push({
@@ -378,6 +381,7 @@ describe('D136 경계: 개인 순위 반영 대상 2명 미만(skip)', () => {
       auto_balance: false,
       use_positions: false,
       steam_app: null,
+      tft_mode: 'normal',
       started_at: '2026-10-28T01:00:00.000Z',
       cancelled_at: null,
       cancel_reason: null,
@@ -396,6 +400,7 @@ describe('D136 경계: 개인 순위 반영 대상 2명 미만(skip)', () => {
         no_show_marked_by: noShow.has(user_id) ? uid(1) : null,
         team: null,
         position: null,
+        duo_index: null,
       });
     }
     s2.results.push({

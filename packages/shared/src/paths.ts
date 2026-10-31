@@ -31,6 +31,8 @@ export const ApiPath = {
   // S2 내전
   scrims: '/scrims',
   scrim: '/scrims/:id',
+  /** 롤체 더블업 2인 팀 저장. POST, 방장·운영진. 응답은 ScrimDetail */
+  scrimDuos: '/scrims/:id/duos',
   scrimJoin: '/scrims/:id/join',
   scrimStart: '/scrims/:id/start',
   scrimCancel: '/scrims/:id/cancel',

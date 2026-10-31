@@ -9,12 +9,12 @@ const FEATURES = [
     mark: '5V5',
     tile: 'bg-cyan/15 text-cyan-ink',
     title: '팀 자동 밸런스',
-    desc: '티어와 내전 레이팅으로 126가지 조합 중 최적 3안',
+    desc: '티어와 내전/모집 레이팅으로 126가지 조합 중 최적 3안',
   },
   {
     mark: 'ELO',
     tile: 'bg-accent/10 text-accent-ink',
-    title: '서버 자체 내전 랭킹',
+    title: '서버 자체 내전/모집 랭킹',
     desc: `운영진 승인 결과만 반영 · 시즌마다 ${RATING_START_ELO}점에서 새로 시작`,
   },
   {
@@ -50,14 +50,14 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
             LOL · TFT · STEAM
           </span>
           <h1 className="m-0 text-[44px] font-bold leading-[1.15] tracking-[-0.04em]">
-            내전 모집부터
+            내전/모집부터
             <br />
             서버 랭킹까지,
             <br />
             한곳에서.
           </h1>
           <p className="m-0 text-[15px] leading-[1.7] text-muted">
-            롤 · 롤체 · 스팀 게임방 멤버의 티어와 내전 레이팅을 모아 보고, 팀을 자동으로 나눠 바로 내전을
+            롤 · 롤체 · 스팀 게임방 멤버의 티어와 내전/모집 레이팅을 모아 보고, 팀을 자동으로 나눠 바로 내전/모집을
             시작하세요.
           </p>
         </div>

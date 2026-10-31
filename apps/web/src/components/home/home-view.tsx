@@ -61,7 +61,7 @@ export function HomeView() {
           href={routes.scrimNew()}
           className="hidden h-[46px] items-center rounded-[14px] bg-accent px-[18px] text-sm font-bold text-on-accent no-underline hover:text-on-accent md:flex"
         >
-          + 내전 모집
+          + 내전/모집
         </Link>
       </header>
 
@@ -115,7 +115,7 @@ const CHIP = 'rounded-lg bg-chip px-2.5 py-1 text-[13px] text-text-2';
 
 function NextScrimHero({ next }: { next: DashboardNextScrim | null }) {
   return (
-    <section aria-label="다음 내전" data-theme="dark" className="relative overflow-hidden rounded-3xl border border-hero-line bg-hero text-text">
+    <section aria-label="다음 내전/모집" data-theme="dark" className="relative overflow-hidden rounded-3xl border border-hero-line bg-hero text-text">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={brand.homeBanner} alt="" className="absolute inset-0 size-full object-cover object-[70%_center]" />
       <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-r from-hero via-hero/90 to-hero/70 md:to-hero/25" />
@@ -128,9 +128,9 @@ function NoNextScrim() {
   return (
     <div className="relative flex max-w-md flex-col items-start gap-3 px-6 py-8 md:px-8">
       <span className="rounded-lg bg-accent px-2.5 py-1 font-display text-xs font-bold tracking-[0.14em] text-on-accent">NEXT MATCH</span>
-      <h2 className="m-0 text-2xl font-bold tracking-[-0.03em]">예정된 내전이 없어요</h2>
+      <h2 className="m-0 text-2xl font-bold tracking-[-0.03em]">예정된 내전/모집이 없어요</h2>
       <Link href={routes.scrimNew()} className="flex h-[46px] items-center rounded-[14px] bg-accent px-[22px] text-sm font-bold text-on-accent no-underline hover:text-on-accent">
-        내전 모집
+        내전/모집
       </Link>
     </div>
   );
@@ -222,9 +222,9 @@ function StatsRow({ d }: { d: GetDashboardSummaryResponse }) {
           <StatCard key={key} className={hide} label="음성 채널 접속" mobileLabel="음성 접속" value={voice.value} unit={voice.unit} dot="bg-accent" live={voice.live} note={voice.note} />
         ) : null;
       case 'recruiting':
-        return <StatCard key={key} className={hide} label="모집 중인 내전" mobileLabel="모집 중 내전" value={String(d.stats.recruiting_scrims)} unit="건" dot="bg-cyan" />;
+        return <StatCard key={key} className={hide} label="모집 중인 내전/모집" mobileLabel="모집 중" value={String(d.stats.recruiting_scrims)} unit="건" dot="bg-cyan" />;
       case 'week':
-        return <StatCard key={key} className={hide} label="이번 주 내전" value={String(d.stats.scrims_this_week)} unit="경기" dot="bg-violet" />;
+        return <StatCard key={key} className={hide} label="이번 주 내전/모집" value={String(d.stats.scrims_this_week)} unit="경기" dot="bg-violet" />;
       case 'active':
         return active.state === 'ready' ? <StatCard key={key} className={hide} label="이번 주 활동 멤버" value={String(active.count)} unit="명" dot="bg-orange" /> : null;
     }
@@ -332,8 +332,8 @@ function RecruitingPanel({ scrims }: { scrims: readonly ScrimSummary[] }) {
   return (
     <Panel
       eyebrow="RECRUITING"
-      title="모집 중인 내전"
-      label="모집 중인 내전"
+      title="모집 중인 내전/모집"
+      label="모집 중인 내전/모집"
       right={
         <Link href={routes.scrims()} className="shrink-0 text-[13px] font-semibold no-underline">
           전체 보기 →
@@ -341,7 +341,7 @@ function RecruitingPanel({ scrims }: { scrims: readonly ScrimSummary[] }) {
       }
     >
       {scrims.length === 0 ? (
-        <PanelEmpty>지금 참가할 수 있는 다른 내전이 없어요</PanelEmpty>
+        <PanelEmpty>지금 참가할 수 있는 다른 내전/모집이 없어요</PanelEmpty>
       ) : (
         <ul className="m-0 flex list-none flex-col gap-3 p-0">
           {scrims.map((s) => (
@@ -506,9 +506,9 @@ function OutcomeBar({ r }: { r: DashboardRecentResult }) {
 
 function RecentResultsPanel({ results }: { results: readonly DashboardRecentResult[] }) {
   return (
-    <Panel eyebrow="MATCH HISTORY" title="최근 내전 결과" label="최근 내전 결과" className="xl:col-span-2">
+    <Panel eyebrow="MATCH HISTORY" title="최근 내전/모집 결과" label="최근 내전/모집 결과" className="xl:col-span-2">
       {results.length === 0 ? (
-        <PanelEmpty>아직 입력된 내전 결과가 없어요</PanelEmpty>
+        <PanelEmpty>아직 입력된 내전/모집 결과가 없어요</PanelEmpty>
       ) : (
         <ul className="m-0 flex list-none flex-col p-0">
           {results.map((r) => {

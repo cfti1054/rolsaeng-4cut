@@ -81,7 +81,7 @@ export class ProfileScrimService {
     const placementScrimIds = picked
       .filter((r) => {
         const sc = scrimById.get(r.scrimId);
-        return sc !== undefined && gameById.get(sc.gameId)?.hasTeams === false && !ratedIdsByScrim.has(r.scrimId);
+        return r.winnerTeam === null && !ratedIdsByScrim.has(r.scrimId);
       })
       .map((r) => r.scrimId);
     const rosterRows = placementScrimIds.length
@@ -99,7 +99,8 @@ export class ProfileScrimService {
       if (!scrim || !row || !game || !code || !r.approvedAt) continue;
       let outcome: ProfileRecentScrim['outcome'];
       let placement: number | null = null;
-      if (game.hasTeams) {
+      const teamResult = r.winnerTeam !== null;
+      if (teamResult) {
         if (row.status === 'no_show') outcome = 'no_show';
         else if (row.team === null) outcome = 'unassigned';
         else outcome = row.team === r.winnerTeam ? 'win' : 'loss';
@@ -133,7 +134,7 @@ export class ProfileScrimService {
         game: code,
         finished_at: r.approvedAt.toISOString(),
         rated: scrim.rated,
-        team: game.hasTeams ? row.team : null,
+        team: teamResult ? row.team : null,
         position: row.position,
         placement,
         outcome,

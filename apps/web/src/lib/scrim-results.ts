@@ -55,9 +55,9 @@ export function balanceSubtitle(r: Pick<BalanceScrimResponse, 'partitions_evalua
 
 /** 실력값 설명. 정책 값(밸런스 응답)이 없으면 숫자 없는 문구(D124) */
 export function skillFormulaText(policy: RatingPolicyView | null | undefined): string {
-  if (!policy) return '실력값은 티어를 중심으로 이번 시즌 내전 ELO를 조금 섞어 계산해요.';
+  if (!policy) return '실력값은 티어를 중심으로 이번 시즌 내전/모집 ELO를 조금 섞어 계산해요.';
   const n = Math.round(policy.elo_weight_max * 100);
-  const base = `실력값 = w × 내전 ELO + (1 − w) × 티어 환산값. w는 이번 시즌 내전 경기 수에 따라 0에서 ${n}%까지 늘어요(${policy.full_weight_games}경기부터 ${n}%). K = ${policy.k_base}, 신규 멤버 K = ${policy.k_new}.`;
+  const base = `실력값 = w × 내전/모집 ELO + (1 − w) × 티어 환산값. w는 이번 시즌 내전/모집 경기 수에 따라 0에서 ${n}%까지 늘어요(${policy.full_weight_games}경기부터 ${n}%). K = ${policy.k_base}, 신규 멤버 K = ${policy.k_new}.`;
   return policy.loss_ratio === 1 ? base : `${base} 패배 점수는 ${Math.round(policy.loss_ratio * 100)}%만 반영해요.`;
 }
 
@@ -156,13 +156,20 @@ export type ResultPanelState =
   | { kind: 'too_few'; rejected: ScrimResultView | null }
   | { kind: 'pending'; result: ScrimResultView }
   | { kind: 'approved'; result: ScrimResultView }
-  | { kind: 'no_result' };
+  | { kind: 'no_result' }
+  /** 승패를 받지 않는 모집(스팀). 예전에 승인·대기 결과가 있으면 그 화면을 유지한다 */
+  | { kind: 'recruitment' };
 
 export function resultPanelState(
   s: Pick<ScrimDetail, 'status' | 'result' | 'viewer' | 'balance' | 'game' | 'players'>,
   opts: { isAdmin?: boolean } = {},
 ): ResultPanelState {
   if (s.status === 'cancelled') return { kind: 'cancelled' };
+  if (s.game.has_results === false) {
+    if (s.result?.status === 'approved') return { kind: 'approved', result: s.result };
+    if (s.result?.status === 'pending') return { kind: 'pending', result: s.result };
+    return { kind: 'recruitment' };
+  }
   if (s.status === 'recruiting' || s.status === 'full') return { kind: 'before' };
   const r = s.result;
   if (r?.status === 'approved') return { kind: 'approved', result: r };
@@ -194,7 +201,7 @@ export function ratingStatusText(status: ScrimResultView['rating_status']): stri
     case 'skipped':
       return '반영할 참가자가 부족해 레이팅은 바뀌지 않았어요';
     case 'not_rated':
-      return 'ELO 미반영 내전이라 레이팅은 바뀌지 않았어요';
+      return 'ELO 미반영 내전/모집이라 레이팅은 바뀌지 않았어요';
     default:
       return null;
   }

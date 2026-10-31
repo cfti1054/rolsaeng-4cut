@@ -28,16 +28,16 @@ export function seasonResetText(): string {
 }
 
 export const SEASON_WAITING_TITLE = '다음 시즌 준비 중';
-export const SEASON_WAITING_NOTE = '첫 내전 결과가 승인되면 시작돼요';
+export const SEASON_WAITING_NOTE = '첫 내전/모집 결과가 승인되면 시작돼요';
 
 /**
  * 프로필 레이팅 카드의 값이 없을 때. scrim.ratings는 현재 시즌만이라, 시즌이 없는 동안(D143)에는 기록이 있어도 비어 있다.
  * 이때 「기록 없음」이라고 하지 않고 시즌 상태를 말한다(D168). 시즌이 한 번도 없던 경우에도 맞게 「종료」라고 단정하지 않는다.
  */
 export function ratingEmptyText(scrim: { season: { name: string } | null } | null): { value: string; sub: string } {
-  if (!scrim) return { value: '내전 기록 없음', sub: '아직 반영된 내전이 없어요' };
+  if (!scrim) return { value: '내전/모집 기록 없음', sub: '아직 반영된 내전/모집이 없어요' };
   if (!scrim.season) return { value: SEASON_WAITING_TITLE, sub: '현재 진행 중인 시즌이 없어요' };
-  return { value: '내전 기록 없음', sub: scrim.season.name };
+  return { value: '내전/모집 기록 없음', sub: scrim.season.name };
 }
 
 /** 모바일 머리 「시즌 2 · D-34」. season null → 「다음 시즌 준비 중」 */

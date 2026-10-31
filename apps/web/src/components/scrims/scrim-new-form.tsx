@@ -2,13 +2,17 @@
 
 import {
   CreateScrimRequest,
+  TFT_MODE_CAPACITY,
+  TFT_MODE_LABEL,
   SCRIM_RULES_MAX_LENGTH,
   SCRIM_TITLE_MAX_LENGTH,
   ScrimTitle,
   type CreateScrimRequestInput,
   type GameView,
   type ScrimSummary,
+  type TftMode,
   type SteamAppRef,
+  appliedRated,
 } from '@gcd/shared';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -18,6 +22,7 @@ import { AlertIcon, CheckIcon } from '@/components/ui/icons';
 import { ErrorState, Eyebrow, Skeleton } from '@/components/ui/primitives';
 import { isApiError } from '@/lib/api/client';
 import { cn } from '@/lib/cn';
+import { duoBalanceNote } from '@/lib/elo-info';
 import { errorMessage } from '@/lib/errors';
 import { GAME_SCRIM_META } from '@/lib/games';
 import { useMe } from '@/lib/hooks/auth';
@@ -38,11 +43,13 @@ import { RestrictionBanner, scrimErrorText, useRestriction } from './scrim-bits'
 import { ScrimCard } from './scrim-card';
 import { SteamAppPicker } from './steam-app-picker';
 
-const FIELDS = ['game', 'steam_app_id', 'title', 'scheduled_at', 'capacity', 'rules', 'host_preferred_positions'] as const;
+const FIELDS = ['game', 'tft_mode', 'steam_app_id', 'title', 'scheduled_at', 'capacity', 'rules', 'host_preferred_positions'] as const;
 type FieldErrors = Partial<Record<(typeof FIELDS)[number], string>>;
 
 /** 게임 카드 설명(목업 「팀전 · 포지션 있음」「개인 순위전」) — 코드 대신 속성으로(설계 원칙 3) */
-export function gameDescription(g: Pick<GameView, 'has_teams' | 'has_positions'>): string {
+export function gameDescription(g: Pick<GameView, 'code' | 'has_teams' | 'has_positions'>): string {
+  if (g.code === 'steam') return '참가 인원 모집';
+  if (g.code === 'tft') return '더블업 · 일반 · 랭크';
   if (!g.has_teams) return '개인 순위전';
   return g.has_positions ? '팀전 · 포지션 있음' : '팀전';
 }
@@ -80,6 +87,7 @@ export function ScrimNewForm() {
   const [first, setFirst] = useState<string | null>(null);
   const [second, setSecond] = useState<string | null>(null);
   const [steamApp, setSteamApp] = useState<SteamAppRef | null>(null);
+  const [tftMode, setTftMode] = useState<TftMode | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
 
   // 기본 시작 시각은 마운트 후에(서버 렌더 시각과 달라 하이드레이션이 어긋나지 않게)
@@ -91,9 +99,19 @@ export function ScrimNewForm() {
 
   const list = games.data?.items ?? [];
   const game = list.find((g) => g.code === gameCode) ?? list[0] ?? null;
-  const cap = game ? (capacity ?? game.capacity.default) : null;
+  const capRange =
+    game?.code === 'tft'
+      ? tftMode
+        ? TFT_MODE_CAPACITY[tftMode]
+        : null
+      : game
+        ? { min: game.capacity.min, max: game.capacity.max, step: game.capacity.step, default: game.capacity.default }
+        : null;
+  const cap = capRange ? (capacity ?? capRange.default) : null;
   const effPositions = !!game?.has_positions && usePositions;
-  const effBalance = !!game?.has_teams && autoBalance;
+  const balanceChoice = game?.code === 'tft' ? tftMode === 'double_up' : !!game?.has_teams;
+  const effBalance = balanceChoice && autoBalance;
+  const effRated = appliedRated(game?.has_results !== false, rated);
   const needsApp = !!game?.requires_steam_app;
   const positionDefaults = usePositionDefaults({
     game: game?.code ?? null,
@@ -110,7 +128,8 @@ export function ScrimNewForm() {
 
   const pickGame = (g: GameView) => {
     setGameCode(g.code);
-    setCapacity(g.capacity.default);
+    setTftMode(null);
+    setCapacity(g.code === 'tft' ? null : g.capacity.default);
     setFirst(null);
     setSecond(null);
     positionDefaults.reset();
@@ -127,7 +146,8 @@ export function ScrimNewForm() {
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!game || cap === null || restricted) return;
+    if (!game || restricted) return;
+    if (cap === null && !(game.code === 'tft' && !tftMode)) return;
     const next: FieldErrors = {};
     const t = ScrimTitle.safeParse(title);
     if (!t.success) next.title = `제목은 앞뒤 공백을 빼고 2–${SCRIM_TITLE_MAX_LENGTH}자로 써 주세요.`;
@@ -137,6 +157,7 @@ export function ScrimNewForm() {
       const limit = scheduleMaxMs(Date.now(), scrimPolicy);
       if (scrimPolicy && limit !== null && Date.parse(scheduledIso) > limit) next.scheduled_at = scheduleMaxText(scrimPolicy);
     }
+    if (game.code === 'tft' && !tftMode) next.tft_mode = '더블업, 일반, 랭크 중 하나를 골라 주세요.';
     if (needsApp && !steamApp) next.steam_app_id = '어떤 스팀 게임으로 내전할지 골라 주세요.';
     if (effPositions && !first) next.host_preferred_positions = '방장도 참가자예요. 1지망 포지션을 골라 주세요.';
     if (rules.length > SCRIM_RULES_MAX_LENGTH) next.rules = `규칙은 ${SCRIM_RULES_MAX_LENGTH}자까지 쓸 수 있어요.`;
@@ -144,15 +165,17 @@ export function ScrimNewForm() {
       setErrors(next);
       return;
     }
+    if (cap === null) return;
     const body: CreateScrimRequestInput = {
       game: game.code,
       title,
       scheduled_at: scheduledIso!,
       capacity: cap,
       rules: rules.trim() === '' ? null : rules,
-      rated,
+      rated: effRated,
       auto_balance: effBalance,
       use_positions: effPositions,
+      ...(game.code === 'tft' && tftMode ? { tft_mode: tftMode } : {}),
       host_preferred_positions: effPositions ? toPreferredPositions(first, second) : [],
       ...(needsApp && steamApp ? { steam_app_id: steamApp.app_id } : {}),
     };
@@ -174,7 +197,14 @@ export function ScrimNewForm() {
     game && cap !== null
       ? {
           id: '00000000-0000-4000-8000-000000000000',
-          game: { code: game.code, name: game.name, has_positions: game.has_positions, has_teams: game.has_teams, positions: game.positions },
+          game: {
+            code: game.code,
+            name: game.name,
+            has_positions: game.has_positions,
+            has_teams: game.has_teams,
+            has_results: game.has_results,
+            positions: game.positions,
+          },
           title: title.trim().replace(/\s+/g, ' '),
           scheduled_at: scheduledIso ? new Date(scheduledIso).toISOString() : new Date(now ?? 0).toISOString(),
           capacity: cap,
@@ -182,7 +212,7 @@ export function ScrimNewForm() {
           host: { id: me.data?.id ?? '00000000-0000-4000-8000-000000000000', nickname: me.data?.nickname ?? '나', avatar_url: null },
           joined_count: 1,
           waitlist_count: 0,
-          options: { rated, auto_balance: effBalance, use_positions: effPositions },
+          options: { rated: effRated, auto_balance: effBalance, use_positions: effPositions },
           steam_app: needsApp ? steamApp : null,
           open_positions: [],
           join_closed: false,
@@ -190,6 +220,8 @@ export function ScrimNewForm() {
           created_at: new Date(now ?? 0).toISOString(),
           result_status: null,
           outcome: null,
+          tft_mode: game.code === 'tft' ? tftMode : null,
+          can_delete: false,
         }
       : null;
 
@@ -199,10 +231,10 @@ export function ScrimNewForm() {
     <>
       <header className="flex flex-col gap-1.5">
         <Link href={routes.scrims()} className="text-[13px] text-muted no-underline hover:text-text">
-          ← 내전 목록
+          ← 내전/모집 목록
         </Link>
         <Eyebrow className="mt-1 text-xs">NEW SCRIM</Eyebrow>
-        <h1 className="m-0 text-[26px] font-bold tracking-[-0.03em] md:text-[30px]">내전 모집글 작성</h1>
+        <h1 className="m-0 text-[26px] font-bold tracking-[-0.03em] md:text-[30px]">내전/모집글 작성</h1>
       </header>
 
       <RestrictionBanner restriction={restriction} />
@@ -217,7 +249,7 @@ export function ScrimNewForm() {
           <form
             noValidate
             onSubmit={submit}
-            aria-label="내전 모집글"
+            aria-label="내전/모집글"
             className="flex min-w-0 flex-[2_1_540px] flex-col gap-6 rounded-[22px] border border-line bg-surface p-5 shadow-[inset_0_1px_0_var(--hi)] md:p-[26px]"
           >
             <fieldset className="m-0 min-w-0 border-0 p-0">
@@ -261,6 +293,37 @@ export function ScrimNewForm() {
                       </button>
                     );
                   })}
+                </div>
+              )}
+              {game?.code === 'tft' && (
+                <div className="mt-4 flex flex-col gap-2">
+                  <span className="text-[13px] text-muted">롤체 모드</span>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {(Object.keys(TFT_MODE_LABEL) as TftMode[]).map((mode) => {
+                      const on = tftMode === mode;
+                      const hint = mode === 'double_up' ? '2명씩 팀' : mode === 'ranked' ? '최대 3인 · 개인전' : '개인전';
+                      return (
+                        <button
+                          key={mode}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => {
+                            setTftMode(mode);
+                            setCapacity(TFT_MODE_CAPACITY[mode].default);
+                            setErrors((x) => ({ ...x, tft_mode: undefined, capacity: undefined }));
+                          }}
+                          className={cn(
+                            'rounded-2xl border-[1.5px] px-4 py-3 text-left',
+                            on ? 'border-accent bg-accent/5' : 'border-line bg-surface-2 hover:border-line-3',
+                          )}
+                        >
+                          <span className="block text-sm font-bold">{TFT_MODE_LABEL[mode]}</span>
+                          <span className="text-xs text-muted">{hint}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {errors.tft_mode && <InlineError>{errors.tft_mode}</InlineError>}
                 </div>
               )}
               {needsApp && (
@@ -324,17 +387,19 @@ export function ScrimNewForm() {
                 </div>
                 <div className="flex flex-[1_1_170px] flex-col gap-2">
                   <span id={ids.cap} className="text-[13px] text-muted">
-                    정원 <span className="text-faint">(방장 포함{game && game.capacity.step > 1 ? ` · ${game.capacity.step}명 단위` : ''})</span>
+                    정원 <span className="text-faint">(방장 포함{capRange && capRange.step > 1 ? ` · ${capRange.step}명 단위` : ''})</span>
                   </span>
-                  {game && cap !== null ? (
+                  {capRange && cap !== null ? (
                     <CapacityStepper
                       labelledBy={ids.cap}
                       value={cap}
-                      min={game.capacity.min}
-                      max={game.capacity.max}
-                      step={game.capacity.step}
+                      min={capRange.min}
+                      max={capRange.max}
+                      step={capRange.step}
                       onChange={(v) => setCapacity(v)}
                     />
+                  ) : game?.code === 'tft' ? (
+                    <p className="m-0 flex h-12 items-center text-sm text-muted">모드를 먼저 골라 주세요.</p>
                   ) : (
                     <Skeleton className="h-12 rounded-[14px]" />
                   )}
@@ -374,13 +439,17 @@ export function ScrimNewForm() {
                 <StepNo n="03" />진행 방식
               </span>
               <div className="flex flex-col gap-2">
-                <Toggle
-                  label="팀 자동 밸런스"
-                  desc={game?.has_teams === false ? '개인전이라 사용하지 않습니다' : '티어와 내전 레이팅으로 두 팀 전력을 맞춥니다'}
-                  checked={effBalance}
-                  disabled={!game?.has_teams}
-                  onChange={() => setAutoBalance((v) => !v)}
-                />
+                {balanceChoice && (
+                  <Toggle
+                    label="팀 자동 밸런스"
+                    desc={tftMode === 'double_up' ? duoBalanceNote() : '티어와 내전/모집 레이팅으로 두 팀 전력을 맞춥니다'}
+                    checked={effBalance}
+                    onChange={() => setAutoBalance((v) => !v)}
+                  />
+                )}
+                {game?.has_results === false && (
+                  <p className="m-0 text-xs text-muted">인원만 모아요. 팀을 나누거나 승패를 입력하지 않아요.</p>
+                )}
                 <Toggle
                   label="포지션 희망 받기"
                   desc={game?.has_positions ? '참가할 때 1지망 · 2지망을 고릅니다' : '이 게임은 포지션이 없습니다'}
@@ -388,7 +457,9 @@ export function ScrimNewForm() {
                   disabled={!game?.has_positions}
                   onChange={() => setUsePositions((v) => !v)}
                 />
-                <Toggle label="시즌 ELO에 반영" desc="운영진 승인 후 레이팅이 바뀝니다" checked={rated} onChange={() => setRated((v) => !v)} />
+                {game?.has_results !== false && (
+                  <Toggle label="시즌 ELO에 반영" desc="운영진 승인 후 레이팅이 바뀝니다" checked={rated} onChange={() => setRated((v) => !v)} />
+                )}
               </div>
             </div>
 

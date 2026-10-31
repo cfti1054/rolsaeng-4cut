@@ -100,7 +100,7 @@ export function RatingHistoryPanel({ p, className }: { p: GetUserProfileResponse
   ) : null;
 
   return (
-    <Panel eyebrow="RATING HISTORY" title="내전 레이팅 변동" right={right} className={className}>
+    <Panel eyebrow="RATING HISTORY" title="내전/모집 레이팅 변동" right={right} className={className}>
       <div className="flex flex-wrap gap-2">
         <label htmlFor={gameSelectId} className="sr-only">
           게임
@@ -145,7 +145,7 @@ export function RatingHistoryPanel({ p, className }: { p: GetUserProfileResponse
       ) : q.isError && !data ? (
         <ErrorState message={isApiError(q.error) ? errorMessage(q.error.code) : errorMessage('NETWORK_ERROR')} onRetry={() => void q.refetch()} />
       ) : points.length === 0 ? (
-        <EmptyState mark="ELO" title="이 시즌 내전 기록이 없어요" description="레이팅에 반영된 내전이 쌓이면 변동 그래프가 그려져요." />
+        <EmptyState mark="ELO" title="이 시즌 내전/모집 기록이 없어요" description="레이팅에 반영된 내전/모집이 쌓이면 변동 그래프가 그려져요." />
       ) : (
         <RatingChart points={points} truncated={data?.truncated ?? false} fetching={q.isFetching} />
       )}
@@ -244,9 +244,9 @@ const OUTCOME_TONE: Record<ProfileRecentScrim['outcome'], { bar: string; text: s
 export function RecentScrimsPanel({ p, className }: { p: GetUserProfileResponse; className?: string }) {
   const recent = p.scrim?.recent ?? [];
   return (
-    <Panel eyebrow="SCRIMS" title="최근 내전" className={className}>
+    <Panel eyebrow="SCRIMS" title="최근 내전/모집" className={className}>
       {recent.length === 0 ? (
-        <EmptyState mark="VS" title="아직 끝난 내전이 없어요" description="참가한 내전 결과가 승인되면 여기에 쌓여요." />
+        <EmptyState mark="VS" title="아직 끝난 내전/모집이 없어요" description="참가한 내전/모집 결과가 승인되면 여기에 쌓여요." />
       ) : (
         <ul className="m-0 flex list-none flex-col gap-1 p-0">
           {recent.map((r) => {

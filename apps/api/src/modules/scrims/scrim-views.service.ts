@@ -40,7 +40,7 @@ import { ScrimRestrictionService } from './scrim-restriction.service';
 /** 집계·화면에 필요한 참가자 열만 */
 export type PlayerRow = Pick<
   ScrimPlayer,
-  'id' | 'scrimId' | 'userId' | 'status' | 'preferredPositions' | 'joinedAt' | 'noShowMarkedAt' | 'position' | 'team'
+  'id' | 'scrimId' | 'userId' | 'status' | 'preferredPositions' | 'joinedAt' | 'noShowMarkedAt' | 'position' | 'team' | 'duoIndex'
 >;
 
 type UserRow = Pick<User, 'id' | 'nickname' | 'discordId' | 'discordAvatar'>;
@@ -148,6 +148,7 @@ export class ScrimViews {
       name: game.name,
       has_positions: game.hasPositions,
       has_teams: game.hasTeams,
+      has_results: game.hasResults,
       positions: game.hasPositions ? game.positions : [],
     };
   }
@@ -160,11 +161,11 @@ export class ScrimViews {
   }
 
   /** S3 result_status·outcome(4-1). latest = 가장 최근 결과 행 */
-  private resultSummary(scrim: Scrim, game: Game, latest: ResultRow | undefined, users: Map<string, UserRow>) {
+  private resultSummary(scrim: Scrim, latest: ResultRow | undefined, users: Map<string, UserRow>) {
     let outcome: ScrimOutcome | null = null;
     if (scrim.status === 'finished' && latest && latest.status === 'approved') {
-      if (game.hasTeams) {
-        outcome = latest.winnerTeam ? { winner_team: latest.winnerTeam, winner: null } : null;
+      if (latest.winnerTeam) {
+        outcome = { winner_team: latest.winnerTeam, winner: null };
       } else {
         const w = this.winnerOf(latest);
         outcome = { winner_team: null, winner: w && users.has(w) ? this.userRef(users, w) : null };
@@ -179,14 +180,14 @@ export class ScrimViews {
     game: Game,
     players: PlayerRow[],
     users: Map<string, UserRow>,
-    viewerId: string,
+    viewer: { id: string; role: string },
     now: Date,
     latest: ResultRow | undefined,
   ) {
     const joined = players.filter((p) => p.status === 'joined');
     const noShow = players.filter((p) => p.status === 'no_show');
     const waitlist = players.filter((p) => p.status === 'waitlist');
-    const mine = players.find((p) => p.userId === viewerId);
+    const mine = players.find((p) => p.userId === viewer.id);
     const myStatus: MyScrimStatus | null = mine && mine.status !== 'cancelled' ? mine.status : null;
     const open = isOpenStatus(scrim.status);
     const openPositions =
@@ -215,12 +216,14 @@ export class ScrimViews {
       join_closed: isJoinClosed(scrim.scheduledAt, now),
       my_status: myStatus,
       created_at: scrim.createdAt.toISOString(),
-      ...this.resultSummary(scrim, game, latest, users),
+      ...this.resultSummary(scrim, latest, users),
+      tft_mode: scrim.tftMode,
+      can_delete: viewer.role === 'admin' && latest?.status !== 'approved',
     };
   }
 
   /** 목록 카드 여러 개(페이지 단위). 참가자·결과는 내전 id IN 한 번씩, 사용자는 방장·1위 id IN 한 번 */
-  async summaries(scrims: Scrim[], viewerId: string, now: Date): Promise<ScrimSummary[]> {
+  async summaries(scrims: Scrim[], viewer: { id: string; role: string }, now: Date): Promise<ScrimSummary[]> {
     if (scrims.length === 0) return [];
     const games = await this.gamesById();
     const ids = scrims.map((s) => s.id);
@@ -236,6 +239,7 @@ export class ScrimViews {
         noShowMarkedAt: true,
         position: true,
         team: true,
+        duoIndex: true,
       },
     })) as PlayerRow[];
     const byScrim = new Map<string, PlayerRow[]>();
@@ -257,7 +261,7 @@ export class ScrimViews {
       const game = games.get(s.gameId);
       if (!game) throw new AppError('INTERNAL_ERROR', undefined, { message: '내전 게임 없음' });
       return ScrimSummary.parse(
-        this.summaryFields(s, game, byScrim.get(s.id) ?? [], users, viewerId, now, latestByScrim.get(s.id)),
+        this.summaryFields(s, game, byScrim.get(s.id) ?? [], users, viewer, now, latestByScrim.get(s.id)),
       );
     });
   }
@@ -291,7 +295,7 @@ export class ScrimViews {
       ...(latestPlacements ?? []).map((p) => p.user_id),
       ...history.map((h) => h.userId),
     ]);
-    const base = this.summaryFields(scrim, game, players, users, viewer.id, now, latest);
+    const base = this.summaryFields(scrim, game, players, users, viewer, now, latest);
 
     const slots = orderSlots(players, scrim.hostId);
     const skills = await this.ratingInputs.forUsers(game, slots.map((p) => p.userId), now);
@@ -341,6 +345,7 @@ export class ScrimViews {
           joined_at: p.joinedAt.toISOString(),
           position: p.position,
           team: p.team,
+          duo_index: p.duoIndex,
           no_show_marked_at: p.status === 'no_show' ? (p.noShowMarkedAt?.toISOString() ?? null) : null,
           position_preference:
             p.team !== null && p.position !== null && scrim.usePositions
@@ -376,8 +381,17 @@ export class ScrimViews {
           isNoShowMarkWindowOpen(scrim.scheduledAt, now, this.config.scrim.noShowMarkWindowDays),
         can_edit_teams: canEditTeams,
         can_balance:
-          canEditTeams && scrim.autoBalance && joinedCount >= BALANCE_PLAYERS_MIN && joinedCount <= BALANCE_PLAYERS_MAX,
+          (canEditTeams && scrim.autoBalance && joinedCount >= BALANCE_PLAYERS_MIN && joinedCount <= BALANCE_PLAYERS_MAX) ||
+          (scrim.tftMode === 'double_up' &&
+            scrim.autoBalance &&
+            hostOrAdmin &&
+            (scrim.status === 'full' || scrim.status === 'playing') &&
+            !hasActive &&
+            joinedCount >= 2 &&
+            joinedCount <= 8 &&
+            joinedCount % 2 === 0),
         can_submit_result:
+          game.hasResults &&
           hostOrAdmin &&
           scrim.status === 'playing' &&
           !hasActive &&
@@ -387,7 +401,7 @@ export class ScrimViews {
       },
       balance: game.hasTeams && bothTeams ? this.teamsView(scrim, game, slots, slotSkill) : null,
       result: latest
-        ? this.resultView(scrim, game, latest, latestPlacements, history, historySeason, players, users)
+        ? this.resultView(scrim, latest, latestPlacements, history, historySeason, players, users)
         : null,
     });
   }
@@ -425,7 +439,6 @@ export class ScrimViews {
   /** 최근 결과 행 → ScrimResultView(4-1 result) */
   private resultView(
     scrim: Scrim,
-    game: Game,
     r: ResultRow,
     placements: { user_id: string; placement: number }[] | null,
     history: RatingHistory[],
@@ -460,9 +473,10 @@ export class ScrimViews {
           return a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0;
         })
         .map((h) => {
-          const team = game.hasTeams ? (teamOf.get(h.userId) ?? null) : null;
-          const placement = game.hasTeams ? null : (reRank.get(h.userId) ?? null);
-          const win = game.hasTeams
+          const teamResult = r.winnerTeam !== null;
+          const team = teamResult ? (teamOf.get(h.userId) ?? null) : null;
+          const placement = teamResult ? null : (reRank.get(h.userId) ?? null);
+          const win = teamResult
             ? team !== null && team === r.winnerTeam
             : placement !== null && isPlacementWin(placement, m);
           return {
@@ -482,7 +496,7 @@ export class ScrimViews {
     return {
       id: r.id,
       status: r.status,
-      winner_team: game.hasTeams ? r.winnerTeam : null,
+      winner_team: r.winnerTeam,
       placements: sortedPlacements
         .filter((p) => users.has(p.user_id))
         .map((p) => ({ user: this.userRef(users, p.user_id), placement: p.placement })),

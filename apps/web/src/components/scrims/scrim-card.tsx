@@ -1,10 +1,14 @@
 'use client';
 
-import { steamAppHeaderImageUrl, type ScrimSummary } from '@gcd/shared';
+import { steamAppHeaderImageUrl, TFT_MODE_LABEL, type ScrimSummary } from '@gcd/shared';
 import Link from 'next/link';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { ConfirmDialog } from '@/components/ui/controls';
 import { brand } from '@/lib/brand';
 import { cn } from '@/lib/cn';
 import { GAME_SCRIM_META, scrimGameTag } from '@/lib/games';
+import { useDeleteScrim } from '@/lib/hooks/scrims';
 import { routes } from '@/lib/routes';
 import {
   isOpenStatus,
@@ -104,6 +108,9 @@ export function ScrimCard({ s, now, preview = false }: { s: ScrimSummary; now: n
         </div>
 
         <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0" aria-label="진행 방식">
+          {s.tft_mode && (
+            <li className="rounded-lg border border-line-2 bg-surface-2 px-[9px] py-[3px] text-xs text-text-2">{TFT_MODE_LABEL[s.tft_mode]}</li>
+          )}
           {scrimOptionTags(s.options).map((tag) => (
             <li key={tag} className="rounded-lg border border-line-2 bg-surface-2 px-[9px] py-[3px] text-xs text-text-2">
               {tag}
@@ -135,6 +142,7 @@ export function ScrimCard({ s, now, preview = false }: { s: ScrimSummary; now: n
           <CapacityPips joined={s.joined_count} capacity={s.capacity} game={s.game.code} full={s.status === 'full'} />
         </div>
 
+        {!preview && s.can_delete && <DeleteScrimButton id={s.id} title={s.title} />}
         {preview ? (
           <span
             aria-hidden="true"
@@ -156,5 +164,34 @@ export function ScrimCard({ s, now, preview = false }: { s: ScrimSummary; now: n
         )}
       </div>
     </article>
+  );
+}
+
+export function DeleteScrimButton({ id, title }: { id: string; title: string }) {
+  const router = useRouter();
+  const del = useDeleteScrim(id);
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className="h-10 rounded-[14px] border border-line-3 text-sm font-semibold text-orange-ink">
+        삭제
+      </button>
+      <ConfirmDialog
+        open={open}
+        title="내전을 삭제할까요?"
+        description={`「${title}」 카드가 목록에서 사라집니다. 되돌릴 수 없어요.`}
+        confirmLabel={del.isPending ? '지우는 중…' : '삭제'}
+        pending={del.isPending}
+        onClose={() => setOpen(false)}
+        onConfirm={() => {
+          del.mutate(undefined, {
+            onSuccess: () => {
+              setOpen(false);
+              if (window.location.pathname.endsWith(id)) router.push(routes.scrims());
+            },
+          });
+        }}
+      />
+    </>
   );
 }

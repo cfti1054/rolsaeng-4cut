@@ -47,6 +47,7 @@ export const DEFAULT_ERROR_MESSAGE: Record<ErrorCode, string> = {
   SCRIM_TEAMS_REQUIRED: '결과를 입력하기 전에 두 팀을 구성해야 합니다.',
   SCRIM_RESULT_NOT_PENDING: '승인 대기 중인 결과가 아닙니다.',
   SCRIM_RESULT_SELF_REVIEW: '자기가 제출한 결과는 승인하거나 반려할 수 없습니다.',
+  SCRIM_DELETE_NOT_ALLOWED: '승인된 결과가 있어 이 내전을 지울 수 없습니다.',
   API_KEY_INVALID: 'API 키가 없거나 올바르지 않습니다.',
   API_KEY_SCOPE_MISSING: '이 API 키에는 해당 요청 권한(scope)이 없습니다.',
 };

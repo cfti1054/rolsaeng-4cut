@@ -375,3 +375,27 @@ export function validatePlacementUsers(input: {
   });
   return issues;
 }
+
+/**
+ * 롤체 더블업 2인 팀. skill은 롤 내전과 같은 computeSkill이다.
+ * 티어가 중심이고, 이번 시즌 경기 수에 따라 내전 ELO가 섞이며 10경기부터 최대 20%다.
+ * 실력 내림차순으로 가장 높은 사람과 가장 낮은 사람을 묶는다.
+ * 인원이 짝수 2–8이 아니면 RangeError. 같은 실력이면 userId 오름차순으로 안정 정렬.
+ */
+export type DuoPlan = { index: number; userIds: [string, string]; skillSum: number };
+
+export function balanceDuos(players: readonly { userId: string; skill: number }[]): DuoPlan[] {
+  const n = players.length;
+  if (!Number.isInteger(n) || n < 2 || n > 8 || n % 2 !== 0) {
+    throw new RangeError(`duo players: 짝수 2–8명 (${n})`);
+  }
+  const sorted = [...players].sort((a, b) => b.skill - a.skill || (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0));
+  const pairs: DuoPlan[] = [];
+  for (let i = 0; i < n / 2; i++) {
+    const hi = sorted[i]!;
+    const lo = sorted[n - 1 - i]!;
+    const userIds = [hi.userId, lo.userId].sort((a, b) => (a < b ? -1 : 1)) as [string, string];
+    pairs.push({ index: i + 1, userIds, skillSum: hi.skill + lo.skill });
+  }
+  return pairs;
+}

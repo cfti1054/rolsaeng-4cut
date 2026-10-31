@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { type BalanceResult, balanceTeams, previewTeamElo, roundHalfAwayFromZero, validateTeamAssignment } from '@gcd/core';
+import { type BalanceResult, balanceDuos, balanceTeams, previewTeamElo, roundHalfAwayFromZero, validateTeamAssignment } from '@gcd/core';
 import {
   BALANCE_ELO_WEIGHT_MAX,
   BALANCE_FULL_WEIGHT_GAMES,
@@ -152,7 +152,7 @@ export class ScrimTeamsService {
       // 3. joined·no_show 전원 초기화 → 요청 슬롯대로(상태 전이 없음)
       await tx.scrimPlayer.updateMany({
         where: { scrimId: s.id, status: { in: ['joined', 'no_show'] } },
-        data: { team: null, position: null },
+        data: { team: null, position: null, duoIndex: null },
       });
       for (const team of ['blue', 'orange'] as const) {
         const slots = body[team];
@@ -169,6 +169,43 @@ export class ScrimTeamsService {
             data: { team, position: null },
           });
         }
+      }
+    });
+    return this.views.detail(id, user, now);
+  }
+
+  /** POST /scrims/:id/duos — 롤체 더블업 2인 팀을 계산해 저장하고 상세를 돌려준다. */
+  async assignDuos(user: AuthUser, id: string): Promise<ScrimDetail> {
+    const now = this.clock.now();
+    await scrimWriteTx(this.prisma, async (tx) => {
+      const s = await lockOrNotFound(tx, id);
+      assertHostOrAdmin(user, s.hostId);
+      if (s.tftMode !== 'double_up' || !s.autoBalance) throw new AppError('SCRIM_BALANCE_UNAVAILABLE');
+      if ((s.status !== 'full' && s.status !== 'playing') || (await hasActiveResult(tx, s.id))) {
+        throw new AppError('SCRIM_TEAMS_NOT_EDITABLE');
+      }
+      const game = await loadGame(tx, s.gameId);
+      const rows = await tx.scrimPlayer.findMany({ where: { scrimId: s.id, status: 'joined' } });
+      const eligible = orderSlots(rows, s.hostId);
+      if (eligible.length < 2 || eligible.length > 8 || eligible.length % 2 !== 0) {
+        throw new AppError('SCRIM_BALANCE_UNAVAILABLE');
+      }
+      const inputs = await this.ratingInputs.forUsers(game, eligible.map((p) => p.userId), now);
+      const players = eligible.map((p) => {
+        const skill = inputs.get(p.userId);
+        if (!skill) throw new AppError('INTERNAL_ERROR', undefined, { message: '실력값 입력 없음' });
+        return { userId: p.userId, skill: skill.skill };
+      });
+      const pairs = balanceDuos(players);
+      await tx.scrimPlayer.updateMany({
+        where: { scrimId: s.id },
+        data: { duoIndex: null, team: null, position: null },
+      });
+      for (const pair of pairs) {
+        await tx.scrimPlayer.updateMany({
+          where: { scrimId: s.id, userId: { in: [...pair.userIds] }, status: 'joined' },
+          data: { duoIndex: pair.index },
+        });
       }
     });
     return this.views.detail(id, user, now);

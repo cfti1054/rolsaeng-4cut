@@ -62,6 +62,7 @@ describe.skipIf(!DB_URL)('[DB] 시즌 종료·승인 잠금 e2e (PostgreSQL)', (
           name: g.name,
           hasPositions: g.has_positions,
           hasTeams: g.has_teams,
+          hasResults: g.has_results,
           positions: g.positions,
           sortOrder: g.sort_order,
           capacityMin: g.capacity_min,

@@ -54,17 +54,20 @@ export function ResultPanel({ s, onToast }: { s: ScrimDetail; onToast: ToastFn }
     >
       <SectionHead
         eyebrow="RESULT"
-        title={st.kind === 'approved' ? '경기 결과' : '결과 입력'}
+        title={st.kind === 'approved' ? '경기 결과' : st.kind === 'recruitment' ? '모집' : '결과 입력'}
         id="result-title"
-        right={<span className="text-xs text-faint">{resultFlowText(s.options.rated)}</span>}
+        right={
+          st.kind === 'recruitment' ? undefined : <span className="text-xs text-faint">{resultFlowText(s.options.rated)}</span>
+        }
       />
       {rejected && (
         <Notice title={`운영진이 결과를 반려했어요: ${rejected.reject_reason ?? ''}`}>
           {rejected.rejected_by && rejected.rejected_at && `${rejected.rejected_by.nickname} · ${formatFull(rejected.rejected_at)}`}
         </Notice>
       )}
+      {st.kind === 'recruitment' && <Muted>같이 플레이할 사람을 모으는 글이라 승패를 입력하지 않아요</Muted>}
       {st.kind === 'before' && <Muted>경기가 시작되면 결과를 입력할 수 있어요</Muted>}
-      {st.kind === 'cancelled' && <Muted>취소된 내전이라 결과가 없어요</Muted>}
+      {st.kind === 'cancelled' && <Muted>취소된 내전/모집이라 결과가 없어요</Muted>}
       {st.kind === 'no_result' && <Muted>기록된 결과가 없어요</Muted>}
       {st.kind === 'waiting' && <Muted>방장이 결과를 입력하면 운영진 승인 후 확정돼요</Muted>}
       {st.kind === 'need_teams' && <Muted>결과를 입력하기 전에 팀을 구성해 주세요</Muted>}

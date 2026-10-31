@@ -12,6 +12,7 @@ export function toGameView(g: Game): GameView | null {
     name: g.name,
     has_positions: g.hasPositions,
     has_teams: g.hasTeams,
+    has_results: g.hasResults,
     positions: g.hasPositions ? g.positions : [],
     sort_order: g.sortOrder,
     capacity: {

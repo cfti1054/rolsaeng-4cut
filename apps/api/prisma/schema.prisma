@@ -68,6 +68,15 @@ enum ScrimTeam {
   @@map("scrim_team")
 }
 
+/// 롤체 내전 모드. shared TftMode. 다른 게임의 scrims.tft_mode는 null
+enum TftMode {
+  double_up
+  normal
+  ranked
+
+  @@map("tft_mode")
+}
+
 enum ScrimResultStatus {
   pending
   approved
@@ -203,8 +212,10 @@ model Game {
   code              String   @unique
   name              String
   hasPositions      Boolean  @default(false) @map("has_positions")
-  /// 두 팀 대결 여부. false면 개인 순위(롤체)
+  /// 두 팀 대결 여부. false면 개인 순위(롤체) 또는 팀 배정 없는 모집(스팀)
   hasTeams          Boolean  @default(true) @map("has_teams")
+  /// 승패·순위를 입력하는가. false면 인원 모집만(스팀)
+  hasResults        Boolean  @default(true) @map("has_results")
   /// 선택 가능한 포지션 코드, 표시 순서대로
   positions         String[] @default([])
   sortOrder         Int      @default(0) @map("sort_order")
@@ -518,10 +529,12 @@ model Scrim {
   capacity     Int
   status       ScrimStatus        @default(recruiting)
   rules        String?
-  /// S2. 진행 방식(목업 ScrimNew 03). 저장값은 적용값: autoBalance = 입력 && games.has_teams, usePositions = 입력 && games.has_positions
+  /// S2. 진행 방식. autoBalance = appliedAutoBalance(롤은 입력 && has_teams, 롤체 더블업만 입력값, 스팀·롤체 일반·랭크는 false). usePositions = 입력 && has_positions
   rated        Boolean            @default(true)
   autoBalance  Boolean            @default(true) @map("auto_balance")
   usePositions Boolean            @default(true) @map("use_positions")
+  /// 롤체 모드. 다른 게임은 null
+  tftMode      TftMode?           @map("tft_mode")
   /// 스팀 내전에서 고른 게임(D98). 이름은 고른 시점의 값(멤버 보유 게임 이름 또는 스팀 상점)
   steamAppId   Int?               @map("steam_app_id")
   steamAppName String?            @map("steam_app_name")
@@ -559,6 +572,8 @@ model ScrimPlayer {
   /// 희망 포지션, 1지망부터 순서대로(문서 7-2 3번)
   preferredPositions String[]          @default([]) @map("preferred_positions")
   team               ScrimTeam?
+  /// 롤체 더블업 2인 팀 번호(1부터). 롤 팀(team)과 따로 둔다
+  duoIndex           Int?              @map("duo_index")
   /// 대기열 순서 기준. 재참가 시 갱신
   joinedAt           DateTime          @default(now()) @map("joined_at") @db.Timestamptz(3)
   /// 노쇼 30일 집계 기준 시각(문서 7-4)
