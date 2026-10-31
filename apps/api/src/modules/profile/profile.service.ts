@@ -8,6 +8,7 @@ import {
   ProfileTierCard,
   RANKED_QUEUE_BY_GAME,
   RecentLolMatch,
+  isLinkedDiscordId,
   parseSeasonBadgeCode,
 } from '@gcd/shared';
 import { AppError } from '../../common/app-error';
@@ -17,7 +18,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { type AccountRow, GameAccountViews, primaryRiotRows } from '../game-accounts/game-account-views.service';
 import { SyncEnqueuer } from '../game-accounts/sync-enqueuer.service';
 import { seasonRef } from '../ratings/seasons.service';
-import { DEV_DISCORD_ID_PREFIX, discordAvatarUrl } from '../users/me.mapper';
+import { discordAvatarUrl } from '../users/me.mapper';
 import { ProfileScrimService } from './profile-scrim.service';
 import { type StoredLolMatch, loadRecentLolMatches } from './recent-matches';
 
@@ -82,7 +83,7 @@ export class ProfileService {
         nickname: user.nickname,
         role: user.role,
         avatar_url: discordAvatarUrl(user.discordId, user.discordAvatar),
-        discord_linked: Boolean(user.discordId && !user.discordId.startsWith(DEV_DISCORD_ID_PREFIX)),
+        discord_linked: isLinkedDiscordId(user.discordId),
         joined_at: user.createdAt.toISOString(),
       },
       is_self: isSelf,

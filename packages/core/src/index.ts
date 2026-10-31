@@ -8,9 +8,18 @@
  * S2: 노쇼 제한(7-4, no-show.ts), 내전 참가·대기열·시작·자동 마감(scrim.ts).
  * S3: 내전 ELO(7-1, rating.ts), 팀 자동 밸런스(7-2, balance.ts), 시즌 판정·자동 생성(season.ts).
  * S4: 티어·ELO 랭킹과 순위 변동(7-3, ranking.ts), 시즌 종료·시즌 표시(season.ts), KST 주 구간(time.ts).
+ * S5: KST 달 구간·활동 기간·날짜 키(time.ts), 봇 활동·활동/플레이타임 랭킹·입퇴장·접속 현황(activity.ts).
  */
 export * from './config';
-export { kstDayWindow, kstWeekWindow, formatKstMidnight, buildSyncQuota } from './time';
+export {
+  kstDayWindow,
+  kstWeekWindow,
+  kstMonthWindow,
+  activityPeriodWindow,
+  kstDateKey,
+  formatKstMidnight,
+  buildSyncQuota,
+} from './time';
 export { computeMainPosition, MAIN_POSITION_MAX } from './profile';
 export {
   pickVerificationIcon,
@@ -99,3 +108,17 @@ export {
   type RankingComparable,
   type RankBaseline,
 } from './ranking';
+export {
+  checkActivityEventTime,
+  planActivityBatch,
+  buildActivityRanking,
+  pickMainGames,
+  buildPlaytimeRanking,
+  planMemberEvents,
+  presenceState,
+  checkPresenceCapture,
+  nowPlayingItems,
+  type ActivityPlan,
+  type MemberEventStatus,
+  type MemberEventFinal,
+} from './activity';

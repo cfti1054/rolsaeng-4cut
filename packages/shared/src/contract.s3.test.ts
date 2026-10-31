@@ -123,7 +123,8 @@ describe('S3 errors', () => {
       'SCRIM_RESULT_SELF_REVIEW',
     ] as const;
     for (const c of s3) expect(ErrorCode.options).toContain(c);
-    expect(ErrorCode.options).toHaveLength(43);
+    // S5에서 늘어난다(계약 S5 2절). S3까지의 코드가 모두 있는지만 본다
+    expect(ErrorCode.options.length).toBeGreaterThanOrEqual(43);
     expect(ERROR_HTTP_STATUS.SCRIM_RESULT_SELF_REVIEW).toBe(403);
     for (const c of s3.filter((x) => x !== 'SCRIM_RESULT_SELF_REVIEW')) expect(ERROR_HTTP_STATUS[c]).toBe(409);
     expect(Object.keys(ERROR_HTTP_STATUS).sort()).toEqual([...ErrorCode.options].sort());

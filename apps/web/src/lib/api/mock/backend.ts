@@ -12,6 +12,7 @@ import {
   type RefreshTokenResponse,
 } from '@gcd/shared';
 import type { FetchLike } from '../client';
+import { MOCK_BOT_SCENARIO_KEY, MockBotScenario } from './community';
 import { emptyS1State, handleS1, MockS1State, type MockS1Options } from './game-accounts';
 import { isRankingPath, MOCK_RANKING_SCENARIO_KEY, MockRankingScenario } from './rankings';
 import { emptyS2State, handleS2, isS2Path, mockProfileBadges, mockProfileScrim, MockS2State, type MockS2Options } from './scrims';
@@ -315,7 +316,13 @@ export function browserMockBackend() {
     accessTtlSec: Number(process.env.NEXT_PUBLIC_API_MOCK_ACCESS_TTL_SEC) || 900,
     s1: { origin: () => window.location.origin },
     // localStorage 값으로 랭킹·요약 상태를 바꿔 본다(mock/rankings.ts, 새로고침이면 적용)
-    s2: { rankings: { scenario: () => MockRankingScenario.safeParse(window.localStorage.getItem(MOCK_RANKING_SCENARIO_KEY)).data ?? null } },
+    s2: {
+      rankings: {
+        scenario: () => MockRankingScenario.safeParse(window.localStorage.getItem(MOCK_RANKING_SCENARIO_KEY)).data ?? null,
+        // S5 봇 상태(gcd-mock-bot, 기본 live)
+        bot: () => MockBotScenario.safeParse(window.localStorage.getItem(MOCK_BOT_SCENARIO_KEY)).data ?? null,
+      },
+    },
     latencyMs: 250,
   });
 }

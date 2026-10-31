@@ -59,6 +59,10 @@ export const ErrorCode = z.enum([
   'SCRIM_TEAMS_REQUIRED', // 409 팀 게임 결과 제출 전에 두 팀 모두 참가자를 1명 이상 배정해야 함
   'SCRIM_RESULT_NOT_PENDING', // 409 승인·반려·제출 취소할 대기 결과가 없음, 또는 result_id가 지금 대기 중인 결과가 아님
   'SCRIM_RESULT_SELF_REVIEW', // 403 자기가 제출한 결과는 승인·반려할 수 없음(다른 운영진 필요)
+
+  // ---- S5 봇 API(연동 코드 오류 4개는 기능 제거로 없앴다, D237) ----
+  'API_KEY_INVALID', // 401 X-API-Key 헤더 없음, 모르는 키, 폐기된 키(revoked_at)
+  'API_KEY_SCOPE_MISSING', // 403 키는 맞지만 그 엔드포인트의 scope가 없음
 ]);
 export type ErrorCode = z.infer<typeof ErrorCode>;
 
@@ -107,6 +111,8 @@ export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
   SCRIM_TEAMS_REQUIRED: 409,
   SCRIM_RESULT_NOT_PENDING: 409,
   SCRIM_RESULT_SELF_REVIEW: 403,
+  API_KEY_INVALID: 401,
+  API_KEY_SCOPE_MISSING: 403,
 };
 
 /** VALIDATION_FAILED일 때만 채우는 필드별 상세. path는 snake_case 필드 경로(`nickname`, `events.0.type`). */

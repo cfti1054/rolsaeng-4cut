@@ -1,4 +1,4 @@
-import type { SyncQuota } from '@gcd/shared';
+import type { ActivityPeriod, SyncQuota } from '@gcd/shared';
 import { DAY_MS, KST_OFFSET_LABEL, KST_OFFSET_MS } from './config';
 
 export function assertValidDate(d: Date, name: string): void {
@@ -30,6 +30,47 @@ export function kstWeekWindow(now: Date): { start: Date; end: Date } {
   const daysSinceMonday = (((kstDayNumber + 3) % 7) + 7) % 7;
   const startMs = dayStart.getTime() - daysSinceMonday * DAY_MS;
   return { start: new Date(startMs), end: new Date(startMs + 7 * DAY_MS) };
+}
+
+/**
+ * now가 속한 KST 달 구간 [start, end). start = 그 달 1일 00:00 KST, end = 다음 달 1일 00:00 KST(계약 S5 9-1).
+ */
+export function kstMonthWindow(now: Date): { start: Date; end: Date } {
+  assertValidDate(now, 'now');
+  const kst = new Date(now.getTime() + KST_OFFSET_MS);
+  const y = kst.getUTCFullYear();
+  const m = kst.getUTCMonth();
+  // Date.UTC는 월 12를 다음 해 1월로 넘긴다
+  return {
+    start: new Date(Date.UTC(y, m, 1) - KST_OFFSET_MS),
+    end: new Date(Date.UTC(y, m + 1, 1) - KST_OFFSET_MS),
+  };
+}
+
+/**
+ * 활동 랭킹 집계 기간(계약 S5 9-1, 문서 7-3 「주간·월간」).
+ * week = kstWeekWindow(월요일 시작), days 7. month = kstMonthWindow, days = 그 달 날짜 수(28–31).
+ */
+export function activityPeriodWindow(
+  period: ActivityPeriod,
+  now: Date,
+): { start: Date; end: Date; days: number } {
+  if (period === 'week') return { ...kstWeekWindow(now), days: 7 };
+  if (period === 'month') {
+    const w = kstMonthWindow(now);
+    return { ...w, days: Math.round((w.end.getTime() - w.start.getTime()) / DAY_MS) };
+  }
+  throw new RangeError(`period: 알 수 없는 값 (${String(period)})`);
+}
+
+/** instant의 KST 날짜 `YYYY-MM-DD`(계약 S5 9-1) */
+export function kstDateKey(instant: Date): string {
+  assertValidDate(instant, 'instant');
+  const kst = new Date(instant.getTime() + KST_OFFSET_MS);
+  const y = String(kst.getUTCFullYear()).padStart(4, '0');
+  const m = String(kst.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(kst.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 /**

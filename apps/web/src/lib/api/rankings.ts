@@ -1,8 +1,11 @@
 import {
   ApiPath,
+  GetActivityRankingResponse,
   GetDashboardSummaryResponse,
   GetEloRankingResponse,
+  GetPlaytimeRankingResponse,
   GetTierRankingResponse,
+  type ActivityPeriod,
   type GetEloRankingQuery,
   type GetTierRankingQuery,
 } from '@gcd/shared';
@@ -26,4 +29,16 @@ export function getEloRanking(q: GetEloRankingQuery, signal?: AbortSignal) {
 /** GET /dashboard/summary */
 export function getDashboardSummary(signal?: AbortSignal) {
   return apiClient.request(ApiPath.dashboardSummary, GetDashboardSummaryResponse, { signal });
+}
+
+/** S5 GET /rankings/activity?period= */
+export function getActivityRanking(q: { period: ActivityPeriod }, signal?: AbortSignal) {
+  const qs = new URLSearchParams({ period: q.period });
+  return apiClient.request(`${ApiPath.rankingsActivity}?${qs.toString()}`, GetActivityRankingResponse, { signal });
+}
+
+/** S5 GET /rankings/playtime?app_id= */
+export function getPlaytimeRanking(q: { app_id: number }, signal?: AbortSignal) {
+  const qs = new URLSearchParams({ app_id: String(q.app_id) });
+  return apiClient.request(`${ApiPath.rankingsPlaytime}?${qs.toString()}`, GetPlaytimeRankingResponse, { signal });
 }

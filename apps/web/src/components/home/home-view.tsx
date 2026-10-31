@@ -1,6 +1,6 @@
 'use client';
 
-import { DASHBOARD_TOP_RANKERS_LIMIT, type DashboardNextScrim, type DashboardRecentResult, type DashboardTopRankers, type GetDashboardSummaryResponse, type ScrimSummary } from '@gcd/shared';
+import { DASHBOARD_TOP_RANKERS_LIMIT, type DashboardNextScrim, type DashboardNowPlaying, type DashboardRecentResult, type DashboardTopRankers, type GetDashboardSummaryResponse, type ScrimSummary } from '@gcd/shared';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { Avatar, ErrorState, Eyebrow, Skeleton } from '@/components/ui/primitives';
@@ -9,7 +9,11 @@ import { isApiError } from '@/lib/api/client';
 import { brand } from '@/lib/brand';
 import { cn } from '@/lib/cn';
 import {
+  HOME_STAT_GRID,
   MOBILE_TOP_RANKERS,
+  homeStatCards,
+  voiceStat,
+  type HomeStatKey,
   eloBarPercent,
   joinedPercent,
   othersJoinedText,
@@ -34,7 +38,7 @@ const dateFmt = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'sho
 
 /**
  * 홈(목업 Main·MobileHome, 계약 10절). 값은 모두 GET /dashboard/summary.
- * 음성 접속·활동 멤버 카드, 스파크라인·증감, 패치·이벤트는 그리지 않는다(슬라이스 「제외」).
+ * 음성 접속·활동 멤버·지금 플레이 중은 community 블록 상태대로(S5). 스파크라인·증감, 패치·이벤트는 그리지 않는다(자료 없음).
  */
 export function HomeView() {
   const me = useMe();
@@ -90,10 +94,8 @@ function Dashboard({ d, meId }: { d: GetDashboardSummaryResponse; meId: string |
   return (
     <>
       <NextScrimHero next={d.next_scrim} />
-      <section aria-label="요약" className="grid grid-cols-2 gap-2.5 md:gap-4">
-        <StatCard label="모집 중인 내전" value={d.stats.recruiting_scrims} unit="건" dot="bg-cyan" />
-        <StatCard label="이번 주 내전" value={d.stats.scrims_this_week} unit="경기" dot="bg-violet" />
-      </section>
+      <StatsRow d={d} />
+      {d.community.now_playing && <NowPlayingStrip np={d.community.now_playing} />}
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[3fr_2fr]">
         <RecruitingPanel scrims={d.recruiting} />
         <div className="order-first min-w-0 xl:order-none">
@@ -207,18 +209,98 @@ function Countdown({ at }: { at: string }) {
   );
 }
 
-function StatCard({ label, value, unit, dot }: { label: string; value: number; unit: string; dot: string }) {
+/** 통계 줄(계약 S5 10절). 봇 자료가 없는 칸은 숨기고, 카드 수(2–4)에 맞춰 열을 바꾼다 */
+function StatsRow({ d }: { d: GetDashboardSummaryResponse }) {
+  const cards = homeStatCards(d.community);
+  const voice = voiceStat(d.community.voice);
+  const active = d.community.active_members;
+  const render = (key: HomeStatKey, mobile: boolean) => {
+    const hide = mobile ? 'flex' : 'hidden md:flex';
+    switch (key) {
+      case 'voice':
+        return voice ? (
+          <StatCard key={key} className={hide} label="음성 채널 접속" mobileLabel="음성 접속" value={voice.value} unit={voice.unit} dot="bg-accent" live={voice.live} note={voice.note} />
+        ) : null;
+      case 'recruiting':
+        return <StatCard key={key} className={hide} label="모집 중인 내전" mobileLabel="모집 중 내전" value={String(d.stats.recruiting_scrims)} unit="건" dot="bg-cyan" />;
+      case 'week':
+        return <StatCard key={key} className={hide} label="이번 주 내전" value={String(d.stats.scrims_this_week)} unit="경기" dot="bg-violet" />;
+      case 'active':
+        return active.state === 'ready' ? <StatCard key={key} className={hide} label="이번 주 활동 멤버" value={String(active.count)} unit="명" dot="bg-orange" /> : null;
+    }
+  };
   return (
-    <div className="flex min-w-0 flex-col gap-2 rounded-[18px] border border-line bg-surface px-4 py-3.5 shadow-[inset_0_1px_0_var(--hi)] md:px-5 md:py-[18px]">
-      <span className="flex items-center gap-1.5 text-xs text-muted md:text-[13px]">
-        <span aria-hidden="true" className={cn('size-1.5 rounded-full', dot)} />
-        {label}
+    <section aria-label="요약" className={cn('grid grid-cols-2 gap-2.5 md:gap-4', HOME_STAT_GRID[cards.length])}>
+      {cards.map((c) => render(c.key, c.mobile))}
+    </section>
+  );
+}
+
+function StatCard({
+  label,
+  mobileLabel,
+  value,
+  unit,
+  dot,
+  live,
+  note,
+  className,
+}: {
+  label: string;
+  mobileLabel?: string;
+  value: string;
+  unit: string | null;
+  dot: string;
+  live?: boolean;
+  note?: string | null;
+  className?: string;
+}) {
+  return (
+    <div className={cn('min-w-0 flex-col gap-2 rounded-[18px] border border-line bg-surface px-4 py-3.5 shadow-[inset_0_1px_0_var(--hi)] md:px-5 md:py-[18px]', className)}>
+      <span className="flex items-center justify-between gap-2">
+        <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted md:text-[13px]">
+          <span aria-hidden="true" className={cn('size-1.5 shrink-0 rounded-full', dot)} />
+          {mobileLabel ? (
+            <>
+              <span className="truncate md:hidden">{mobileLabel}</span>
+              <span className="hidden truncate md:inline">{label}</span>
+            </>
+          ) : (
+            <span className="truncate">{label}</span>
+          )}
+        </span>
+        {live && <span className="shrink-0 rounded-md bg-accent/15 px-1.5 py-0.5 font-display text-[10px] font-bold tracking-[0.1em] text-accent-ink md:text-[11px]">LIVE</span>}
       </span>
-      <span className="flex items-baseline gap-1">
+      <span className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
         <span className="font-display text-[26px] font-bold leading-none md:text-[34px]">{value}</span>
-        <span className="text-[13px] text-muted md:text-sm">{unit}</span>
+        {unit && <span className="text-[13px] text-muted md:text-sm">{unit}</span>}
+        {note && <span className="text-xs text-faint">{note}</span>}
       </span>
     </div>
+  );
+}
+
+/** 「지금 플레이 중」(D219). 값이 있을 때만 그린다. 이름은 봇이 보낸 그대로 */
+function NowPlayingStrip({ np }: { np: DashboardNowPlaying }) {
+  return (
+    <section aria-label="지금 플레이 중" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[18px] border border-line bg-surface px-4 py-3 shadow-[inset_0_1px_0_var(--hi)] md:px-5">
+      <span className="flex items-center gap-2">
+        <Eyebrow>NOW PLAYING</Eyebrow>
+        <span className="text-[13px] font-bold">지금 플레이 중</span>
+      </span>
+      <ul className="m-0 flex min-w-0 flex-1 list-none flex-wrap gap-2 p-0">
+        {np.items.map((it, i) => (
+          <li key={`${it.name}-${i}`} className="flex min-w-0 max-w-full items-center gap-1.5 rounded-lg bg-chip px-2.5 py-1 text-[13px] text-text-2">
+            <span aria-hidden="true" className={cn('size-1.5 shrink-0 rounded-full', it.game ? GAME_SCRIM_META[it.game]?.dot : 'bg-line-4')} />
+            <span className="truncate">{it.name}</span>
+            <span className="shrink-0 text-muted">· {it.count}명</span>
+          </li>
+        ))}
+      </ul>
+      <time dateTime={np.captured_at} title={formatFull(np.captured_at)} className="text-xs text-faint">
+        {formatClock(np.captured_at)} 기준
+      </time>
+    </section>
   );
 }
 

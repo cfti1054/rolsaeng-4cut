@@ -52,6 +52,16 @@ export const ApiPath = {
   dashboardSummary: '/dashboard/summary',
   // S4 후속 변경 2 라인 추천(계약 S4 20절 D190)
   myPositionSuggestions: '/me/position-suggestions',
+  // S5 활동·플레이타임 랭킹
+  rankingsActivity: '/rankings/activity',
+  rankingsPlaytime: '/rankings/playtime',
+  // S5 디스코드 봇(X-API-Key). 문서 6장 5개 중 /bot/link 제외 4개(D237) + 서버 입장·퇴장, 음성 접속 현황(D214)
+  botActivity: '/bot/activity',
+  botUserLookup: '/bot/users/lookup',
+  botUpcomingScrims: '/bot/scrims/upcoming',
+  botRanking: '/bot/rankings/:type',
+  botMemberEvents: '/bot/member-events',
+  botPresence: '/bot/presence',
 } as const;
 export type ApiPath = (typeof ApiPath)[keyof typeof ApiPath];
 

@@ -85,6 +85,12 @@ describe('GET /dashboard/summary 빈 상태', () => {
       next_scrim: null,
       recruiting: [],
       stats: { recruiting_scrims: 0, scrims_this_week: 0, week_start: '2026-10-26T00:00:00.000+09:00' },
+      // S5: 봇 자료가 없는 DB는 not_connected(계약 S5 8절). 구현 후에도 같은 값이다
+      community: {
+        voice: { state: 'not_connected', member_count: null, captured_at: null },
+        active_members: { state: 'not_connected', count: null },
+        now_playing: null,
+      },
       top_rankers: null,
       top_rankers_state: 'no_season',
       recent_results: [],

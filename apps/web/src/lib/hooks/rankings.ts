@@ -1,18 +1,20 @@
 'use client';
 
-import { RANKING_CACHE_INTERVAL_MIN, type GameCode, type TierRankingGame } from '@gcd/shared';
+import { RANKING_CACHE_INTERVAL_MIN, type ActivityPeriod, type GameCode, type TierRankingGame } from '@gcd/shared';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { isApiError } from '@/lib/api/client';
-import { getDashboardSummary, getEloRanking, getTierRanking } from '@/lib/api/rankings';
+import { getActivityRanking, getDashboardSummary, getEloRanking, getPlaytimeRanking, getTierRanking } from '@/lib/api/rankings';
 import { useMe } from './auth';
 
 /**
- * S4 랭킹·홈 요약 훅 3개(계약 10절). 값은 서버 5분 캐시라 승인 뒤 무효화해도 늦게 바뀔 수 있다(정상).
+ * S4 랭킹·홈 요약 훅 3개(계약 10절) + S5 활동·플레이타임 2개(계약 S5 10절). 값은 서버 5분 캐시라 승인 뒤 무효화해도 늦게 바뀔 수 있다(정상).
  */
 export const rankingKeys = {
   all: ['rankings'] as const,
   tier: (game: TierRankingGame) => ['rankings', 'tier', game] as const,
   elo: (game: GameCode, season: string | null) => ['rankings', 'elo', game, season ?? 'default'] as const,
+  activity: (period: ActivityPeriod) => ['rankings', 'activity', period] as const,
+  playtime: (appId: number) => ['rankings', 'playtime', appId] as const,
 };
 
 /** 사이드바와 홈이 같은 키를 써서 요청이 한 번만 나간다(D157) */
@@ -44,6 +46,32 @@ export function useEloRanking(game: GameCode | null, season: string | null) {
     queryKey: rankingKeys.elo(game ?? 'lol', season),
     queryFn: ({ signal }) => getEloRanking({ game: game!, season: season ?? undefined }, signal),
     enabled: game !== null,
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+    refetchInterval: RANKING_REFETCH_MS,
+    retry: noRetryOn4xx,
+  });
+}
+
+/** S5 GET /rankings/activity — period null이면 요청하지 않는다(다른 탭) */
+export function useActivityRanking(period: ActivityPeriod | null) {
+  return useQuery({
+    queryKey: rankingKeys.activity(period ?? 'week'),
+    queryFn: ({ signal }) => getActivityRanking({ period: period! }, signal),
+    enabled: period !== null,
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+    refetchInterval: RANKING_REFETCH_MS,
+    retry: noRetryOn4xx,
+  });
+}
+
+/** S5 GET /rankings/playtime — appId null이면 요청하지 않는다(게임 목록 전, 목록 빔, 다른 탭) */
+export function usePlaytimeRanking(appId: number | null) {
+  return useQuery({
+    queryKey: rankingKeys.playtime(appId ?? 0),
+    queryFn: ({ signal }) => getPlaytimeRanking({ app_id: appId! }, signal),
+    enabled: appId !== null,
     placeholderData: keepPreviousData,
     staleTime: 60_000,
     refetchInterval: RANKING_REFETCH_MS,

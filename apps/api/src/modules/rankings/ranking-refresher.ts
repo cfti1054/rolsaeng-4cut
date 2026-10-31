@@ -1,9 +1,16 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { GameCode, TierRankingGame } from '@gcd/shared';
+import { ActivityPeriod, GameCode, RANKING_PLAYTIME_APPS_MAX, TierRankingGame } from '@gcd/shared';
 import { APP_CLOCK, type Clock } from '../../common/clock';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RANKING_CACHE_STORE, type RankingCacheStore } from './ranking-cache.store';
-import { RankingCalculator, type RankingTarget, eloTarget, tierTarget } from './ranking-calculator.service';
+import {
+  RankingCalculator,
+  type RankingTarget,
+  activityTarget,
+  eloTarget,
+  playtimeTarget,
+  tierTarget,
+} from './ranking-calculator.service';
 
 /** pg_try_advisory_xact_lock(hashtext(키)) — 여러 인스턴스 중 하나만 실행(D151) */
 export const RANKING_REFRESH_LOCK_KEY = 'ranking-refresh';
@@ -29,7 +36,10 @@ export class RankingRefresher {
     @Inject(APP_CLOCK) private readonly clock: Clock,
   ) {}
 
-  /** 7-1 갱신 대상: 랭크 큐가 있는 게임의 티어 + 모든 게임 × 닫히지 않은 시작된 시즌의 ELO */
+  /**
+   * 7-1 갱신 대상: 랭크 큐가 있는 게임의 티어 + 모든 게임 × 닫히지 않은 시작된 시즌의 ELO
+   * + S5 활동(week, month 항상) + 플레이타임 보유 상위 RANKING_PLAYTIME_APPS_MAX개 app(D217)
+   */
   async targets(now: Date): Promise<RankingTarget[]> {
     const games = await this.prisma.game.findMany({ orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
     const seasons = await this.prisma.season.findMany({
@@ -47,6 +57,8 @@ export class RankingRefresher {
       if (tierCode.success) out.push(tierTarget({ id: g.id, code: tierCode.data }));
       for (const s of seasons) out.push(eloTarget({ id: g.id, code: code.data }, s.id));
     }
+    for (const period of ActivityPeriod.options) out.push(activityTarget(period));
+    for (const appId of await this.calculator.topPlaytimeApps(RANKING_PLAYTIME_APPS_MAX)) out.push(playtimeTarget(appId));
     return out;
   }
 

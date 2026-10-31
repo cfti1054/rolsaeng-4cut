@@ -13,7 +13,8 @@
     "prisma:format": "prisma format",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "prisma:seed": "prisma db seed"
+    "prisma:seed": "prisma db seed",
+    "api-key": "tsx --conditions=source scripts/api-key.ts"
   },
   "prisma": {
     "seed": "tsx --conditions=source prisma/seed.ts"

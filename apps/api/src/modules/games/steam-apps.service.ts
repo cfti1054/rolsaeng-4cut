@@ -5,10 +5,12 @@ import {
   type SteamAppOption,
   type SteamAppRef,
 } from '@gcd/shared';
+import { Prisma } from '@prisma/client';
 import { APP_CLOCK, type Clock } from '../../common/clock';
 import { ExternalApiError, STEAM_API, type SteamApi, type SteamStoreApp } from '../../integrations/contracts';
 import { PrismaService } from '../../prisma/prisma.service';
 import { toProviderAppError } from '../game-accounts/external-errors';
+import { playtimeHolderWhereSql, playtimeHoldersFromSql } from '../rankings/playtime-holders';
 
 const STORE_CACHE_TTL_MS = 10 * 60_000;
 const STORE_CACHE_MAX = 200;
@@ -16,11 +18,17 @@ const KNOWN_NAMES_MAX = 2_000;
 /** 검색어가 있을 때 멤버 보유 게임을 앞에 몇 개까지 둘지(나머지 자리는 상점 결과) */
 const OWNED_WITH_QUERY_MAX = 10;
 
-type OwnedRow = { appId: number; _count: { _all: number }; _max: { appName: string | null } };
+type OwnedRow = { app_id: number; owner_count: unknown; name: string };
+
+/** ILIKE 패턴 이스케이프(`\`·`%`·`_`). PostgreSQL LIKE 기본 이스케이프 문자는 `\` */
+export function likeContains(q: string): string {
+  return `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+}
 
 /**
- * 스팀 내전 게임 검색·이름 결정(D98).
- * 멤버 보유 게임은 steam_playtime(app_id별 연동 계정 수), 그 밖은 스팀 상점 검색(키 불필요)을 쓴다.
+ * 스팀 내전 게임 검색·이름 결정(D98, S5 D234).
+ * 멤버 보유 게임 = 플레이타임 「보유자」(rankings/playtime-holders.ts, 플레이타임 랭킹과 같은 조건)의 app별 수,
+ * 그 밖은 스팀 상점 검색(키 불필요)을 쓴다.
  * 상점 검색 결과는 검색어별로 10분 캐시하고, 거기서 본 이름은 작성 때 이름 결정에 다시 쓴다(상점 재호출 없이).
  */
 @Injectable()
@@ -80,29 +88,38 @@ export class SteamAppsService {
     }
   }
 
+  /**
+   * 7-4 보유 게임: 보유자가 있는 app, 보유자 수 DESC → app_id ASC. name = 보유자 행 app_name 중 null·빈 문자열이 아닌 값,
+   * synced_at 최신 우선(플레이타임 랭킹 app.name과 같은 규칙). 이름이 없는 app은 뺀다. q가 있으면 그 name이 q를 포함(대소문자 무시).
+   */
   private async owned(opts: { q?: string; take: number }): Promise<SteamAppOption[]> {
-    const rows = (await this.prisma.steamPlaytime.groupBy({
-      by: ['appId'],
-      where: { appName: opts.q ? { contains: opts.q, mode: 'insensitive' } : { not: null } },
-      _count: { _all: true },
-      _max: { appName: true },
-      orderBy: [{ _count: { appId: 'desc' } }, { appId: 'asc' }],
-      take: opts.take,
-    })) as unknown as OwnedRow[];
-    return rows
-      .filter((r) => r._max.appName)
-      .map((r) => ({ app_id: r.appId, name: r._max.appName as string, owner_count: r._count._all }));
+    const nameFilter = opts.q ? Prisma.sql`AND h.name ILIKE ${likeContains(opts.q)}` : Prisma.empty;
+    const rows = await this.prisma.$queryRaw<OwnedRow[]>`
+      /* gcd:steam-apps-owned */
+      SELECT h.app_id, h.owner_count, h.name
+      FROM (
+        SELECT sp.app_id, COUNT(*)::int AS owner_count,
+          (ARRAY_AGG(sp.app_name ORDER BY sp.synced_at DESC) FILTER (WHERE sp.app_name IS NOT NULL AND sp.app_name <> ''))[1] AS name
+        FROM ${playtimeHoldersFromSql}
+        WHERE ${playtimeHolderWhereSql}
+        GROUP BY sp.app_id
+      ) h
+      WHERE h.name IS NOT NULL ${nameFilter}
+      ORDER BY h.owner_count DESC, h.app_id ASC
+      LIMIT ${opts.take}`;
+    return rows.map((r) => ({ app_id: Number(r.app_id), name: r.name, owner_count: Number(r.owner_count) }));
   }
 
+  /** 7-4 상점 결과 owner_count: 같은 보유자 조건의 수(없으면 호출부가 0) */
   private async ownerCounts(appIds: number[]): Promise<Map<number, number>> {
     if (appIds.length === 0) return new Map();
-    const rows = (await this.prisma.steamPlaytime.groupBy({
-      by: ['appId'],
-      where: { appId: { in: appIds } },
-      _count: { _all: true },
-      orderBy: [{ appId: 'asc' }],
-    })) as unknown as Pick<OwnedRow, 'appId' | '_count'>[];
-    return new Map(rows.map((r) => [r.appId, r._count._all]));
+    const rows = await this.prisma.$queryRaw<{ app_id: number; owner_count: unknown }[]>`
+      /* gcd:steam-apps-owner-counts */
+      SELECT sp.app_id, COUNT(*)::int AS owner_count
+      FROM ${playtimeHoldersFromSql}
+      WHERE ${playtimeHolderWhereSql} AND sp.app_id IN (${Prisma.join(appIds)})
+      GROUP BY sp.app_id`;
+    return new Map(rows.map((r) => [Number(r.app_id), Number(r.owner_count)]));
   }
 
   private async searchStore(q: string): Promise<SteamStoreApp[]> {

@@ -6,8 +6,9 @@ import { Prisma } from '@prisma/client';
  * game_account_sync_requests, rank_snapshots, recent_matches, steam_playtime).
  *
  * 지원하는 where: 필드 = 값/null/Date, { equals, in, notIn, not, gt, gte, lt, lte, startsWith }, AND/OR/NOT.
- * 관계 필터(예: game: { code })는 지원하지 않는다(예외). 단 조건이 빈 객체인 `user: {}`(S4 rankableUserWhere = 「사용자 행 존재」)는
- * 통과시킨다(사용자 삭제 Cascade가 없는 환경이라 항상 참). data의 { increment } 지원. select·include는 무시.
+ * 관계 필터는 hooks.relations에 등록한 것만 지원한다(S5: `user: rankableUserWhere` = `{ leftAt: null }` → 그 행의 사용자에
+ * where를 적용, 사용자가 없으면 거짓). 등록이 없는 관계는 예외. 단 조건이 빈 객체인 `user: {}`는 통과시킨다.
+ * data의 { increment } 지원. select·include는 무시.
  * 고유 제약은 문이 끝날 때 검사하고(PostgreSQL 비지연 제약과 같게 문 단위), 위반 시 그 문을 되돌리고 P2002를 던진다.
  */
 export type Row = Record<string, unknown>;
@@ -73,14 +74,22 @@ function matchField(v: unknown, cond: unknown): boolean {
   return true;
 }
 
-export function matchWhere(row: Row, where: Where | undefined): boolean {
+/** 관계 이름 → 그 행이 가리키는 행(없으면 undefined) */
+export type Relations = Record<string, (row: Row) => Row | undefined>;
+
+export function matchWhere(row: Row, where: Where | undefined, relations?: Relations): boolean {
   if (!where) return true;
   return Object.entries(where).every(([k, cond]) => {
     if (cond === undefined) return true;
-    if (k === 'AND') return (cond as Where[]).every((w) => matchWhere(row, w));
-    if (k === 'OR') return (cond as Where[]).some((w) => matchWhere(row, w));
-    if (k === 'NOT') return !matchWhere(row, cond as Where);
+    if (k === 'AND') return (cond as Where[]).every((w) => matchWhere(row, w, relations));
+    if (k === 'OR') return (cond as Where[]).some((w) => matchWhere(row, w, relations));
+    if (k === 'NOT') return !matchWhere(row, cond as Where, relations);
     if (!(k in row)) {
+      const rel = relations?.[k];
+      if (rel) {
+        const target = rel(row);
+        return target !== undefined && matchWhere(target, cond as Where);
+      }
       if (k === 'user' && Object.keys(cond as object).length === 0) return true;
       throw new Error(`fake-table: 모르는 필드 또는 관계 필터 ${k}`);
     }
@@ -120,6 +129,8 @@ export type UniqueRule = {
 
 export type TableHooks = {
   onDelete?: (deleted: Row[]) => void;
+  /** 관계 필터(where의 user: {…} 등) */
+  relations?: Relations;
 };
 
 function uniqueError(target: string[] | string): Prisma.PrismaClientKnownRequestError {
@@ -150,6 +161,10 @@ export class FakeTable<T extends Row = Row> {
     public hooks: TableHooks = {},
     private readonly tick: () => Promise<void> = async () => {},
   ) {}
+
+  private match(row: Row, where: Where | undefined): boolean {
+    return matchWhere(row, where, this.hooks.relations);
+  }
 
   private checkUnique(): void {
     for (const u of this.uniques) {
@@ -186,19 +201,19 @@ export class FakeTable<T extends Row = Row> {
 
   findUnique = async (args: { where: Where }): Promise<T | null> => {
     await this.tick();
-    const r = this.rows.find((x) => matchWhere(x, args.where));
+    const r = this.rows.find((x) => this.match(x, args.where));
     return r ? ({ ...r } as T) : null;
   };
 
   findFirst = async (args: { where?: Where; orderBy?: OrderBy } = {}): Promise<T | null> => {
     await this.tick();
-    const r = sortRows(this.rows.filter((x) => matchWhere(x, args.where)), args.orderBy)[0];
+    const r = sortRows(this.rows.filter((x) => this.match(x, args.where)), args.orderBy)[0];
     return r ? ({ ...r } as T) : null;
   };
 
   findMany = async (args: { where?: Where; orderBy?: OrderBy; take?: number } = {}): Promise<T[]> => {
     await this.tick();
-    let rows = sortRows(this.rows.filter((x) => matchWhere(x, args.where)), args.orderBy);
+    let rows = sortRows(this.rows.filter((x) => this.match(x, args.where)), args.orderBy);
     if (args.take !== undefined) rows = rows.slice(0, args.take);
     return rows.map((r) => ({ ...r }) as T);
   };
@@ -217,7 +232,7 @@ export class FakeTable<T extends Row = Row> {
   }): Promise<Row[]> => {
     await this.tick();
     const groups = new Map<string, Row[]>();
-    for (const r of this.rows.filter((x) => matchWhere(x, args.where))) {
+    for (const r of this.rows.filter((x) => this.match(x, args.where))) {
       const key = JSON.stringify(args.by.map((f) => r[f]));
       const list = groups.get(key) ?? [];
       list.push(r);
@@ -252,7 +267,7 @@ export class FakeTable<T extends Row = Row> {
 
   count = async (args: { where?: Where } = {}): Promise<number> => {
     await this.tick();
-    return this.rows.filter((x) => matchWhere(x, args.where)).length;
+    return this.rows.filter((x) => this.match(x, args.where)).length;
   };
 
   create = async (args: { data: Row }): Promise<T> => {
@@ -299,7 +314,7 @@ export class FakeTable<T extends Row = Row> {
     return this.statement(() => {
       let count = 0;
       for (const r of this.rows) {
-        if (!matchWhere(r, args.where)) continue;
+        if (!this.match(r, args.where)) continue;
         applyData(r, args.data);
         if ('updatedAt' in r) (r as Row).updatedAt = new Date();
         count++;
@@ -311,7 +326,7 @@ export class FakeTable<T extends Row = Row> {
   update = async (args: { where: Where; data: Row }): Promise<T> => {
     await this.tick();
     return this.statement(() => {
-      const r = this.rows.find((x) => matchWhere(x, args.where));
+      const r = this.rows.find((x) => this.match(x, args.where));
       if (!r) {
         throw new Prisma.PrismaClientKnownRequestError('Record not found', { code: 'P2025', clientVersion: 'fake' });
       }
@@ -323,8 +338,8 @@ export class FakeTable<T extends Row = Row> {
 
   deleteMany = async (args: { where?: Where } = {}): Promise<{ count: number }> => {
     await this.tick();
-    const deleted = this.rows.filter((x) => matchWhere(x, args.where));
-    this.rows = this.rows.filter((x) => !matchWhere(x, args.where));
+    const deleted = this.rows.filter((x) => this.match(x, args.where));
+    this.rows = this.rows.filter((x) => !this.match(x, args.where));
     this.hooks.onDelete?.(deleted);
     return { count: deleted.length };
   };

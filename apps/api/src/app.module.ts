@@ -6,6 +6,7 @@ import { ConfigModule } from './config/config.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { JobsModule } from './jobs/jobs.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { BotModule } from './modules/bot/bot.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { GameAccountsModule } from './modules/game-accounts/game-accounts.module';
 import { GamesModule } from './modules/games/games.module';
@@ -38,6 +39,7 @@ import { PrismaModule } from './prisma/prisma.module';
     ScrimsModule.forRoot(),
     RankingsModule,
     DashboardModule,
+    BotModule,
     RankingJobsModule.forRoot(),
   ],
   providers: [{ provide: APP_FILTER, useClass: ErrorFilter }],

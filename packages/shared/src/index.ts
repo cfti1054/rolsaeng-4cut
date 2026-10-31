@@ -19,3 +19,5 @@ export * from './ratings';
 export * from './badges';
 export * from './rankings';
 export * from './dashboard';
+export * from './discord-link';
+export * from './bot';

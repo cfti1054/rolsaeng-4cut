@@ -3,6 +3,7 @@ import {
   ApiPath,
   STEAM_LINK_COMPLETE_PATH,
   SafeRedirectPath,
+  type ActivityPeriod,
   type GameCode,
   type OAuthLoginErrorCode,
   type ScrimListStatus,
@@ -18,9 +19,13 @@ export interface ScrimsPageQuery {
 
 /** /rankings 쿼리 */
 export interface RankingsPageQuery {
-  tab?: 'tier' | 'elo';
+  tab?: 'tier' | 'elo' | 'activity' | 'playtime';
   game?: GameCode;
   season?: string;
+  /** 활동 탭 기간. 기본 week는 주소에 쓰지 않는다 */
+  period?: ActivityPeriod;
+  /** 플레이타임 탭 스팀 게임 */
+  app_id?: number;
 }
 
 /**
@@ -35,7 +40,14 @@ export const routes = {
   /** 스팀 팝업 완료 페이지(S2 9-2). API 콜백이 302로 보낸다. 웹이 직접 만드는 건 목뿐 */
   steamLinkComplete: (q: SteamLinkCompletePageQuery = {}) => withQuery(STEAM_LINK_COMPLETE_PATH, q),
   /** tab·game·season은 필터 선택(기본 탭·시즌은 주소에 쓰지 않는다) */
-  rankings: (q: RankingsPageQuery = {}) => withQuery('/rankings', { tab: q.tab === 'elo' ? undefined : q.tab, game: q.game, season: q.season }),
+  rankings: (q: RankingsPageQuery = {}) =>
+    withQuery('/rankings', {
+      tab: q.tab === 'elo' ? undefined : q.tab,
+      game: q.game,
+      season: q.season,
+      period: q.period === 'week' ? undefined : q.period,
+      app_id: q.app_id === undefined ? undefined : String(q.app_id),
+    }),
   member: (id: string) => `/members/${encodeURIComponent(id)}`,
   /** 스팀 콜백 결과는 API가 302로 붙여 준다(steam=linked / steam_error). 웹이 직접 만들 일은 목뿐 */
   settings: (q: SettingsPageQuery = {}) => withQuery('/settings', q),

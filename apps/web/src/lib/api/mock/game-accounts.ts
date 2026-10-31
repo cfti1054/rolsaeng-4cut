@@ -22,6 +22,7 @@ import {
   SYNC_DAILY_LIMIT_DEFAULT,
   Uuid,
   formatRiotId,
+  isLinkedDiscordId,
   type ConfirmRiotVerificationResponse,
   type ErrorCode,
   type GetMyGameAccountsResponse,
@@ -617,7 +618,7 @@ export function handleS1(ctx: MockS1Context): Response | null {
       nickname: me.nickname,
       role: me.role,
       avatar_url: me.avatar_url,
-      discord_linked: !!me.discord_id && !me.discord_id.startsWith('dev-'),
+      discord_linked: isLinkedDiscordId(me.discord_id),
       joined_at: me.created_at,
     };
     return json(200, buildProfile(user, state.rows, state.matches, true, quota(state, now), refreshQueued));

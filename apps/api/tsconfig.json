@@ -9,5 +9,5 @@
     "isolatedModules": false,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "prisma/**/*.ts", "test/**/*.ts", "vitest.config.ts"]
+  "include": ["src/**/*.ts", "prisma/**/*.ts", "scripts/**/*.ts", "test/**/*.ts", "vitest.config.ts"]
 }

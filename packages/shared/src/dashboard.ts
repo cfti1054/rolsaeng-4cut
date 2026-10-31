@@ -16,7 +16,8 @@ import { SeasonRef } from './seasons';
 //   모집 인원은 5분 늦으면 안 되므로 내전 값은 캐시하지 않는다.
 // 응답 전체를 캐시하지 않는다. 이 엔드포인트에는 사용자별 값이 섞여 있어 공용 키에 넣으면 남의 값이 보인다.
 //
-// S5 자리: 음성 접속·활동 멤버는 필드가 없다(가짜 숫자를 만들지 않는다). S5에서 stats에 추가한다(D39 넓히기).
+// S5(계약 S5 8절): 봇 데이터는 stats가 아니라 별도 블록 community에 둔다(D218). stats는 내전 집계 그대로다.
+// community는 요청마다 읽는다(접속 현황 1행 + 이번 주 활동 멤버 수 1쿼리). 봇 자료가 없으면 state로 알리고 숫자를 null로 둔다.
 // =============================================================================
 
 /** 모집 중 내전 최대 개수(목업 3행). next_scrim과 같은 내전은 뺀다 */
@@ -139,6 +140,64 @@ export type DashboardMe = z.infer<typeof DashboardMe>;
 export const DashboardTopRankersState = z.enum(['ready', 'no_season', 'unavailable']);
 export type DashboardTopRankersState = z.infer<typeof DashboardTopRankersState>;
 
+// -----------------------------------------------------------------------------
+// S5 community 블록(목업 Main 「음성 채널 접속」「이번 주 활동 멤버」, 문서 2장 「지금 플레이 중」)
+// -----------------------------------------------------------------------------
+
+/** 「지금 플레이 중」 최대 행 수 */
+export const DASHBOARD_NOW_PLAYING_MAX = 5;
+
+/**
+ * 음성 채널 접속 인원(PUT /bot/presence 마지막 값).
+ * - live: captured_at이 BOT_PRESENCE_STALE_AFTER_SEC 이내. member_count 숫자(목업 「23명 LIVE」)
+ * - stale: 그보다 오래됨. 지난 숫자를 지금 값처럼 보이지 않게 member_count null, captured_at으로 「마지막 HH:mm」
+ * - not_connected: 봇이 접속 현황을 한 번도 보내지 않음. 둘 다 null(화면은 카드를 숨긴다)
+ */
+export const DashboardVoice = z.discriminatedUnion('state', [
+  z.object({ state: z.literal('live'), member_count: z.number().int().min(0), captured_at: IsoDateTime }),
+  z.object({ state: z.literal('stale'), member_count: z.null(), captured_at: IsoDateTime }),
+  z.object({ state: z.literal('not_connected'), member_count: z.null(), captured_at: z.null() }),
+]);
+export type DashboardVoice = z.infer<typeof DashboardVoice>;
+
+/**
+ * 이번 KST 주(stats.week_start부터) 활동(ACTIVITY_COUNTED_TYPES = voice·chat, play 제외(D240), 연동 회원, 탈퇴 제외)이 1건 이상인 회원 수.
+ * - ready: count 숫자(0 가능)
+ * - not_connected: activity_logs가 한 행도 없고 접속 현황도 없음(봇 미연결). count null(화면은 카드를 숨긴다)
+ */
+export const DashboardActiveMembers = z.discriminatedUnion('state', [
+  z.object({ state: z.literal('ready'), count: z.number().int().min(0) }),
+  z.object({ state: z.literal('not_connected'), count: z.null() }),
+]);
+export type DashboardActiveMembers = z.infer<typeof DashboardActiveMembers>;
+
+/** 지금 플레이 중 1행. 봇이 보낸 이름 그대로(game이 있으면 화면이 게임 칩 색을 쓴다) */
+export const DashboardNowPlayingItem = z.object({
+  name: z.string().min(1),
+  game: GameCode.nullable(),
+  steam_app_id: z.number().int().min(1).nullable(),
+  count: z.number().int().min(1),
+});
+export type DashboardNowPlayingItem = z.infer<typeof DashboardNowPlayingItem>;
+
+/**
+ * 「지금 플레이 중」. voice가 live이고 봇이 보낸 playing이 1행 이상일 때만 값이 있다(「데이터가 충분할 때만」, D219).
+ * 그 외 null → 화면은 영역을 숨긴다. items는 count DESC → name ASC, 최대 DASHBOARD_NOW_PLAYING_MAX.
+ */
+export const DashboardNowPlaying = z.object({
+  captured_at: IsoDateTime,
+  items: z.array(DashboardNowPlayingItem).min(1).max(DASHBOARD_NOW_PLAYING_MAX),
+});
+export type DashboardNowPlaying = z.infer<typeof DashboardNowPlaying>;
+
+/** 봇 데이터 블록(S5). 항상 객체다. 각 칸이 자기 state를 가진다 */
+export const DashboardCommunity = z.object({
+  voice: DashboardVoice,
+  active_members: DashboardActiveMembers,
+  now_playing: DashboardNowPlaying.nullable(),
+});
+export type DashboardCommunity = z.infer<typeof DashboardCommunity>;
+
 /**
  * 요약 응답의 필드 모양만. top_rankers와 top_rankers_state의 조합은 검사하지 않는다.
  * `.shape`·`.strict()`가 필요한 곳(테스트)용이다. 응답 parse는 GetDashboardSummaryResponse를 쓴다.
@@ -150,6 +209,8 @@ export const GetDashboardSummaryBody = z.object({
   next_scrim: DashboardNextScrim.nullable(),
   recruiting: z.array(ScrimSummary).max(DASHBOARD_RECRUITING_LIMIT),
   stats: DashboardStats,
+  /** S5. 필수 필드다 → api와 web을 같은 커밋으로 배포한다(D200과 같은 이유, 계약 S5 15절) */
+  community: DashboardCommunity,
   top_rankers: DashboardTopRankers.nullable(),
   top_rankers_state: DashboardTopRankersState,
   recent_results: z.array(DashboardRecentResult).max(DASHBOARD_RECENT_RESULTS_LIMIT),

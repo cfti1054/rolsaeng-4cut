@@ -10,7 +10,7 @@ import {
   RANKING_STALE_AFTER_SEC,
 } from '@gcd/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { eloRankingKey, tierRankingKey } from '../src/modules/rankings/ranking-keys';
+import { activityRankingKey, eloRankingKey, tierRankingKey } from '../src/modules/rankings/ranking-keys';
 import { call, expectError, expectNoExternalIds } from './support/s1-helpers';
 import {
   closer,
@@ -296,7 +296,8 @@ describe('주기 작업(7-4)', () => {
       baselineRanks: {},
     });
     const run = await refresher(t).runOnce();
-    expect(run).toEqual({ acquired: true, refreshed: 5, failed: 0, deleted: 1 });
+    // S5: 활동 week·month 2개가 항상 대상에 추가된다(계약 S5 7절). 스팀 보유자가 없어 playtime은 없다
+    expect(run).toEqual({ acquired: true, refreshed: 7, failed: 0, deleted: 1 });
     expect([...t.rankingCache.rows.keys()].sort()).toEqual(
       [
         tierRankingKey('lol'),
@@ -304,6 +305,8 @@ describe('주기 작업(7-4)', () => {
         eloRankingKey('lol', s.id),
         eloRankingKey('tft', s.id),
         eloRankingKey('steam', s.id),
+        activityRankingKey('week'),
+        activityRankingKey('month'),
       ].sort(),
     );
     expect([...t.rankingCache.rows.keys()].some((k) => k.includes(future.id))).toBe(false);
@@ -330,7 +333,7 @@ describe('주기 작업(7-4)', () => {
     const key = eloRankingKey('lol', s.id);
     t.rankingCache.failWrites.add(key);
     const run = await refresher(t).runOnce();
-    expect(run).toMatchObject({ acquired: true, refreshed: 4, failed: 1 });
+    expect(run).toMatchObject({ acquired: true, refreshed: 6, failed: 1 }); // S5: 활동 2개 포함
     expect(t.rankingCache.rows.get(key)).toMatchObject({ lastError: `write 실패: ${key}` });
 
     const failed = await elo(t, me.token);
@@ -367,7 +370,7 @@ describe('주기 작업(7-4)', () => {
     seedSeason(t, '현재', ...CURRENT);
     vi.spyOn(t.rankingCache, 'markFailed').mockRejectedValue(new Error('down'));
     t.rankingCache.failWrites.add(tierRankingKey('lol'));
-    expect(await refresher(t).runOnce()).toMatchObject({ acquired: true, refreshed: 4, failed: 1 });
+    expect(await refresher(t).runOnce()).toMatchObject({ acquired: true, refreshed: 6, failed: 1 }); // S5: 활동 2개 포함
   });
 
   it('stale 경계: RANKING_STALE_AFTER_SEC 정확히는 아님, 1ms 뒤는 stale', async () => {

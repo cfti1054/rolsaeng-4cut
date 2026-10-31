@@ -3,17 +3,22 @@ import {
   formatKstMidnight,
   kstWeekWindow,
   latestStartedSeason,
+  nowPlayingItems,
+  presenceState,
   resolveSeasonAt,
   seasonDaysLeft,
   seasonProgress,
 } from '@gcd/core';
 import {
+  ACTIVITY_COUNTED_TYPES,
   BALANCE_ELO_WEIGHT_MAX,
   BALANCE_FULL_WEIGHT_GAMES,
   DASHBOARD_NEXT_SCRIM_AVATARS_MAX,
   DASHBOARD_RECENT_RESULTS_LIMIT,
   DASHBOARD_RECRUITING_LIMIT,
   DASHBOARD_TOP_RANKERS_LIMIT,
+  BotPresencePlayingStored,
+  type DashboardCommunity,
   type DashboardMe,
   type DashboardNextScrim,
   type DashboardRecentResult,
@@ -23,12 +28,14 @@ import {
   GetDashboardSummaryResponse,
   type ScrimRatingStatus,
 } from '@gcd/shared';
-import type { Game, Scrim, ScrimResult, Season } from '@prisma/client';
+import { Prisma, type Game, type Scrim, type ScrimResult, type Season } from '@prisma/client';
 import { AppError } from '../../common/app-error';
 import { APP_CLOCK, type Clock } from '../../common/clock';
 import type { AuthUser } from '../../common/decorators/current-user';
 import { APP_CONFIG, type AppConfig } from '../../config/env';
 import { PrismaService } from '../../prisma/prisma.service';
+import { BOT_PRESENCE_SOURCE } from '../bot/bot-presence.service';
+import { rankableUserSql } from '../rankings/rankable-users';
 import { RankingsReader } from '../rankings/rankings-reader.service';
 import { SeasonsService, seasonRef } from '../ratings/seasons.service';
 import { readPlacements } from '../scrims/scrim-result-json';
@@ -92,6 +99,7 @@ export class DashboardService {
       next_scrim: nextScrim,
       recruiting: next ? summaries.slice(1) : summaries,
       stats: await this.stats(now),
+      community: await this.community(now),
       ...(await this.topRankers(games, current ?? latestStartedSeason(seasons, now), now)),
       recent_results: await this.recentResults(),
       me: current ? await this.me(viewer.id, games, current) : null,
@@ -133,6 +141,48 @@ export class DashboardService {
       }),
     ]);
     return { recruiting_scrims: recruiting, scrims_this_week: thisWeek, week_start: formatKstMidnight(week.start) };
+  }
+
+  /**
+   * S5 8절 봇 자료 블록. 요청마다 읽는다(접속 현황 1행 + 봇 자료 존재 + 활동 멤버 수, 최대 3쿼리).
+   * 실패는 요약 전체 500이다(부분 실패 규칙은 top_rankers에만 있다).
+   */
+  private async community(now: Date): Promise<DashboardCommunity> {
+    const presence = await this.prisma.botPresence.findUnique({ where: { source: BOT_PRESENCE_SOURCE } });
+    const state = presenceState({ capturedAt: presence?.capturedAt ?? null, now });
+    const voice: DashboardCommunity['voice'] =
+      !presence || state === 'not_connected'
+        ? { state: 'not_connected', member_count: null, captured_at: null }
+        : state === 'live'
+          ? { state: 'live', member_count: presence.voiceMemberCount, captured_at: presence.capturedAt.toISOString() }
+          : { state: 'stale', member_count: null, captured_at: presence.capturedAt.toISOString() };
+
+    const botConnected = presence !== null || (await this.prisma.activityLog.findFirst({ select: { id: true } })) !== null;
+    let activeMembers: DashboardCommunity['active_members'] = { state: 'not_connected', count: null };
+    if (botConnected) {
+      const week = kstWeekWindow(now);
+      // 활동 = voice·chat만(D240). play는 저장만 하고 세지 않는다. 봇 연결 여부(botConnected)는 type과 무관하다
+      const counted = Prisma.join([...ACTIVITY_COUNTED_TYPES]);
+      const rows = await this.prisma.$queryRaw<{ count: unknown }[]>`
+        /* gcd:active-members */
+        SELECT COUNT(DISTINCT al.user_id)::int AS count
+        FROM activity_logs al
+        JOIN users u ON u.id = al.user_id AND ${rankableUserSql}
+        WHERE al.started_at >= ${week.start} AND al.started_at < ${week.end}
+          AND al.type::text IN (${counted})`;
+      activeMembers = { state: 'ready', count: Number(rows[0]?.count ?? 0) };
+    }
+
+    let nowPlaying: DashboardCommunity['now_playing'] = null;
+    if (presence && state === 'live') {
+      const parsed = BotPresencePlayingStored.safeParse(presence.playing);
+      if (!parsed.success) this.log.warn('bot_presence.playing 형식 불일치, [] 로 취급');
+      const playing = parsed.success ? parsed.data : [];
+      if (playing.length > 0) {
+        nowPlaying = { captured_at: presence.capturedAt.toISOString(), items: nowPlayingItems(playing) };
+      }
+    }
+    return { voice, active_members: activeMembers, now_playing: nowPlaying };
   }
 
   /**

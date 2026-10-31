@@ -18,8 +18,10 @@ import {
   DASHBOARD_RECENT_RESULTS_LIMIT,
   DASHBOARD_RECRUITING_LIMIT,
   DASHBOARD_TOP_RANKERS_LIMIT,
+  GetActivityRankingQuery,
   GetDashboardSummaryResponse,
   GetEloRankingQuery,
+  GetPlaytimeRankingQuery,
   GetEloRankingResponse,
   GetTierRankingQuery,
   GetTierRankingResponse,
@@ -31,6 +33,7 @@ import {
   SEASON_CLOSE_GRACE_SEC,
   seasonBadgeCode,
   seasonBadgeSeed,
+  type DashboardCommunity,
   type DashboardRecentResult,
   type EloRankingEntry,
   type ErrorCode,
@@ -43,10 +46,12 @@ import {
   type ScrimRatingStatus,
   type ScrimSummary,
   type ScrimUserRef,
+  type SteamAppOption,
   type TierRankingEntry,
   type TierRankingGame,
 } from '@gcd/shared';
 import { z } from 'zod';
+import { activityResponse, mockActivityLogs, mockCommunity, mockPresence, playtimeResponse, scenarioLogs, type MockBotScenario, type MockScrimJoin } from './community';
 import { currentSeason, mockEloStandings, seasonRef, type MockResult, type MockSeason, type S3Data } from './ratings';
 
 /**
@@ -56,14 +61,14 @@ import { currentSeason, mockEloStandings, seasonRef, type MockResult, type MockS
  * - 캐시 흉내: synced_at = 5분 단위로 내린 시각, rank_change = 이번 KST 주 시작 시점 순위 대비(D153).
  * - 종료 작업은 없다(계약 10절). 끝난 시즌(ends_at + 유예 ≤ now)은 저장된 ratings로 읽기 때 순위·뱃지를 계산해
  *   season_standings처럼 내려 준다. 새 시즌 행은 승인 때 RATING_START_ELO로 만든다(이월 없음, 20절).
- * - 활동·플레이타임·음성·패치 값은 만들지 않는다(슬라이스 「제외」).
+ * - S5 활동·플레이타임·홈 community는 community.ts(gcd-mock-bot). 패치 값은 만들지 않는다.
  *
  * 상태 확인: localStorage `gcd-mock-rankings`에 아래 값을 넣고 새로고침한다.
  *   stale      마지막 갱신 실패 + 오래된 synced_at
  *   final      현재 시즌 없음 → 사이드바 「다음 시즌 준비 중」, 랭킹·홈 is_final
  *   no_season  시즌이 하나도 없음
- *   empty      시즌은 있고 순위·내전·결과가 없음
- *   error      세 엔드포인트 INTERNAL_ERROR
+ *   empty      시즌은 있고 순위·내전·결과가 없음. S5: 활동 기록 없음(봇은 연결), 스팀 보유 게임 목록 빔
+ *   error      랭킹·요약 엔드포인트 INTERNAL_ERROR
  *   loading    세 엔드포인트가 오래 걸림
  *   me_outside 내 행이 items 밖(맨 아래 한 줄)
  *   me_error   세션 부팅(/auth/refresh, /me)이 5xx → 요약이 시작되지 않는 상태
@@ -85,6 +90,8 @@ export type MockRankingScenario = z.infer<typeof MockRankingScenario>;
 
 export interface MockRankingOptions {
   scenario?: () => MockRankingScenario | null;
+  /** S5 봇 상태(community.ts, localStorage gcd-mock-bot). 없으면 live */
+  bot?: () => MockBotScenario | null;
 }
 
 const MIN_GAMES = RANKING_ELO_MIN_GAMES_DEFAULT;
@@ -143,7 +150,7 @@ const TFT_TIER: readonly MockTierRow[] = [
 // 공통
 // -----------------------------------------------------------------------------
 
-const ALL_PATHS: readonly string[] = [ApiPath.rankingsTier, ApiPath.rankingsElo, ApiPath.dashboardSummary];
+const ALL_PATHS: readonly string[] = [ApiPath.rankingsTier, ApiPath.rankingsElo, ApiPath.dashboardSummary, ApiPath.rankingsActivity, ApiPath.rankingsPlaytime];
 export const isRankingPath = (path: string): boolean => ALL_PATHS.includes(path);
 
 const iso = (t: number) => new Date(t).toISOString();
@@ -160,7 +167,7 @@ export function scenarioState<T extends S3Data>(st: T, scenario: MockRankingScen
 }
 
 /** 캐시 메타: synced_at + stale(core isRankingStale). stale 시나리오는 갱신 실패를 흉내 낸다 */
-function cacheMeta(now: number, scenario: MockRankingScenario | null): { synced_at: string; stale: boolean } {
+export function cacheMeta(now: number, scenario: MockRankingScenario | null): { synced_at: string; stale: boolean } {
   const failed = scenario === 'stale';
   const computedAt = failed ? now - 23 * 60_000 : Math.floor(now / INTERVAL_MS) * INTERVAL_MS;
   const lastFailedAt = failed ? new Date(now - 3 * 60_000) : null;
@@ -296,6 +303,7 @@ export interface RankingScrim {
 }
 
 interface SummaryCtx {
+  community: DashboardCommunity;
   policy: EloPolicy;
   me: Me;
   now: number;
@@ -418,6 +426,8 @@ function dashboardResponse(st: S3Data, ctx: SummaryCtx): GetDashboardSummaryResp
       .slice(0, DASHBOARD_RECRUITING_LIMIT)
       .map((s) => ctx.summary(s)),
     stats: { recruiting_scrims: open.length, scrims_this_week: ctx.scrims.filter(inWeek).length, week_start: week.start.toISOString() },
+    // S5: 목 접속 현황·활동 기록(community.ts, gcd-mock-bot)
+    community: ctx.community,
     top_rankers: top,
     top_rankers_state: topState,
     recent_results: recentResults(st, ctx),
@@ -487,9 +497,15 @@ export interface MockRankingContext {
   json: (status: number, body: unknown) => Response;
   error: (code: ErrorCode, message: string, opts?: { details?: { path: string; message: string }[] }) => Response;
   scenario: MockRankingScenario | null;
+  /** S5 봇 상태(기본 live) */
+  bot: MockBotScenario;
+  /** S5 플레이타임 대상 게임(GET /steam-apps q 없음과 같은 목록) */
+  steamApps: readonly SteamAppOption[];
+  /** S5 활동 scrim_count 출처(승인된 내전 joined 참가, community.ts mockScrimJoins) */
+  scrimJoins: readonly MockScrimJoin[];
 }
 
-/** 세 엔드포인트. GET 외에는 NOT_FOUND */
+/** 세 엔드포인트 + S5 활동·플레이타임. GET 외에는 NOT_FOUND */
 export function handleRankings(ctx: MockRankingContext): Response {
   const { method, path, now, me, scenario, json, error } = ctx;
   if (method !== 'GET') return error('NOT_FOUND', `목에 없는 경로: ${method} ${path}`);
@@ -506,6 +522,22 @@ export function handleRankings(ctx: MockRankingContext): Response {
     return json(200, tierResponse(q.data.game, { me, members: ctx.members, now, scenario }));
   }
 
+  // S5 활동·플레이타임(계약 S5 4-1). 사용자 목록 = 나 + 목 멤버
+  const userIds = [me.id, ...ctx.members.map((u) => u.id)];
+  const logs = scenarioLogs(empty ? [] : mockActivityLogs(userIds, now), ctx.bot, now);
+  const cache = cacheMeta(now, scenario);
+  const meOutside = scenario === 'me_outside';
+  if (path === ApiPath.rankingsActivity) {
+    const q = GetActivityRankingQuery.safeParse(Object.fromEntries(ctx.search.entries()));
+    if (!q.success) return error('VALIDATION_FAILED', '쿼리가 올바르지 않습니다.', { details: q.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })) });
+    return json(200, activityResponse({ period: q.data.period, now, logs, presence: mockPresence(ctx.bot, now) !== null, me, userRef: ctx.userRef, cache, meOutside, scrimJoins: empty ? [] : ctx.scrimJoins }));
+  }
+  if (path === ApiPath.rankingsPlaytime) {
+    const q = GetPlaytimeRankingQuery.safeParse(Object.fromEntries(ctx.search.entries()));
+    if (!q.success) return error('VALIDATION_FAILED', '쿼리가 올바르지 않습니다.', { details: q.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })) });
+    return json(200, playtimeResponse({ appId: q.data.app_id, apps: empty ? [] : ctx.steamApps, userIds, now, me, userRef: ctx.userRef, cache, meOutside }));
+  }
+
   if (path === ApiPath.rankingsElo) {
     const q = GetEloRankingQuery.safeParse(Object.fromEntries(ctx.search.entries()));
     if (!q.success) return error('VALIDATION_FAILED', '쿼리가 올바르지 않습니다.', { details: q.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })) });
@@ -517,6 +549,7 @@ export function handleRankings(ctx: MockRankingContext): Response {
   return json(
     200,
     dashboardResponse(st, {
+      community: mockCommunity({ bot: ctx.bot, now, logs }),
       policy: ctx.policy,
       me,
       now,

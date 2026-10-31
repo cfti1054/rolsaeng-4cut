@@ -1,6 +1,18 @@
 'use client';
 
-import type { EloRankingEntry, GameCode, GetEloRankingResponse, GetTierRankingResponse, TierRankingEntry, TierRankingGame } from '@gcd/shared';
+import {
+  ActivityPeriod,
+  type ActivityRankingEntry,
+  type EloRankingEntry,
+  type GameCode,
+  type GetActivityRankingResponse,
+  type GetEloRankingResponse,
+  type GetPlaytimeRankingResponse,
+  type GetTierRankingResponse,
+  type PlaytimeRankingEntry,
+  type TierRankingEntry,
+  type TierRankingGame,
+} from '@gcd/shared';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { ReactNode } from 'react';
@@ -13,14 +25,33 @@ import { errorMessage } from '@/lib/errors';
 import { formatFull } from '@/lib/format';
 import { GAME_SCRIM_META } from '@/lib/games';
 import { useMe } from '@/lib/hooks/auth';
-import { useEloRanking, useTierRanking } from '@/lib/hooks/rankings';
+import { useActivityRanking, useEloRanking, usePlaytimeRanking, useTierRanking } from '@/lib/hooks/rankings';
 import { useSeasons } from '@/lib/hooks/ratings';
-import { useGames } from '@/lib/hooks/scrims';
+import { useGames, useSteamApps } from '@/lib/hooks/scrims';
 import { useNow } from '@/lib/hooks/use-now';
 import {
-  RANKING_DISABLED_NOTE,
-  RANKING_DISABLED_TABS,
+  ACTIVITY_RULE_TEXT,
+  ACTIVITY_SCRIMS_HINT,
+  PLAYTIME_APP_EMPTY_TEXT,
+  PLAYTIME_NO_APPS_TEXT,
+  PLAYTIME_RULE_TEXT,
   RANKING_TABS,
+  activeDaysText,
+  activityChangeHint,
+  activityEmptyText,
+  activityMobileSubText,
+  activityPeriodLabel,
+  activityTimeText,
+  defaultPlaytimeApp,
+  mainGamesLine,
+  mainGamesText,
+  playtimeAppFallbackLabel,
+  playtimeAppParam,
+  playtimeRecentText,
+  playtimeSyncedText,
+  playtimeTotalText,
+  resolvePlaytimeApp,
+  scrimCountText,
   TIER_EMPTY_TEXT,
   TIER_RULE_TEXT,
   eloEmptyNote,
@@ -57,8 +88,12 @@ interface RankRow {
   rank: number;
   user: EloRankingEntry['user'];
   sub: string;
+  /** 모바일(sm 미만)에서 sub 대신 쓰는 보조 줄. 없으면 sub(활동: 「… · 내전 3회」) */
+  subMobile?: string;
   extra: ReactNode;
   extraText: string;
+  /** 참고 열(활동 SCRIMS). 정렬 값이 아니다. 데스크톱만, 모바일은 subMobile에 합친다 */
+  ref?: string;
   main: string;
   change: number | null;
 }
@@ -92,41 +127,83 @@ const eloRow = (e: EloRankingEntry): RankRow => ({
   change: e.rank_change,
 });
 
+const activityRow =
+  (periodDays: number) =>
+  (e: ActivityRankingEntry): RankRow => ({
+    id: e.user.id,
+    rank: e.rank,
+    user: e.user,
+    sub: activeDaysText(periodDays, e.active_days),
+    subMobile: activityMobileSubText(periodDays, e),
+    extra: mainGamesText(e),
+    // 주 게임이 없으면 모바일 보조 줄·상위 3명 문구를 생략한다(표 칸은 「—」). 상위 3명에는 scrim_count를 넣지 않는다
+    extraText: mainGamesLine(e),
+    ref: scrimCountText(e.scrim_count),
+    main: activityTimeText(e.total_sec),
+    change: e.rank_change,
+  });
+
+const playtimeRow = (e: PlaytimeRankingEntry): RankRow => ({
+  id: e.user.id,
+  rank: e.rank,
+  user: e.user,
+  sub: e.account_name,
+  extra: playtimeRecentText(e),
+  extraText: `최근 2주 ${playtimeRecentText(e)}`,
+  main: playtimeTotalText(e),
+  change: e.rank_change,
+});
+
 /**
- * /rankings(목업 Rankings, 계약 10절). 탭·게임·시즌은 URL 쿼리(tab, game, season)와 동기화된다.
- * 활동·플레이타임 탭은 S5까지 비활성이다(가짜 숫자를 그리지 않는다).
+ * /rankings(목업 Rankings, 계약 10절 + S5 10절). 탭·게임·시즌·기간·스팀 게임은 URL 쿼리(tab, game, season, period, app_id)와 동기화된다.
  */
 export function RankingsView() {
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
   const q = parseRankingsQuery(sp);
-  const go = (next: { tab: RankingTab; game?: GameCode | null; season?: string | null }) => {
+  const go = (next: { tab: RankingTab; game?: GameCode | null; season?: string | null; period?: ActivityPeriod | null; appId?: number | null }) => {
     if (pathname !== '/rankings') return;
     router.replace(
       routes.rankings({
         tab: next.tab,
-        game: next.game ?? undefined,
+        game: next.tab === 'tier' || next.tab === 'elo' ? (next.game ?? undefined) : undefined,
         season: next.tab === 'elo' ? (next.season ?? undefined) : undefined,
+        period: next.tab === 'activity' ? (next.period ?? undefined) : undefined,
+        app_id: next.tab === 'playtime' ? (next.appId ?? undefined) : undefined,
       }),
       { scroll: false },
     );
   };
+  const keep = { game: q.game, season: q.season, period: q.period, appId: q.appId };
 
   const me = useMe();
+  const isGameTab = q.tab === 'tier' || q.tab === 'elo';
   const games = useGames();
   const seasons = useSeasons();
   const options = rankingGames(q.tab, games.data?.items ?? []);
   const game = resolveRankingGame(q.game, options);
   const tier = useTierRanking(q.tab === 'tier' ? (game as TierRankingGame | null) : null);
   const elo = useEloRanking(q.tab === 'elo' ? game : null, q.season);
+  const period: ActivityPeriod = q.period ?? 'week';
+  const activity = useActivityRanking(q.tab === 'activity' ? period : null);
+  const apps = useSteamApps('', q.tab === 'playtime');
+  const appItems = apps.data?.items;
+  const appId = resolvePlaytimeApp(q.appId, appItems);
+  // 기본 게임(보유자 1명 이상인 첫 항목, D234). null = 고를 게임 없음 → select 비활성 + 빈 상태
+  const appDefault = defaultPlaytimeApp(appItems);
+  const playtime = usePlaytimeRanking(q.tab === 'playtime' ? appId : null);
 
-  const status = q.tab === 'tier' ? (tier.data ? rankingStatusText(tier.data) : null) : elo.data ? rankingStatusText(elo.data) : null;
-  const syncedAt = q.tab === 'tier' ? tier.data?.synced_at : elo.data?.synced_at;
+  const shown = { tier: tier.data, elo: elo.data, activity: activity.data, playtime: playtime.data }[q.tab];
+  const status = shown ? rankingStatusText(shown) : null;
+  const syncedAt = shown?.synced_at ?? null;
+  const steamSynced = q.tab === 'playtime' && playtime.data ? playtimeSyncedText(playtime.data.playtime_synced_at) : null;
   const tabMeta = RANKING_TABS.find((t) => t.value === q.tab)!;
   const seasonValue = q.season ?? elo.data?.season?.id ?? '';
   const currentSeasonId = seasons.data?.items.find((s) => s.is_current)?.id;
   const seasonFallback = seasonFallbackLabel(seasons.data?.items ?? [], seasonValue, elo.data?.season);
+  // 목록을 받는 중이거나 실패해도 지금 고른 게임은 옵션으로 보인다
+  const appFallback = appId !== null ? playtimeAppFallbackLabel(appItems ?? [], appId, playtime.data?.app) : null;
 
   return (
     <>
@@ -139,7 +216,16 @@ export function RankingsView() {
             {q.tab === 'elo' && <EloInfo />}
           </div>
         </div>
-        {status && <StatusChip text={status.text} tone={status.tone} title={syncedAt ? formatFull(syncedAt) : undefined} />}
+        {(status || steamSynced) && (
+          <div className="flex flex-wrap items-center gap-2">
+            {status && <StatusChip text={status.text} tone={status.tone} title={syncedAt ? formatFull(syncedAt) : undefined} />}
+            {steamSynced && playtime.data?.playtime_synced_at && (
+              <span title={formatFull(playtime.data.playtime_synced_at)} className="text-xs text-faint">
+                {steamSynced}
+              </span>
+            )}
+          </div>
+        )}
       </header>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -152,45 +238,32 @@ export function RankingsView() {
                 type="button"
                 role="tab"
                 aria-selected={on}
-                onClick={() => go({ tab: t.value, game: q.game, season: q.season })}
-                className={cn('h-[42px] rounded-xl px-[18px] text-sm font-bold', on ? 'bg-accent text-on-accent' : 'bg-transparent text-muted hover:text-text')}
+                onClick={() => go({ tab: t.value, ...keep })}
+                className={cn('h-[42px] rounded-xl px-[14px] text-sm font-bold sm:px-[18px]', on ? 'bg-accent text-on-accent' : 'bg-transparent text-muted hover:text-text')}
               >
                 {t.label}
               </button>
             );
           })}
-          {RANKING_DISABLED_TABS.map((t) => (
-            <button
-              key={t.value}
-              type="button"
-              role="tab"
-              aria-selected={false}
-              aria-disabled="true"
-              tabIndex={-1}
-              title={RANKING_DISABLED_NOTE}
-              className="flex h-[42px] cursor-not-allowed flex-col items-center justify-center rounded-xl px-3.5 text-[13px] font-bold leading-tight text-faint"
-            >
-              {t.label}
-              <span className="text-[10px] font-medium">{RANKING_DISABLED_NOTE}</span>
-            </button>
-          ))}
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <FilterSelect label="게임" value={game ?? ''} disabled={!games.data} onChange={(v) => go({ tab: q.tab, game: v as GameCode, season: q.season })}>
-            {!game && <option value="">게임</option>}
-            {options.map((g) => (
-              <option key={g.code} value={g.code}>
-                {GAME_SCRIM_META[g.code]?.label ?? g.name}
-              </option>
-            ))}
-          </FilterSelect>
+          {isGameTab && (
+            <FilterSelect label="게임" value={game ?? ''} disabled={!games.data} onChange={(v) => go({ tab: q.tab, ...keep, game: v as GameCode })}>
+              {!game && <option value="">게임</option>}
+              {options.map((g) => (
+                <option key={g.code} value={g.code}>
+                  {GAME_SCRIM_META[g.code]?.label ?? g.name}
+                </option>
+              ))}
+            </FilterSelect>
+          )}
           {q.tab === 'elo' && (
             <FilterSelect
               label="시즌"
               value={seasonValue}
               disabled={!seasons.data?.items.length && !elo.data?.season}
-              onChange={(v) => go({ tab: 'elo', game: q.game, season: v === currentSeasonId ? null : v })}
+              onChange={(v) => go({ tab: 'elo', ...keep, season: v === currentSeasonId ? null : v })}
             >
               {!seasons.data?.items.length && <option value={seasonValue}>{elo.data?.season?.name ?? (seasons.data ? '시즌 없음' : '시즌')}</option>}
               {/* 목록에 없는 값이 다른 시즌처럼 보이지 않게 옵션을 하나 더 둔다 */}
@@ -203,11 +276,49 @@ export function RankingsView() {
               ))}
             </FilterSelect>
           )}
+          {q.tab === 'activity' && (
+            <FilterSelect label="기간" value={period} wide onChange={(v) => go({ tab: 'activity', ...keep, period: v === 'month' ? 'month' : null })}>
+              {ActivityPeriod.options.map((p) => (
+                <option key={p} value={p}>
+                  {activityPeriodLabel(p, activity.data)}
+                </option>
+              ))}
+            </FilterSelect>
+          )}
+          {q.tab === 'playtime' && (
+            <FilterSelect
+              label="게임"
+              value={appId === null ? '' : String(appId)}
+              wide
+              disabled={!appItems || appDefault === null}
+              onChange={(v) => go({ tab: 'playtime', ...keep, appId: playtimeAppParam(Number(v), appItems) })}
+            >
+              {appId === null && <option value="">{appItems ? '게임 없음' : '게임'}</option>}
+              {appId !== null && appFallback !== null && <option value={String(appId)}>{appFallback}</option>}
+              {appItems?.map((a) => (
+                <option key={a.app_id} value={String(a.app_id)}>
+                  {a.name}
+                </option>
+              ))}
+            </FilterSelect>
+          )}
         </div>
       </div>
 
       <div role="tabpanel" aria-label={tabMeta.label} className="flex flex-col gap-[22px]">
-        {!game && games.isError ? (
+        {q.tab === 'activity' ? (
+          <ActivityPanel q={activity} meId={me.data?.id} />
+        ) : q.tab === 'playtime' ? (
+          !appItems && apps.isError && appId === null ? (
+            <QueryError error={apps.error} onRetry={() => void apps.refetch()} />
+          ) : appDefault === null ? (
+            <EmptyState mark="H" title={PLAYTIME_NO_APPS_TEXT} description={<><Link href={routes.settings()}>설정</Link>에서 스팀 계정을 연동하면 순위에 올라요.</>} />
+          ) : appId === null ? (
+            <BoardSkeleton />
+          ) : (
+            <PlaytimePanel q={playtime} meId={me.data?.id} />
+          )
+        ) : !game && games.isError ? (
           <QueryError error={games.error} onRetry={() => void games.refetch()} />
         ) : !game ? (
           <BoardSkeleton />
@@ -221,7 +332,22 @@ export function RankingsView() {
   );
 }
 
-function FilterSelect({ label, value, disabled, onChange, children }: { label: string; value: string; disabled?: boolean; onChange: (v: string) => void; children: ReactNode }) {
+function FilterSelect({
+  label,
+  value,
+  disabled,
+  wide,
+  onChange,
+  children,
+}: {
+  label: string;
+  value: string;
+  disabled?: boolean;
+  /** 긴 글자(기간 날짜, 스팀 게임 이름) */
+  wide?: boolean;
+  onChange: (v: string) => void;
+  children: ReactNode;
+}) {
   return (
     <label className="flex h-[42px] items-center gap-2 rounded-xl border border-line bg-surface px-3.5 text-[13px] text-faint">
       {label}
@@ -229,7 +355,7 @@ function FilterSelect({ label, value, disabled, onChange, children }: { label: s
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        className="max-w-[150px] bg-transparent text-[13px] font-semibold text-text outline-none"
+        className={cn('bg-transparent text-[13px] font-semibold text-text outline-none', wide ? 'max-w-[230px]' : 'max-w-[150px]')}
       >
         {children}
       </select>
@@ -349,6 +475,61 @@ function EloPanel({ q, meId, onReset }: { q: PanelQuery<GetEloRankingResponse>; 
   return <BoardSkeleton />;
 }
 
+function ActivityPanel({ q, meId }: { q: PanelQuery<GetActivityRankingResponse>; meId: string | undefined }) {
+  if (q.data) {
+    const d = q.data;
+    const toRow = activityRow(d.period_days);
+    return (
+      <Board
+        rows={d.items.map(toRow)}
+        me={meRow(d.items, d.me, toRow)}
+        meId={meId}
+        mainHead="VOICE TIME"
+        extraHead="MAIN GAME"
+        refHead={{ label: 'SCRIMS', hint: ACTIVITY_SCRIMS_HINT }}
+        changeHint={activityChangeHint(d.period)}
+        rule={ACTIVITY_RULE_TEXT}
+        empty={activityEmptyText(d)}
+        emptyNote={
+          d.bot_connected ? (
+            '디스코드 음성 채널에 접속하면 순위가 쌓여요.'
+          ) : (
+            <>
+              봇이 연결되면 음성 채널 접속 시간이 쌓여요. <Link href={routes.settings()}>설정</Link>에서 디스코드 연동 상태를 확인할 수 있어요.
+            </>
+          )
+        }
+        emptyMark="VC"
+        q={q}
+      />
+    );
+  }
+  if (q.isError) return <QueryError error={q.error} onRetry={() => void q.refetch()} />;
+  return <BoardSkeleton />;
+}
+
+function PlaytimePanel({ q, meId }: { q: PanelQuery<GetPlaytimeRankingResponse>; meId: string | undefined }) {
+  if (q.data) {
+    const d = q.data;
+    return (
+      <Board
+        rows={d.items.map(playtimeRow)}
+        me={meRow(d.items, d.me, playtimeRow)}
+        meId={meId}
+        mainHead="TOTAL"
+        extraHead="LAST 2 WEEKS"
+        rule={PLAYTIME_RULE_TEXT}
+        empty={PLAYTIME_APP_EMPTY_TEXT}
+        emptyNote="스팀 프로필의 게임 세부 정보가 공개된 멤버만 집계돼요."
+        emptyMark="H"
+        q={q}
+      />
+    );
+  }
+  if (q.isError) return <QueryError error={q.error} onRetry={() => void q.refetch()} />;
+  return <BoardSkeleton />;
+}
+
 function meRow<T extends { user: { id: string } }>(items: readonly T[], me: T | null, toRow: (e: T) => RankRow): RankRow | null {
   const outside = meRowOutside(items, me);
   return outside ? toRow(outside) : null;
@@ -360,6 +541,8 @@ function Board({
   meId,
   mainHead,
   extraHead,
+  refHead,
+  changeHint,
   rule,
   empty,
   emptyNote,
@@ -372,6 +555,10 @@ function Board({
   meId: string | undefined;
   mainHead: string;
   extraHead: string;
+  /** 참고 열 머리(활동 SCRIMS). 없으면 열 없음 */
+  refHead?: RefHead;
+  /** +/− 기준 설명(활동: 「지난주 대비」). 표 머리 툴팁 + 규칙 줄 */
+  changeHint?: string;
   rule: string | null;
   empty: string;
   emptyNote: ReactNode;
@@ -387,10 +574,15 @@ function Board({
       ) : (
         <>
           {rows.length > 0 && <Podium rows={rows} meId={meId} />}
-          <RankTable rows={rows} me={me} meId={meId} mainHead={mainHead} extraHead={extraHead} />
+          <RankTable rows={rows} me={me} meId={meId} mainHead={mainHead} extraHead={extraHead} refHead={refHead} changeHint={changeHint} />
         </>
       )}
-      {rule && <span className="text-xs text-faint">{rule}</span>}
+      {rule && (
+        <span className="text-xs text-faint">
+          {rule}
+          {changeHint && ` · +/−는 ${changeHint}`}
+        </span>
+      )}
     </div>
   );
 }
@@ -420,7 +612,7 @@ function Podium({ rows, meId }: { rows: readonly RankRow[]; meId: string | undef
             <Link href={routes.member(r.user.id)} className="relative mt-1 max-w-full truncate text-[15px] font-bold text-text no-underline hover:text-text hover:underline md:text-[17px]">
               {r.user.nickname}
             </Link>
-            <span className="relative max-w-full text-[11px] leading-snug text-muted md:text-xs">{r.extraText}</span>
+            {r.extraText && <span className="relative max-w-full text-[11px] leading-snug text-muted md:text-xs">{r.extraText}</span>}
             <span className={cn('relative font-display text-[22px] font-bold leading-none md:text-[28px]', meta.text)}>{r.main}</span>
             {r.id === meId && <YouTag />}
           </div>
@@ -436,7 +628,29 @@ function YouTag() {
 
 const CHANGE_TONE = { up: 'bg-accent/10 text-accent-ink', down: 'bg-orange/12 text-orange-ink-2', none: 'text-faint' } as const;
 
-function RankTable({ rows, me, meId, mainHead, extraHead }: { rows: readonly RankRow[]; me: RankRow | null; meId: string | undefined; mainHead: string; extraHead: string }) {
+interface RefHead {
+  label: string;
+  /** 머리 툴팁(활동: 「결과가 승인된 내전 참가 수」) */
+  hint: string;
+}
+
+function RankTable({
+  rows,
+  me,
+  meId,
+  mainHead,
+  extraHead,
+  refHead,
+  changeHint,
+}: {
+  rows: readonly RankRow[];
+  me: RankRow | null;
+  meId: string | undefined;
+  mainHead: string;
+  extraHead: string;
+  refHead?: RefHead;
+  changeHint?: string;
+}) {
   return (
     <section aria-label="전체 순위" className="rounded-[20px] border border-line bg-surface p-2.5 shadow-[inset_0_1px_0_var(--hi)]">
       <div className="overflow-x-auto">
@@ -452,19 +666,25 @@ function RankTable({ rows, me, meId, mainHead, extraHead }: { rows: readonly Ran
               <th scope="col" className="hidden px-3.5 py-2 font-semibold sm:table-cell">
                 {extraHead}
               </th>
+              {refHead && (
+                <th scope="col" title={refHead.hint} className="hidden px-3.5 py-2 text-right font-semibold sm:table-cell">
+                  {refHead.label}
+                  <span className="sr-only"> ({refHead.hint})</span>
+                </th>
+              )}
               <th scope="col" className="px-2 py-2 text-right font-semibold sm:px-3.5">
                 {mainHead}
               </th>
-              <th scope="col" className="w-14 px-2 py-2 text-right font-semibold sm:w-[72px] sm:px-3.5">
-                +/−
+              <th scope="col" title={changeHint} className="w-14 px-2 py-2 text-right font-semibold sm:w-[72px] sm:px-3.5">
+                +/−{changeHint && <span className="sr-only"> ({changeHint})</span>}
               </th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
-              <Row key={r.id} r={r} mine={r.id === meId} />
+              <Row key={r.id} r={r} mine={r.id === meId} hasRef={!!refHead} />
             ))}
-            {me && <Row r={me} mine />}
+            {me && <Row r={me} mine hasRef={!!refHead} />}
           </tbody>
         </table>
       </div>
@@ -472,7 +692,7 @@ function RankTable({ rows, me, meId, mainHead, extraHead }: { rows: readonly Ran
   );
 }
 
-function Row({ r, mine }: { r: RankRow; mine: boolean }) {
+function Row({ r, mine, hasRef }: { r: RankRow; mine: boolean; hasRef: boolean }) {
   const change = rankChangeView(r.change);
   const bg = mine ? 'bg-accent/8' : 'bg-surface-2';
   return (
@@ -491,12 +711,21 @@ function Row({ r, mine }: { r: RankRow; mine: boolean }) {
               </Link>
               {mine && <YouTag />}
             </span>
-            <span className="truncate text-xs text-faint">{r.sub}</span>
-            <span className="truncate text-xs text-text-2 sm:hidden">{r.extraText}</span>
+            {r.subMobile !== undefined && r.subMobile !== r.sub ? (
+              <>
+                {/* 좁은 폭: 「… · 내전 3회」가 잘리지 않게 줄바꿈을 허용한다 */}
+                <span className="break-keep text-xs leading-snug text-faint sm:hidden">{r.subMobile}</span>
+                <span className="hidden truncate text-xs text-faint sm:inline">{r.sub}</span>
+              </>
+            ) : (
+              <span className="truncate text-xs text-faint">{r.sub}</span>
+            )}
+            {r.extraText && <span className="truncate text-xs text-text-2 sm:hidden">{r.extraText}</span>}
           </div>
         </div>
       </td>
       <td className={cn('hidden px-3.5 py-3 text-text-2 sm:table-cell', bg)}>{r.extra}</td>
+      {hasRef && <td className={cn('hidden whitespace-nowrap px-3.5 py-3 text-right tabular-nums text-text-2 sm:table-cell', bg)}>{r.ref ?? ''}</td>}
       <td className={cn('px-2 py-3 text-right font-display text-base font-bold sm:px-3.5', bg)}>{r.main}</td>
       <td className={cn('rounded-r-xl px-2 py-3 text-right sm:px-3.5', bg)}>
         <span aria-label={change.label} className={cn('whitespace-nowrap rounded-full px-2 py-[3px] font-display text-xs font-bold', CHANGE_TONE[change.tone])}>

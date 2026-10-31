@@ -61,6 +61,7 @@ import {
 import { z } from 'zod';
 import { MOCK_OTHER_MEMBER_ID } from './game-accounts';
 import { handleRankings, isRankingPath, mockProfileBadges as rankingProfileBadges, scenarioState, type MockRankingOptions } from './rankings';
+import { mockScrimJoins } from './community';
 import {
   MockS3Fields,
   activeResult,
@@ -121,7 +122,10 @@ const MockScrim = z.object({
 type MockScrim = z.infer<typeof MockScrim>;
 
 /**
- * 스팀 게임 목(D98). owner_count > 0 = 멤버 보유 게임(검색어 없을 때 목록), 나머지는 상점에만 있는 게임.
+ * 스팀 게임 목(D98, D234). owner_count = 「보유자」 수(대표·verified 스팀 계정, minutes_total > 0, 탈퇴 제외).
+ * owner_count > 0 = 멤버 보유 게임(검색어 없을 때 목록), 나머지는 상점에만 있는 게임.
+ * 플레이타임 목(community.ts mockPlaytimeOwners)이 이 owner_count로 순위 인원을 만든다 — 두 목의 출처가 같다.
+ * Left 4 Dead 2(550)는 0분 보유만 있어 보유자 0(목록 밖, 「이 게임 플레이 기록이 있는 멤버가 없어요」 확인용).
  * 검색어에 「상점오류」가 들어가면 상점 검색 실패(store_unavailable)를 흉내 낸다.
  */
 export const MOCK_STEAM_APPS: readonly SteamAppOption[] = [
@@ -136,7 +140,7 @@ export const MOCK_STEAM_APPS: readonly SteamAppOption[] = [
   { app_id: 548430, name: 'Deep Rock Galactic', owner_count: 2 },
   { app_id: 1426210, name: 'It Takes Two', owner_count: 2 },
   { app_id: 570, name: 'Dota 2', owner_count: 1 },
-  { app_id: 550, name: 'Left 4 Dead 2', owner_count: 1 },
+  { app_id: 550, name: 'Left 4 Dead 2', owner_count: 0 },
   { app_id: 1623730, name: 'Palworld', owner_count: 0 },
   { app_id: 728880, name: 'Overcooked! 2', owner_count: 0 },
   { app_id: 413150, name: 'Stardew Valley', owner_count: 0 },
@@ -144,6 +148,8 @@ export const MOCK_STEAM_APPS: readonly SteamAppOption[] = [
   { app_id: 2881650, name: 'Content Warning', owner_count: 0 },
   { app_id: 1172620, name: 'Sea of Thieves', owner_count: 0 },
 ];
+/** 멤버 보유 게임(GET /steam-apps q 없음, S5 플레이타임 대상) */
+const ownedSteamApps = () => MOCK_STEAM_APPS.filter((a) => a.owner_count > 0).slice(0, STEAM_APP_SEARCH_LIMIT);
 const steamApp = (id: number): SteamAppRef | null => {
   const a = MOCK_STEAM_APPS.find((x) => x.app_id === id);
   return a ? { app_id: a.app_id, name: a.name } : null;
@@ -165,7 +171,7 @@ const MockPlayer = z.object({
 type MockPlayer = z.infer<typeof MockPlayer>;
 
 /** 시드 형식 버전. 바뀌면 저장된 목 DB를 버리고 다시 만든다(S3 필드·시나리오 추가) */
-const SEED_VERSION = 7;
+const SEED_VERSION = 9;
 
 export const MockS2State = z.object({
   /** 시드를 만든 사용자 id. 다른 사용자로 로그인하면 다시 만든다 */
@@ -996,6 +1002,9 @@ export function handleS2(ctx: MockS2Context): Response | null {
       json,
       error,
       scenario: ctx.opts?.rankings?.scenario?.() ?? null,
+      bot: ctx.opts?.rankings?.bot?.() ?? 'live',
+      steamApps: ownedSteamApps(),
+      scrimJoins: mockScrimJoins(state),
     });
   }
 
@@ -1010,7 +1019,8 @@ export function handleS2(ctx: MockS2Context): Response | null {
     const parsed = SearchSteamAppsQuery.safeParse(Object.fromEntries(ctx.search.entries()));
     if (!parsed.success) return error('VALIDATION_FAILED', '검색어가 올바르지 않습니다.', { details: issues(parsed.error) });
     const q = parsed.data.q.toLowerCase();
-    const owned = MOCK_STEAM_APPS.filter((a) => a.owner_count > 0);
+    // S5: gcd-mock-rankings=empty면 멤버 보유 게임이 없다(플레이타임 「스팀 계정을 연동한 멤버가 아직 없어요」)
+    const owned = ctx.opts?.rankings?.scenario?.() === 'empty' ? [] : ownedSteamApps();
     let res: SearchSteamAppsResponse;
     if (q === '') res = { items: owned.slice(0, STEAM_APP_SEARCH_LIMIT), store_unavailable: false };
     else {

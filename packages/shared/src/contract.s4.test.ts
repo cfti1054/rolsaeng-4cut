@@ -55,8 +55,8 @@ describe('S4 경로·오류·상수', () => {
     expect(ApiPath.rankingsElo).toBe('/rankings/elo');
     expect(ApiPath.dashboardSummary).toBe('/dashboard/summary');
   });
-  it('S4는 오류 코드를 추가하지 않는다', () => {
-    expect(ErrorCode.options).toHaveLength(43);
+  it('S4는 오류 코드를 추가하지 않는다(S5에서 늘어난다, contract.s5.test.ts가 개수를 본다)', () => {
+    expect(ErrorCode.options.length).toBeGreaterThanOrEqual(43);
   });
   it('티어 랭킹 게임 = 랭크 큐가 있는 게임', () => {
     expect([...TierRankingGame.options].sort()).toEqual(Object.keys(RANKED_QUEUE_BY_GAME).sort());
@@ -145,6 +145,12 @@ describe('GET /dashboard/summary', () => {
     next_scrim: null,
     recruiting: [],
     stats: { recruiting_scrims: 3, scrims_this_week: 11, week_start: '2026-10-26T00:00:00.000+09:00' },
+    // S5 필수 블록(계약 S5 8절)
+    community: {
+      voice: { state: 'not_connected', member_count: null, captured_at: null },
+      active_members: { state: 'not_connected', count: null },
+      now_playing: null,
+    },
     top_rankers: { game: 'lol', season, is_final: false, items: [eloRow], synced_at: T, stale: false },
     top_rankers_state: 'ready',
     recent_results: [
@@ -183,7 +189,7 @@ describe('GET /dashboard/summary', () => {
     });
     expect(r.season).toBeNull();
   });
-  it('봇 데이터 필드는 없다(S5)', () => {
+  it('stats의 모르는 필드는 버린다(S5 봇 데이터는 stats가 아니라 community, D218)', () => {
     const r = GetDashboardSummaryResponse.parse({ ...base, stats: { ...base.stats, voice_online: 23 } }) as unknown as {
       stats: Record<string, unknown>;
     };
@@ -294,7 +300,7 @@ describe('S4 후속 변경 2: 시작 점수·밸런스 비중·라인 추천(20�
     expect(GetMyPositionSuggestionsResponse.safeParse({ ...ok, positions: ['mid', 'top', 'bot'] }).success).toBe(false);
     expect(GetMyPositionSuggestionsResponse.safeParse({ ...ok, sample_size: 21 }).success).toBe(false);
   });
-  it('S4 후속 변경 2도 오류 코드를 추가하지 않는다', () => {
-    expect(ErrorCode.options).toHaveLength(43);
+  it('S4 후속 변경 2도 오류 코드를 추가하지 않는다(S5 개수는 contract.s5.test.ts)', () => {
+    expect(ErrorCode.options.length).toBeGreaterThanOrEqual(43);
   });
 });

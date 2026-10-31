@@ -58,6 +58,9 @@ export const ERROR_MESSAGES: Record<AppErrorCode, string> = {
   SCRIM_TEAMS_REQUIRED: '결과를 입력하기 전에 블루·레드 두 팀을 먼저 구성해 주세요.',
   SCRIM_RESULT_NOT_PENDING: '결과가 이미 처리됐거나 바뀌었어요. 화면을 새로 고쳤어요.',
   SCRIM_RESULT_SELF_REVIEW: '내가 제출한 결과는 승인하거나 반려할 수 없어요. 다른 운영진이 처리해야 해요.',
+  // S5. 봇 전용 코드(API_KEY_*)는 웹이 받지 않지만 표를 채운다
+  API_KEY_INVALID: '봇 인증에 실패했어요.',
+  API_KEY_SCOPE_MISSING: '봇 권한이 부족해요.',
   NETWORK_ERROR: '서버에 연결하지 못했어요. 네트워크를 확인하고 다시 시도해 주세요.',
   INVALID_RESPONSE: '서버 응답 형식이 예상과 달라요. 운영진에게 알려 주세요.',
 };

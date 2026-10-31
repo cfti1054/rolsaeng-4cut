@@ -38,13 +38,18 @@ export type DisputeStatus = z.infer<typeof DisputeStatus>;
 export const ActivityType = z.enum(['voice', 'chat', 'play']);
 export type ActivityType = z.infer<typeof ActivityType>;
 
-/** api_keys.scopes 값 — 봇 API(S5)에서 엔드포인트별로 검사 */
+/**
+ * api_keys.scopes 값 — 봇 API(S5)에서 엔드포인트별로 검사(BOT_ENDPOINT_SCOPE, bot.ts).
+ * S5에서 bot:members(서버 입장·퇴장), bot:presence(음성 접속·지금 플레이 중)를 추가했다. 컬럼이 text[]라 마이그레이션은 없다.
+ * bot:link는 연동 코드 기능 제거로 없앴다(D237, 봇 엔드포인트 6개 = scope 6개).
+ */
 export const ApiKeyScope = z.enum([
-  'bot:link',
   'bot:activity',
   'bot:users:read',
   'bot:scrims:read',
   'bot:rankings:read',
+  'bot:members',
+  'bot:presence',
 ]);
 export type ApiKeyScope = z.infer<typeof ApiKeyScope>;
 

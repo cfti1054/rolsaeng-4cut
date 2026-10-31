@@ -24,9 +24,10 @@ const g = (code: GameView['code'], sort_order: number) => ({ code, sort_order })
 
 describe('랭킹 URL 쿼리', () => {
   it('기본 탭은 ELO, 잘못된 값은 무시', () => {
-    expect(parseRankingsQuery(q(''))).toEqual({ tab: 'elo', game: null, season: null });
-    expect(parseRankingsQuery(q('tab=activity&game=nope&season=x'))).toEqual({ tab: 'elo', game: null, season: null });
-    expect(parseRankingsQuery(q(`tab=tier&game=tft&season=${SEASON}`))).toEqual({ tab: 'tier', game: 'tft', season: SEASON });
+    const none = { period: null, appId: null };
+    expect(parseRankingsQuery(q(''))).toEqual({ tab: 'elo', game: null, season: null, ...none });
+    expect(parseRankingsQuery(q('tab=nope&game=nope&season=x'))).toEqual({ tab: 'elo', game: null, season: null, ...none });
+    expect(parseRankingsQuery(q(`tab=tier&game=tft&season=${SEASON}`))).toEqual({ tab: 'tier', game: 'tft', season: SEASON, ...none });
   });
   it('routes.rankings: 기본 탭은 주소에 쓰지 않는다', () => {
     expect(routes.rankings()).toBe('/rankings');

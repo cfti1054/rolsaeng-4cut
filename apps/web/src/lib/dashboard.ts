@@ -1,5 +1,5 @@
-import { DASHBOARD_TOP_RANKERS_LIMIT, RATING_START_ELO, type DashboardMe, type DashboardRecentResult, type DashboardSeason, type DashboardTopRankers, type ProfileBadge, type ScrimSummary } from '@gcd/shared';
-import { formatYearMonth } from './format';
+import { DASHBOARD_TOP_RANKERS_LIMIT, RATING_START_ELO, type DashboardCommunity, type DashboardMe, type DashboardVoice, type DashboardRecentResult, type DashboardSeason, type DashboardTopRankers, type ProfileBadge, type ScrimSummary } from '@gcd/shared';
+import { formatClock, formatYearMonth } from './format';
 import { TEAM_LABEL } from './scrim-results';
 
 /**
@@ -134,4 +134,35 @@ export function badgeView(b: ProfileBadge): BadgeView {
     title: b.season ? `${b.season.name} · ${b.name}` : b.name,
     when: formatYearMonth(new Date(Date.parse(b.earned_at) - 1).toISOString()),
   };
+}
+
+// -----------------------------------------------------------------------------
+// S5 홈 community(계약 S5 10절)
+// -----------------------------------------------------------------------------
+
+export type HomeStatKey = 'voice' | 'recruiting' | 'week' | 'active';
+
+/**
+ * 통계 줄 카드. 순서는 목업(음성 · 모집 중 · 이번 주 내전 · 활동 멤버), 봇 자료가 없는 칸(not_connected)은 뺀다.
+ * mobile: 모바일 2칸. 음성이 live/stale이면 음성 + 모집 중, 아니면 모집 중 + 이번 주 내전(MobileHome).
+ */
+export function homeStatCards(c: Pick<DashboardCommunity, 'voice' | 'active_members'>): { key: HomeStatKey; mobile: boolean }[] {
+  const voice = c.voice.state !== 'not_connected';
+  const keys: HomeStatKey[] = [...(voice ? (['voice'] as const) : []), 'recruiting', 'week', ...(c.active_members.state === 'ready' ? (['active'] as const) : [])];
+  const mobile = new Set<HomeStatKey>(voice ? ['voice', 'recruiting'] : ['recruiting', 'week']);
+  return keys.map((key) => ({ key, mobile: mobile.has(key) }));
+}
+
+/** 데스크톱 통계 줄 열 수(2–4). 4칸은 넓은 화면에서만 한 줄 */
+export const HOME_STAT_GRID: Record<number, string> = {
+  2: 'md:grid-cols-2',
+  3: 'md:grid-cols-3',
+  4: 'md:grid-cols-2 xl:grid-cols-4',
+};
+
+/** 음성 카드 값. live 「23명」 + LIVE, stale 「—」 + 「마지막 21:40」(지난 숫자를 지금처럼 보이지 않는다). not_connected는 카드 없음 → null */
+export function voiceStat(v: DashboardVoice): { value: string; unit: string | null; live: boolean; note: string | null } | null {
+  if (v.state === 'live') return { value: String(v.member_count), unit: '명', live: true, note: null };
+  if (v.state === 'stale') return { value: '—', unit: null, live: false, note: `마지막 ${formatClock(v.captured_at)}` };
+  return null;
 }

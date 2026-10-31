@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { SyncQuota } from '@gcd/shared';
-import { buildSyncQuota, formatKstMidnight, kstDayWindow, kstWeekWindow } from './index';
+import {
+  activityPeriodWindow,
+  buildSyncQuota,
+  formatKstMidnight,
+  kstDateKey,
+  kstDayWindow,
+  kstMonthWindow,
+  kstWeekWindow,
+} from './index';
 
 const iso = (s: string) => new Date(s);
 
@@ -176,5 +184,97 @@ describe('buildSyncQuota', () => {
     expect(() => buildSyncQuota(1.5, 5, now)).toThrow(RangeError);
     expect(() => buildSyncQuota(0, -5, now)).toThrow(RangeError);
     expect(() => buildSyncQuota(0, Number.NaN, now)).toThrow(RangeError);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// S5 9-1: kstMonthWindow, activityPeriodWindow, kstDateKey
+// -----------------------------------------------------------------------------
+
+describe('kstMonthWindow (S5)', () => {
+  it('1월 31일 23:59:59.999 KST는 1월, 2월 1일 00:00 KST(= UTC 1월 31일 15:00)는 2월', () => {
+    const jan = kstMonthWindow(iso('2027-01-31T23:59:59.999+09:00'));
+    expect(jan.start.toISOString()).toBe('2026-12-31T15:00:00.000Z');
+    expect(jan.end.toISOString()).toBe('2027-01-31T15:00:00.000Z');
+    const feb = kstMonthWindow(iso('2027-01-31T15:00:00.000Z'));
+    expect(feb.start.toISOString()).toBe('2027-01-31T15:00:00.000Z');
+    expect(feb.end.toISOString()).toBe('2027-02-28T15:00:00.000Z');
+    // UTC 1월 31일 14:59:59.999 = KST 1월 31일 23:59:59.999 → 아직 1월
+    expect(kstMonthWindow(iso('2027-01-31T14:59:59.999Z')).start.toISOString()).toBe('2026-12-31T15:00:00.000Z');
+  });
+
+  it('12월 → 다음 해 1월 1일 끝', () => {
+    const w = kstMonthWindow(iso('2026-12-15T12:00:00+09:00'));
+    expect(w.start.toISOString()).toBe('2026-11-30T15:00:00.000Z');
+    expect(w.end.toISOString()).toBe('2026-12-31T15:00:00.000Z');
+  });
+
+  it('start ≤ now < end, 입력을 바꾸지 않는다', () => {
+    const now = iso('2026-10-31T21:00:00+09:00');
+    const before = now.getTime();
+    const w = kstMonthWindow(now);
+    expect(w.start.getTime()).toBeLessThanOrEqual(now.getTime());
+    expect(now.getTime()).toBeLessThan(w.end.getTime());
+    expect(now.getTime()).toBe(before);
+  });
+
+  it('잘못된 Date → RangeError', () => {
+    expect(() => kstMonthWindow(new Date(Number.NaN))).toThrow(RangeError);
+  });
+});
+
+describe('activityPeriodWindow (S5)', () => {
+  it('week = kstWeekWindow, days 7', () => {
+    const now = iso('2026-10-28T12:00:00+09:00');
+    const w = activityPeriodWindow('week', now);
+    expect(w).toEqual({ ...kstWeekWindow(now), days: 7 });
+    expect(w.start.toISOString()).toBe('2026-10-25T15:00:00.000Z'); // 월요일 10-26 00:00 KST
+  });
+
+  it('주 경계: 일요일 23:59:59.999 KST는 지난주, 월요일 00:00 KST는 새 주', () => {
+    const sun = activityPeriodWindow('week', iso('2026-11-01T23:59:59.999+09:00'));
+    expect(sun.start.toISOString()).toBe('2026-10-25T15:00:00.000Z');
+    expect(sun.end.toISOString()).toBe('2026-11-01T15:00:00.000Z');
+    const mon = activityPeriodWindow('week', iso('2026-11-02T00:00:00.000+09:00'));
+    expect(mon.start.toISOString()).toBe('2026-11-01T15:00:00.000Z');
+    expect(mon.start.getTime()).toBe(sun.end.getTime());
+  });
+
+  it('month days = 그 달 날짜 수(31, 30, 평년 2월 28, 윤년 2월 29)', () => {
+    expect(activityPeriodWindow('month', iso('2026-10-31T21:00:00+09:00')).days).toBe(31);
+    expect(activityPeriodWindow('month', iso('2026-11-01T00:00:00+09:00')).days).toBe(30);
+    expect(activityPeriodWindow('month', iso('2027-02-10T00:00:00+09:00')).days).toBe(28);
+    const leap = activityPeriodWindow('month', iso('2028-02-29T23:59:59.999+09:00'));
+    expect(leap.days).toBe(29);
+    expect(leap.start.toISOString()).toBe('2028-01-31T15:00:00.000Z');
+    expect(leap.end.toISOString()).toBe('2028-02-29T15:00:00.000Z');
+  });
+
+  it('month = kstMonthWindow', () => {
+    const now = iso('2027-02-01T00:00:00+09:00');
+    const w = activityPeriodWindow('month', now);
+    expect({ start: w.start, end: w.end }).toEqual(kstMonthWindow(now));
+  });
+
+  it('모르는 period → RangeError', () => {
+    expect(() => activityPeriodWindow('year' as never, iso('2026-10-31T00:00:00Z'))).toThrow(RangeError);
+  });
+});
+
+describe('kstDateKey (S5)', () => {
+  it('KST 날짜로 표기(UTC 15:00 경계)', () => {
+    expect(kstDateKey(iso('2026-10-27T14:59:59.999Z'))).toBe('2026-10-27');
+    expect(kstDateKey(iso('2026-10-27T15:00:00.000Z'))).toBe('2026-10-28');
+    expect(kstDateKey(iso('2026-10-27T20:10:00+09:00'))).toBe('2026-10-27');
+  });
+
+  it('연말·윤일', () => {
+    expect(kstDateKey(iso('2026-12-31T23:59:59.999+09:00'))).toBe('2026-12-31');
+    expect(kstDateKey(iso('2027-01-01T00:00:00+09:00'))).toBe('2027-01-01');
+    expect(kstDateKey(iso('2028-02-29T00:00:00+09:00'))).toBe('2028-02-29');
+  });
+
+  it('잘못된 Date → RangeError', () => {
+    expect(() => kstDateKey(new Date('x'))).toThrow(RangeError);
   });
 });

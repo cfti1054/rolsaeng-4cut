@@ -3,7 +3,7 @@
 // 명세: 게임 커뮤니티 대시보드 개발 문서.md 5장 + _workspace/00_input/slice.md 결정 사항
 // 계약: _workspace/S0/01_architect_contract.md 6절(S0 전체), _workspace/S1/01_architect_contract.md 3절(S1 변경),
 //       _workspace/S2/01_architect_contract.md 3절(S2 변경), _workspace/S3/01_architect_contract.md 3절(S3 변경),
-//       _workspace/01_architect_contract.md 3절(S4 변경)
+//       _workspace/S4/01_architect_contract.md 3절(S4 변경), _workspace/01_architect_contract.md 3절(S5 변경)
 //
 // 규칙
 // - 모든 테이블: id uuid(@default(uuid())), created_at.
@@ -140,6 +140,11 @@ model User {
   notifyResult           Boolean   @default(true) @map("notify_result")
   notifyWaitlist         Boolean   @default(true) @map("notify_waitlist")
   notifyPatch            Boolean   @default(false) @map("notify_patch")
+  /// S5. 봇이 서버 퇴장을 알린 시각(POST /bot/member-events leave). null이면 서버 멤버. 순위 대상에서 빠진다(rankableUserWhere, S4 Q4)
+  /// 재입장 이벤트 또는 길드 검사를 통과한 로그인이 null로 되돌린다(S5 계약 6-6)
+  leftAt                 DateTime? @map("left_at") @db.Timestamptz(3)
+  /// S5. 마지막으로 반영한 입장·퇴장 판단 시각(봇 occurred_at 또는 길드 검사 로그인 시각). 이보다 이른 이벤트는 무시(순서 뒤바뀜 방지)
+  guildMembershipAt      DateTime? @map("guild_membership_at") @db.Timestamptz(3)
   createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -633,6 +638,7 @@ model ScrimResultDispute {
 // -----------------------------------------------------------------------------
 
 /// 봇이 보내는 음성·채팅·플레이 활동. idempotency_key 유일 = 재전송 중복 저장 방지
+/// S5: chat은 duration_sec 0(활동 일수·활동 멤버에만 쓴다). 랭킹 시간은 voice만(D232, play는 저장만 한다). 기간 귀속은 started_at(S5 계약 7-1)
 model ActivityLog {
   id             String       @id @default(uuid()) @db.Uuid
   userId         String       @map("user_id") @db.Uuid
@@ -641,10 +647,13 @@ model ActivityLog {
   startedAt      DateTime     @map("started_at") @db.Timestamptz(3)
   durationSec    Int          @default(0) @map("duration_sec")
   idempotencyKey String       @unique @map("idempotency_key")
+  /// S5. 이 행을 보낸 봇 키(감사용). 키를 지워도 활동은 남는다
+  apiKeyId       String?      @map("api_key_id") @db.Uuid
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  game Game? @relation(fields: [gameId], references: [id])
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game   Game?   @relation(fields: [gameId], references: [id])
+  apiKey ApiKey? @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
 
   @@index([userId, startedAt])
   @@index([startedAt])
@@ -691,6 +700,7 @@ model UserBadge {
 // -----------------------------------------------------------------------------
 
 /// 봇용 API 키. 원문은 저장하지 않고 해시만(문서 5장). key_prefix는 목록 식별용 앞 8자(비밀 아님)
+/// S5: 원문 `gcd_` + base64url 43자, key_hash = SHA-256(원문) hex, key_prefix = `gcd_` 뒤 8자. 발급은 CLI(apps/api/scripts/api-key.ts)
 model ApiKey {
   id          String    @id @default(uuid()) @db.Uuid
   name        String
@@ -703,9 +713,30 @@ model ApiKey {
   createdById String?   @map("created_by") @db.Uuid
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy    User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  activityLogs ActivityLog[]
+  presences    BotPresence[]
 
   @@map("api_keys")
+}
+
+/// S5. 봇이 보낸 마지막 접속 현황(PUT /bot/presence). 홈 「음성 채널 접속」「지금 플레이 중」(S5 계약 6-7, 8절)
+/// source당 1행을 덮어쓴다. 지금은 'default' 하나(디스코드 서버 1개). captured_at이 더 새로울 때만 덮는다
+model BotPresence {
+  id               String   @id @default(uuid()) @db.Uuid
+  source           String   @unique
+  /// 봇이 집계한 시각. 오래되면(shared BOT_PRESENCE_STALE_AFTER_SEC) 홈은 숫자를 숨긴다
+  capturedAt       DateTime @map("captured_at") @db.Timestamptz(3)
+  voiceMemberCount Int      @map("voice_member_count")
+  /// shared BotPresencePlayingStored
+  playing          Json     @default("[]")
+  apiKeyId         String?  @map("api_key_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  apiKey ApiKey? @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+
+  @@map("bot_presence")
 }
 
 /// 공지(slice.md 결정, 목업 Admin 「공지 작성」)

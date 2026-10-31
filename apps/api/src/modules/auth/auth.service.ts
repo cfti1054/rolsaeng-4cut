@@ -247,16 +247,24 @@ export class AuthService {
       lastLoginAt: now,
       ...(guildChecked ? { discordGuildVerifiedAt: now } : {}),
     };
+    // S5 6-6: 길드 검사를 실제로 통과한 로그인은 「지금 서버 멤버」의 가장 확실한 증거 → 퇴장 기록을 지운다.
+    // 저장된 판단 시각이 now보다 뒤면(시계 차이) 그대로 둔다. 검사를 안 했으면(DISCORD_GUILD_ID 없음) 건드리지 않는다.
+    const membership = (existing: Pick<User, 'guildMembershipAt'> | null) =>
+      guildChecked && !(existing?.guildMembershipAt && existing.guildMembershipAt.getTime() > now.getTime())
+        ? { leftAt: null, guildMembershipAt: now }
+        : {};
     return this.upsertUser({
       discordId: du.id,
       // 기존: 닉네임은 덮어쓰지 않는다. 승격만 하고 강등하지 않는다. 이메일은 인증된 경우만 갱신.
-      update: {
+      update: (existing) => ({
         ...common,
+        ...membership(existing),
         ...(email !== undefined ? { email } : {}),
         ...(isAdmin ? { role: 'admin' as UserRole } : {}),
-      },
+      }),
       create: (nickname) => ({
         ...common,
+        ...membership(null),
         discordId: du.id,
         nickname,
         email: email ?? null,
@@ -273,7 +281,7 @@ export class AuthService {
    */
   private async upsertUser(args: {
     discordId: string;
-    update: Prisma.UserUpdateInput;
+    update: Prisma.UserUpdateInput | ((existing: User) => Prisma.UserUpdateInput);
     create: (nickname: string) => Prisma.UserCreateInput;
     nicknameCandidates: Array<string | null | undefined>;
     nicknameFallback: string;
@@ -281,7 +289,8 @@ export class AuthService {
     for (let attempt = 0; attempt <= NICKNAME_CREATE_RETRIES; attempt += 1) {
       const existing = await this.prisma.user.findUnique({ where: { discordId: args.discordId } });
       if (existing) {
-        return this.prisma.user.update({ where: { id: existing.id }, data: args.update });
+        const data = typeof args.update === 'function' ? args.update(existing) : args.update;
+        return this.prisma.user.update({ where: { id: existing.id }, data });
       }
       const nickname = await deriveDefaultNickname({
         candidates: args.nicknameCandidates,

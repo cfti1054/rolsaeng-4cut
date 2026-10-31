@@ -218,3 +218,78 @@
 **배포:** api·web 같은 커밋(D200). 마이그레이션 없음.
 
 **다음:** Docker에서 DB e2e 후 S5 봇 API, 활동·플레이타임 랭킹, 스팀 플레이타임. S5에 Q4 `users.left_at` 포함.
+
+## S5 봇 API, 활동·플레이타임 랭킹, 스팀 플레이타임, 디스코드 연동 — 2026-10-31 — 판정: pass (DB e2e·실서버·실제 디스코드/스팀 미확인)
+
+**구현:** 계약 `_workspace/01_architect_contract.md`(D202–D231, 오류 코드 6개 추가로 49개, 봇 scope 2개 추가). 엔드포인트 11개: 웹 4(`GET /rankings/activity`, `GET /rankings/playtime`, `GET /me/discord-link`, `POST /me/discord-link/code`), 봇 7(문서 6장 5개 + `POST /bot/member-events`, `PUT /bot/presence`). `X-API-Key` 가드(해시만 보관, scope, `last_used_at` 60초 간격). 연동 코드 15분·사용자당 1개. 미연동 이벤트는 저장 안 함(`unlinked`). 활동 랭킹 = voice+play 합계(chat은 0초, 활동 일수에만). 활동·플레이타임은 기존 `ranking_caches` 5분 캐시 재사용. `users.left_at`(탈퇴 멤버를 순위·뱃지에서 제외, 로그인 시 복구, 퇴장 시 리프레시 토큰 폐기). 홈 요약에 필수 블록 `community`(음성·활동 멤버·지금 플레이 중). core 함수 13개(`activity.ts`, `time.ts`). API 키 CLI `apps/api/scripts/api-key.ts`(create·list·revoke). 스팀 05:00 KST 배치는 코드 변경 없이 fixture 테스트만 추가. 마이그레이션 `20261031120000_s5`. web: `/rankings` 활동·플레이타임 탭, 설정 디스코드 연동 5상태, 홈 community 카드, 목 시나리오 `gcd-mock-bot`·`gcd-mock-discord`.
+
+**리더 직접 실행:** `-r typecheck` 4개 Done / shared 138·core 415·web 303·api 588 passed, 48 skipped(DB e2e) / `-r build` 4개 Done. 임시 vitest 설정(패키지 안, 실행 후 삭제), Node 20.11. `apps/web/.next`에 " 2" 중복 파일이 생겨 web typecheck가 깨져서 `.next`(gitignore 대상)를 지우고 다시 만듦.
+
+**QA:** core pass(minor 2) / backend pass(minor 6) / web pass(minor 3 + 범위 밖 1). 보고서 `_workspace/03_qa-verifier_s5_{core,backend,web}.md`. 중간에 사용량 한도로 backend·web QA가 한 번 멈췄고 한도 해제 후 이어서 완료.
+
+**결함 처리:** core `presenceState` TOO_OLD 상수 출처(`BOT_PRESENCE_STALE_AFTER_SEC`) 수정. API 키 `last_used_at` 60초 경계(`lt` → `lte`) 수정. web minor 3건(409 뒤 오류 문구, `/steam-apps` 실패·로딩 중 플레이타임 탭, 모바일 「—」 줄) frontend 수정. 수정 뒤 QA 재검증은 하지 않고 리더가 테스트·빌드로 확인.
+
+**남은 결함 (수정 안 함):**
+- backend minor: 로그인 복구가 조건 없이 update해 밀리초 창에서 늦은 퇴장을 덮을 수 있음. scope 메타 없는 핸들러 403 경로 테스트 없음. 「봇 연결」 판정이 `ranking-calculator.service.ts`와 `dashboard.service.ts`에 중복.
+- core minor: `nowPlayingItems`에서 인원수·이름이 같은 행의 순서가 입력 순서에 의존(3단계 정렬 키는 architect 결정 필요).
+- 계약 쪽: `/steam-apps` 기본 게임이 순위가 빈 게임일 수 있음(`steam_playtime` 전체를 세지만 랭킹은 대표·verified·0분·탈퇴를 뺌). 보유자 0인 app_id는 캐시가 없어 요청마다 SQL 1회(D217 「5분에 최대 1번」과 어긋남).
+- 범위 밖 기존 결함: `['me', …]` 쿼리 키 3개가 사용자 전환 때 지워지지 않음(`game-accounts.ts:36`, `scrims.ts:59–60`).
+
+**미실행·미확인:** DB e2e 48건(S5 신규 6건 포함), `migrate deploy`, 실제 SQL(`AT TIME ZONE`, `ON CONFLICT`, advisory lock, 집계 `SUM`), 잠금 순서 동시 실행, API 키 CLI의 DB 쓰기, 실제 디스코드 봇·스팀 키 연동(키 필요), 실제 docker build, 실서버 브라우저 연결. web 브라우저 확인은 목 모드뿐.
+
+**명세 문서와 어긋난 부분(문서 갱신 필요):** 문서에 없는 `POST /bot/member-events`, `PUT /bot/presence`, `bot_presence` 표, `discord_link_codes` 표, `users.left_at`·`guild_membership_at`, `activity_logs.api_key_id`. 계약 5-4 잠금 순서와 2절 NOT_FOUND 행 문구는 구현(발급·연결 모두 advisory lock 먼저)에 맞춰 architect가 고쳐야 함.
+
+**리더 결정·기본값:** 확인 필요 Q1–Q13 전부 architect 추천안으로 구현. 주 게임 이름은 목업의 짧은 이름(「롤 협곡 · 롤체」).
+
+**배포:** api·web 같은 커밋(홈 요약 `community`가 필수 필드). 마이그레이션 있음(`migrate deploy`). 봇 키는 `pnpm --filter api api-key create`로 발급(시드 아님). 새 환경 변수 없음.
+
+**확인 필요(사용자):** Q1 연동 코드는 `discord_id`가 없거나 개발용(`dev-`) 회원만 사용 가능, Q2 만료 15분(목업은 10분), Q3 활동 시간 voice+play(목업은 음성만), Q7 문서에 없는 엔드포인트·표 추가, Q10 스팀이 비공개로 바뀌어도 마지막 성공값으로 순위에 남음. 위 계약 쪽 결함 2건을 S5에서 고칠지 여부.
+
+**다음:** S6 관리자 도구(API 키 관리 화면 포함), 패치노트·이벤트. 그 전에 Docker 환경에서 DB e2e와 `migrate deploy` 검증 권장.
+
+## S5 수정(사용자 결정 + 계약 결함) — 2026-10-31 — 판정: pass (DB e2e·실서버·실제 디스코드/스팀 미확인)
+
+**작업 위치 변경:** 저장소가 iCloud 동기화 폴더에서 파일을 비워(dataless) git·typecheck가 깨졌다. iCloud 밖 새 clone(`~/Documents/GitHub/rolsaeng-4cut`)으로 변경분 101건(수정 53, 새 파일 37, 삭제 11)을 옮기고 `pnpm install` 후 이어서 작업했다. 이전 iCloud 폴더는 그대로 두었다.
+
+**사용자 결정:** (1) 활동 랭킹에서 play 제거(음성만). play 이벤트는 계속 받아 저장하되 랭킹에 쓰지 않는다. (2) 디스코드 연동 코드 기능 제거: 로그인이 디스코드라 가입 시점에 자동 연동. (3) 활동 랭킹 정렬은 음성 시간, 내전 참여 횟수는 참고 열(`scrim_count`). (4) 계약 결함은 S5에서 바로 수정.
+
+**구현(D232–D239):** 
+- 활동 랭킹 voice만(`ACTIVITY_RANKED_TYPES=['voice']`, `play_sec` 제거, `total_sec = voice_sec`), `active_days`는 모든 type. 
+- 연동 코드 제거: `POST /me/discord-link/code`, `GET /me/discord-link`(→ 기존 `GET /me`), `POST /bot/link`, `discord_link_codes` 표, 오류 코드 4개, `modules/discord-link/`. 엔드포인트 11 → 8(웹 2 + 봇 6), 오류 코드 추가 6 → 2(전체 45), scope 7 → 6. 설정 화면은 「연동됨 / 미연동」 두 상태. 
+- `scrim_count`: 같은 KST 기간에 시작한 내전 중 참가 확정(joined) + 결과 approved + 취소 아님, 기간 기준 `COALESCE(started_at, scheduled_at)`. 정렬·`total_sec`에 영향 없음, 5분 캐시 payload에 포함. 화면 SCRIMS 열, 모바일 보조 줄, 봇 detail 「· 내전 N회」. 
+- 플레이타임 보유자 정의 하나(대표 verified 스팀 계정, `minutes_total>0`, 탈퇴 제외)를 랭킹 행·미리 갱신 상위 50·`/steam-apps`가 함께 쓴다(`playtime-holders.ts`). 웹 기본 게임 `pickDefaultPlaytimeAppId`. 
+- 보유자 0명 app도 빈 결과를 캐시에 저장(`synced_at` non-null). 
+- 마이그레이션 `20261031120000_s5`를 다시 만듦(`discord_link_codes` 없음, DROP 없음, migrate diff와 일치). 이전 버전을 로컬 DB에 적용한 개발자는 reset 필요.
+
+**리더 직접 실행(새 clone):** `-r typecheck` 4개 Done / shared 134·core 416·web 300·api 582 passed / 47 skipped(DB e2e) / `-r build` 4개 Done. 임시 vitest 설정(패키지 안, 실행 후 삭제), Node 20.11.
+
+**QA:** `_workspace/03_qa-verifier_s5_r2.md` pass(blocker·major 0, minor 4). 연동 코드 잔재, 엔드포인트 8개 일대일, 음성만 집계, `scrim_count`·보유자 SQL 눈 점검, 웹 표·모바일 보조 줄, 마이그레이션 diff 재확인.
+
+**결함 처리:** minor 3건(낡은 주석 `voice + play`, 주석의 r1→r2 표기 2곳, 계약 6-1의 `lt`→`lte`) 리더 수정. 설정 미연동 상태의 머리 설명은 「음성 접속 시간이 활동 랭킹에 쌓이고…」 그대로 둠: 같은 안내(「디스코드로 로그인하면 자동으로 연동돼요.」)가 본문 안내 상자에 있어서 중복을 피한 것이며, 계약 10절 문구와 다르다.
+
+**남은 결함(이번 범위 밖, 수정 안 함):**
+- backend: 로그인 `guildMembershipAt` 갱신이 원자적이지 않음, scope 메타데이터 없는 핸들러 거부 테스트 없음, 「봇 연결」 판정이 두 곳에 중복
+- web: 사용자 전환 때 `['me', …]` 쿼리 3개가 지워지지 않음(`game-accounts.ts`, `scrims.ts`)
+- core: `nowPlayingItems`에서 인원수·이름이 같은 행의 순서가 입력 순서에 의존
+
+**미실행·미확인:** DB e2e 47건(S5 신규 포함), `migrate deploy`, 새 원시 SQL(`ARRAY_AGG … FILTER`, `ILIKE`, `scrim_count` 집계, advisory lock), API 키 CLI의 DB 쓰기, 실제 디스코드 봇·스팀 키 연동(키 필요), 실제 docker build, 실서버 브라우저 연결. 브라우저 확인은 목 모드뿐.
+
+**명세 문서 갱신 필요:** `POST /bot/member-events`, `PUT /bot/presence`, `bot_presence` 표, `users.left_at`·`guild_membership_at`, `activity_logs.api_key_id`가 문서에 없다. 문서 127·151줄의 `/bot/link`와 일회용 연동 코드 흐름은 제거됨(디스코드 로그인 시 자동 연동).
+
+**배포:** api·web 같은 커밋(홈 요약 `community` 필수). 마이그레이션 있음. 봇 키는 `pnpm --filter api api-key create`로 발급. 새 환경 변수 없음.
+
+**확인 필요(사용자):** Q10 스팀이 비공개로 바뀌어도 마지막 성공값으로 순위에 남음, Q14 홈 `active_members`가 play까지 셈, Q15 `active_days`에 play·chat만 한 날도 포함, Q16 내전 작성 화면의 스팀 게임 목록이 보유자 기준으로 좁아짐, Q17 봇 detail 내전 수에 친선 내전도 포함.
+
+**다음:** Docker 환경에서 DB e2e와 `migrate deploy` 검증 후 S6 관리자 도구(API 키 관리 화면 포함), 패치노트·이벤트.
+
+## S5 후속: play를 모든 활동 집계에서 제외(D240) — 2026-10-31 — 판정: pass (QA 서브에이전트 재검증은 하지 않음, 리더가 테스트·빌드로 확인. DB e2e 미확인)
+
+**사용자 결정:** `play`는 「같은 채팅방 사람들과 한 게임」이라는 보장이 없어 활동 집계에서 완전히 제외한다. play 이벤트는 계속 받아 저장만 한다(수신 거부 변경 없음).
+
+**구현:** shared `ACTIVITY_COUNTED_TYPES = ['voice','chat']`(`ACTIVITY_RANKED_TYPES`는 voice). 활동 랭킹 `active_days`와 홈 `community.active_members` SQL이 이 상수를 바인딩해 voice·chat만 센다(SQL에 type 리터럴 없음). 「봇 연결」 판정은 type과 무관하게 모든 기록으로 유지(play만 와도 봇은 연결된 것). `now_playing`(봇 접속 현황의 「지금 플레이 중」)은 별개라 변경 없음. 웹 목 백엔드도 같은 규칙. 계약 D233 일수 부분 철회, D240 추가, Q14·Q15 닫음. 마이그레이션 없음.
+
+**리더 직접 실행:** `-r typecheck` 4개 Done / shared 134·core 416·web 304·api 583 passed / 47 skipped(DB e2e) / `-r build` 4개 Done. 임시 vitest 설정은 실행 후 삭제.
+
+**영향:** play만 한 날은 활동 일수에서 빠지고(예: 봇 detail 「7일 중 2일 활동」 → 1일), play만 한 회원은 홈 활동 멤버 수에 안 들어간다. 채팅만 한 회원은 활동으로 세지만 음성이 0이면 랭킹 순위에는 없다. play 기록만 있는 서버는 홈 「활동 멤버 0명」, 랭킹 「봇 연결됨·순위 없음」.
+
+**미실행·미확인:** `test/db/bot.db.e2e.spec.ts`(play만 한 날·회원 검사 포함, 작성만), active_members SQL은 FakePrisma로만 확인.
