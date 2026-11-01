@@ -34,12 +34,13 @@ describe('랭킹 URL 쿼리', () => {
     expect(routes.rankings({ tab: 'elo', game: 'lol' })).toBe('/rankings?game=lol');
     expect(routes.rankings({ tab: 'tier', game: 'tft' })).toBe('/rankings?tab=tier&game=tft');
   });
-  it('티어 탭은 랭크 큐가 있는 게임만, sort_order 순. 고를 수 없는 게임이면 첫 게임', () => {
+  it('티어 탭은 랭크 큐가 있는 게임만, ELO 탭은 스팀을 뺀다. sort_order 순. 고를 수 없는 게임이면 첫 게임', () => {
     const games = [g('steam', 3), g('tft', 2), g('lol', 1)];
     expect(rankingGames('tier', games).map((x) => x.code)).toEqual(['lol', 'tft']);
-    expect(rankingGames('elo', games).map((x) => x.code)).toEqual(['lol', 'tft', 'steam']);
+    expect(rankingGames('elo', games).map((x) => x.code)).toEqual(['lol', 'tft']);
+    expect(rankingGames('activity', games).map((x) => x.code)).toEqual(['lol', 'tft', 'steam']);
     expect(resolveRankingGame('steam', rankingGames('tier', games))).toBe('lol');
-    expect(resolveRankingGame('steam', rankingGames('elo', games))).toBe('steam');
+    expect(resolveRankingGame('steam', rankingGames('elo', games))).toBe('lol');
     expect(resolveRankingGame(null, [])).toBeNull();
   });
 });
