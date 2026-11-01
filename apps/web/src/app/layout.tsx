@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from 'next';
+import { headers } from 'next/headers';
 import type { ReactNode } from 'react';
 import { Providers } from '@/components/providers';
 import { brand } from '@/lib/brand';
+import { absoluteFromBase, metadataBaseFrom, webOriginFromEnv } from '@/lib/site-url';
 import { THEME_INIT_SCRIPT } from '@/lib/theme/theme';
 // 폰트는 @fontsource로 자체 호스팅한다(빌드·실행 모두 외부 네트워크 불필요).
 // 굵기별 CSS는 unicode-range로 나뉜 조각(한글·라틴)을 담고 있어 브라우저가 쓰는 글자의 조각만 받는다.
@@ -14,15 +16,35 @@ import '@fontsource/chakra-petch/600.css';
 import '@fontsource/chakra-petch/700.css';
 import './globals.css';
 
-export const metadata: Metadata = {
-  title: { default: '롤생네컷', template: '%s · 롤생네컷' },
-  description: '롤 · 롤체 · 스팀 게임방 내전과 서버 랭킹',
-  openGraph: {
-    title: '롤생네컷',
-    description: '롤 · 롤체 · 스팀 게임방 내전과 서버 랭킹',
-    images: [{ url: brand.ogCard, width: 1200, height: 675, alt: '롤생네컷 마스코트' }],
-  },
-};
+const DESCRIPTION = '롤 · 롤체 · 스팀 게임방 내전과 서버 랭킹';
+
+// 공유 카드 주소는 `{WEB_ORIGIN}/brand/og-card.jpg`. 상대 경로로 두면 localhost가 된다.
+export async function generateMetadata(): Promise<Metadata> {
+  const h = await headers();
+  const metadataBase = metadataBaseFrom({
+    siteUrl: webOriginFromEnv(),
+    forwardedHost: h.get('x-forwarded-host'),
+    host: h.get('host'),
+    forwardedProto: h.get('x-forwarded-proto'),
+  });
+  const image = absoluteFromBase(metadataBase, brand.ogCard);
+  return {
+    metadataBase,
+    title: { default: '롤생네컷', template: '%s · 롤생네컷' },
+    description: DESCRIPTION,
+    openGraph: {
+      title: '롤생네컷',
+      description: DESCRIPTION,
+      images: [{ url: image, width: 1280, height: 720, alt: '롤생네컷 마스코트' }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: '롤생네컷',
+      description: DESCRIPTION,
+      images: [image],
+    },
+  };
+}
 
 export const viewport: Viewport = {
   width: 'device-width',
