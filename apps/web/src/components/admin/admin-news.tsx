@@ -244,6 +244,13 @@ export function useGameOptions() {
   return (games.data?.items ?? []).map((g) => ({ code: g.code, label: GAME_META[g.code]?.short ?? g.name }));
 }
 
+/** 자동으로 올린 글은 전송 상태 앞에 표시한다. 수기 글은 전송 문구만. */
+function patchNoteStatusText(p: PatchNoteView, now: number): string | null {
+  const delivery = discordDeliveryText(p, now);
+  if (!p.auto_registered) return delivery;
+  return delivery ? `자동 등록 · ${delivery}` : '자동 등록';
+}
+
 function PatchNotesCard({ onToast }: { onToast: ToastFn }) {
   const list = usePatchNotes(null, ADMIN_PAGE_SIZE);
   const items = list.data?.pages.flatMap((p) => p.items) ?? [];
@@ -271,7 +278,7 @@ function PatchNotesCard({ onToast }: { onToast: ToastFn }) {
                     key={p.id}
                     title={`${p.version ? `${p.version} · ` : ''}${p.title}`}
                     meta={`${GAME_META[p.game.code]?.short ?? p.game.name} · ${isoDateDotted(p.published_on)} 게시`}
-                    sub={now !== null ? discordDeliveryText(p, now) : null}
+                    sub={now !== null ? patchNoteStatusText(p, now) : null}
                     onEdit={() => setEditing(p)}
                     onDelete={() => setDeleting(p)}
                     busy={del.isPending}

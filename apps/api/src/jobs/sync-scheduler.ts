@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { SYNC_QUEUE, type SyncQueue } from '../integrations/contracts';
 import { INTEGRATION_OPTIONS, type IntegrationOptions } from '../integrations/options';
 import { jobPriority } from './in-process-queue';
+import { PatchNoteSyncService } from '../modules/news/patch-note-sync.service';
 import { SYNC_STORE, type SyncStore } from './sync-store';
 import { CLOCK_NOW } from './sync-worker';
 
@@ -27,6 +28,7 @@ export class SyncScheduler implements OnApplicationBootstrap {
     @Inject(SYNC_QUEUE) private readonly queue: SyncQueue,
     @Optional() @Inject(INTEGRATION_OPTIONS) private readonly opts?: IntegrationOptions,
     @Optional() @Inject(CLOCK_NOW) private readonly nowFn: () => Date = () => new Date(),
+    @Optional() private readonly patchNotes?: PatchNoteSyncService,
   ) {}
 
   /** 시작 시: in-process 모드는 메모리 큐가 비었으니 queued 행을 다시 등록하고, 멈춘 행도 정리한다 */
@@ -38,6 +40,18 @@ export class SyncScheduler implements OnApplicationBootstrap {
       await this.recoverStuck();
     } catch (err) {
       this.log.error(`시작 시 복구 실패: ${err instanceof Error ? err.message : 'unknown'}`);
+    }
+    await this.syncPatchNotes();
+  }
+
+  /** 롤·롤체 패치노트: 매일 06:10 KST, 그리고 시작 시 1회 */
+  @Cron('10 6 * * *', { timeZone: KST })
+  async syncPatchNotes(): Promise<void> {
+    if (!this.patchNotes) return;
+    try {
+      await this.patchNotes.sync();
+    } catch (err) {
+      this.log.error(`패치노트 동기화 실패: ${err instanceof Error ? err.message : 'unknown'}`);
     }
   }
 

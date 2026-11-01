@@ -10,7 +10,8 @@
  * S4: 티어·ELO 랭킹과 순위 변동(7-3, ranking.ts), 시즌 종료·시즌 표시(season.ts), KST 주 구간(time.ts).
  * S5: KST 달 구간·활동 기간·날짜 키(time.ts), 봇 활동·활동/플레이타임 랭킹·입퇴장·접속 현황(activity.ts).
  * S6: 승인 되돌리기(result-review.ts, 이의 제기는 D281로 제거), 시즌 관리(season.ts), 역할 변경·멤버 상태(admin.ts),
- *     노쇼 표시 미리보기(no-show.ts), 공지·패치노트·이벤트 날짜·부제(news.ts), 커뮤니티 캘린더 구간(calendar.ts).
+ *     노쇼 표시 미리보기(no-show.ts), 공지·패치노트·이벤트 날짜·부제(news.ts), 커뮤니티 캘린더 구간(calendar.ts),
+ *     패치노트 자동 등록 버전·주소(patch-note-sync.ts).
  */
 export * from './config';
 export {
@@ -143,6 +144,18 @@ export {
 } from './result-review';
 export { planRoleChange, adminMemberStatus } from './admin';
 export { newsSubtitle, resolveEventsRange, dashboardNewsWindow } from './news';
+export {
+  parsePatchLine,
+  formatPatchLine,
+  comparePatchLine,
+  firstPatchSlug,
+  latestStoredPatchLine,
+  planPatchNoteInsert,
+  patchNoteUrl,
+  PATCH_NOTE_AUTO_TITLE,
+  PATCH_NOTE_AUTO_SUMMARY,
+  type PatchLine,
+} from './patch-note-sync';
 export {
   calendarMonthRange,
   resolveCalendarMonth,

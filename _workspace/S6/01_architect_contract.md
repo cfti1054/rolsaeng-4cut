@@ -44,7 +44,7 @@
 | 종료 처리된 시즌(closed_at)의 결과 되돌리기 | 최종 순위·뱃지가 확정돼 있다(S4 D141). 되돌리면 standings·user_badges를 다시 계산해야 한다 → **제외 확정**(D242) |
 | 진행 중 시즌의 시작 시각 변경, 끝난 시즌의 기간 변경, 시작한 시즌 삭제 | 11절. 이미 반영된 rating_history의 시즌 귀속(D116)이 바뀌거나 종료 작업과 충돌한다 → **제외 확정**(D268) |
 | 스팀 할인 정보·공통 게임 추천 | 문서 9장: 데이터 출처 미정(슬라이스 제외) |
-| 패치노트 외부 자동 수집(크롤링) | 출처·약관(메인 기본값 1) |
+| 패치노트 본문 크롤링 | 글 본문은 복사하지 않는다. 목록 슬러그로 버전과 공식 링크만 자동 등록(24절, 사용자 결정 2026-11-01) |
 | 회원 삭제·차단 | 슬라이스 제외. Q14 |
 | 라이엇 운영진 수동 소유 승인(S1 예약 `/admin/riot-verifications/:id/approve`) | 슬라이스에 없다. Q13 |
 | 결과 승인·대기 승격 디스코드 DM(설정 `notify_result`·`notify_waitlist`) | S5 Q12 그대로. 알림 설정에도 노출하지 않는다(D259) |
@@ -1458,3 +1458,23 @@ architect(완료: schema·마이그레이션·shared·계약 테스트·dist, 1�
 - 2단계 전환(D305) 완료: shared 세 필드에 `.optional()` 없음, 웹 `upcoming ??`·`upcomingRows(undefined)` 분기 없음(2026-11-01 (4) architect 완료 — QA 재확인 대상).
 - 23-8-2 표의 검증·PATCH 예 전부, 23-8-3 정렬·커서(누락·중복 없음), 23-8-4 upcoming 경계, 감사 details 시각.
 - 화면: `/admin` 4칸 배치 3폭, 「다가오는 일정」 빈 상태·has_more·내전 링크·일정 행 링크 없음, 전체 폭 캘린더 유지, 시각 표시 6가지 표기, `EventForm` 시각 입력, 홈 카드·`/news` 회귀 없음.
+
+## 24. 패치노트 자동 등록 (사용자 결정 2026-11-01)
+
+1-2의 「본문 크롤링」 제외는 유지한다. 롤·롤체만, 한국어 패치노트 **목록**에서 슬러그를 읽어 글을 하나 저장한다. 글 페이지는 열지 않고 본문·제목·요약을 가져오지 않는다. 스팀은 만들지 않는다. 수기 `POST /admin/patch-notes`는 그대로다.
+
+Data Dragon `versions.json` 최신값(`16.21.1`)은 공개 패치 번호(`26.21`)와 다르다. 그 값과 `RIOT_DDRAGON_VERSION`으로 주소를 만들지 않는다.
+
+| 게임 | 목록 | 첫 슬러그 | 저장 url |
+| --- | --- | --- | --- |
+| lol | `https://www.leagueoflegends.com/ko-kr/news/tags/patch-notes/` | `league-of-legends-patch-{major}-{minor}-notes` | `https://www.leagueoflegends.com/ko-kr/news/game-updates/league-of-legends-patch-{major}-{minor}-notes/` |
+| tft | `https://teamfighttactics.leagueoflegends.com/ko-kr/news/tags/patch-notes/` | `teamfight-tactics-patch-{major}-{minor}` | `https://teamfighttactics.leagueoflegends.com/ko-kr/news/game-updates/teamfight-tactics-patch-{major}-{minor}/` |
+
+- version은 `{major}.{minor}`만. title은 `패치노트`, summary는 `공식 패치노트가 올라왔습니다.` published_on은 작업 시각의 KST 날짜. created_by는 null.
+- 그 게임의 저장된 version 중 앞 두 자리로 해석되는 최댓값보다 새 줄이면 1건, `notify_discord` true. 같거나 오래되면 넣지 않는다. 세 번째 자리만 바뀌는 핫픽스는 목록 슬러그가 같으므로 새 글이 아니다. 과거 패치는 채우지 않는다.
+- 해석되는 version이 하나도 없으면 현재 최신 1건만 넣고 `notify_discord` false(이미 공개된 패치로 DM을 보내지 않음).
+- 목록 실패·1MB 초과·슬러그 없음은 그 게임만 건너뛴다.
+- `patch_notes.auto_registered boolean NOT NULL DEFAULT false`(마이그레이션 `20261101180000_patch_note_auto`). `PatchNoteView.auto_registered` 필수. 생성·수정 요청에는 없다. 수기는 false, 자동 글을 고쳐도 true.
+- 감사는 `patch_note.create`, actor_id null. `writeAudit`의 actorId는 `string | null`.
+- 실행: `SYNC_JOBS_ENABLED`가 켜진 `SyncScheduler`. 매일 KST 06:10과 시작 시 1회. 잠금 `710_004`. 새 엔드포인트·오류 코드·환경 변수 없음.
+- 관리자 목록 부제만 `자동 등록`을 붙인다. 정보 화면·홈 카드 레이아웃은 그대로(버전 칩과 제목 `패치노트`).

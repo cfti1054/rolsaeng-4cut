@@ -239,6 +239,7 @@ export class FakePrisma {
     publishedOn: undefined,
     notifyDiscord: false,
     discordNotifiedAt: null,
+    autoRegistered: false,
     createdById: null,
     updatedAt: undefined,
   }));

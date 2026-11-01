@@ -150,6 +150,8 @@ export const PatchNoteView = z.object({
   published_on: IsoDate,
   notify_discord: z.boolean(),
   discord_notified_at: IsoDateTime.nullable(),
+  /** 목록 슬러그로 서버가 만든 글이면 true. 운영진 수기 작성은 false. 수정해도 값이 바뀌지 않는다. */
+  auto_registered: z.boolean(),
   created_at: IsoDateTime,
   updated_at: IsoDateTime,
 });

@@ -11,7 +11,8 @@ import type { Prisma } from '@prisma/client';
 export type AuditWriter = Pick<Prisma.TransactionClient, 'adminAuditLog'>;
 
 export type AuditEntry = {
-  actorId: string;
+  /** 운영진 수기 행위는 회원 id. 패치노트 자동 등록은 null */
+  actorId: string | null;
   action: AdminAuditAction;
   targetId: string | null;
   summary: string;

@@ -150,6 +150,7 @@ const MockPatchNote = z.object({
   published_on: IsoDate,
   notify_discord: z.boolean(),
   discord_notified_at: IsoDateTime.nullable(),
+  auto_registered: z.boolean().default(false),
   created_by: Uuid.nullable(),
   created_at: IsoDateTime,
   updated_at: IsoDateTime,
@@ -459,6 +460,7 @@ export function seedS6(st: S6State, input: S6SeedInput): void {
     published_on: kstDay(now, -daysAgo),
     notify_discord: daysAgo < 10,
     discord_notified_at: daysAgo < 10 ? t((daysAgo * 24 - 1) * HOUR_MS) : null,
+    auto_registered: false,
     created_by: admin1,
     created_at: t(daysAgo * DAY_MS),
     updated_at: t(daysAgo * DAY_MS),
@@ -623,6 +625,7 @@ export function handleS6(ctx: MockS6Context): Response | null {
     published_on: p.published_on,
     notify_discord: p.notify_discord,
     discord_notified_at: p.discord_notified_at,
+    auto_registered: p.auto_registered,
     created_at: p.created_at,
     updated_at: p.updated_at,
   });
@@ -1011,7 +1014,7 @@ export function handleS6(ctx: MockS6Context): Response | null {
   if (method === 'POST' && path === ApiPath.adminPatchNotes) {
     const p = CreatePatchNoteRequest.safeParse(ctx.body);
     if (!p.success) return bad(p.error);
-    const n: MockPatchNote = { id: crypto.randomUUID(), ...p.data, discord_notified_at: null, created_by: me.id, created_at: iso(now), updated_at: iso(now) };
+    const n: MockPatchNote = { id: crypto.randomUUID(), ...p.data, discord_notified_at: null, auto_registered: false, created_by: me.id, created_at: iso(now), updated_at: iso(now) };
     st.patch_notes.push(n);
     audit('patch_note.create', n.id, `패치노트 '${quote(n.title)}' 작성`, { ...p.data });
     ctx.persist();

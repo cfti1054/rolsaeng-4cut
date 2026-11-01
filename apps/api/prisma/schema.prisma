@@ -792,8 +792,9 @@ model Notice {
   @@map("notices")
 }
 
-/// S6. 패치노트 요약(문서 2장 정보, 6장 GET /patch-notes). 운영진 수기 입력(외부 수집 없음). 영구 삭제 + 감사 로그
+/// S6. 패치노트 요약(문서 2장 정보, 6장 GET /patch-notes). 운영진 수기 입력과 목록 슬러그 자동 등록. 영구 삭제 + 감사 로그
 /// notify_discord && discord_notified_at null → 봇 GET /bot/patch-notes/pending(notify_patch 회원 DM)
+/// auto_registered: 서버가 공식 목록 슬러그로 만든 글. 수기는 false. 수정해도 유지
 model PatchNote {
   id                String    @id @default(uuid()) @db.Uuid
   gameId            String    @map("game_id") @db.Uuid
@@ -807,6 +808,8 @@ model PatchNote {
   publishedOn       DateTime  @map("published_on") @db.Date
   notifyDiscord     Boolean   @default(false) @map("notify_discord")
   discordNotifiedAt DateTime? @map("discord_notified_at") @db.Timestamptz(3)
+  /// 목록 슬러그로 자동 등록한 글. 수기 작성은 false
+  autoRegistered    Boolean   @default(false) @map("auto_registered")
   createdById       String?   @map("created_by") @db.Uuid
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)

@@ -16,6 +16,7 @@ import { PrismaService } from '../../src/prisma/prisma.service';
 import { FakePrisma } from './fake-prisma';
 import { MemoryRankingCache } from './memory-ranking-cache';
 import { APP_CLOCK } from '../../src/common/clock';
+import { PATCH_LISTING_FETCH } from '../../src/modules/news/patch-note-sync.service';
 import { DATA_DRAGON, RIOT_API, STEAM_API, SYNC_QUEUE } from '../../src/integrations/contracts';
 import { RANDOM } from '../../src/modules/game-accounts/riot-link.service';
 import {
@@ -138,6 +139,8 @@ export async function createTestApp(
     .useValue(opts.random ?? (() => 0))
     .overrideProvider(RANKING_CACHE_STORE)
     .useValue(rankingCache)
+    .overrideProvider(PATCH_LISTING_FETCH)
+    .useValue(async () => ({ status: 404, headers: { get: () => null }, text: async () => '' }))
     .compile();
   const app = moduleRef.createNestApplication({ logger: false });
   configureApp(app, config);

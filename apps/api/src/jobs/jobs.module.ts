@@ -4,6 +4,7 @@ import { SYNC_QUEUE } from '../integrations/contracts';
 import { INTEGRATION_OPTIONS, type IntegrationOptions, loadIntegrationOptions } from '../integrations/options';
 import { BullMqSyncQueue } from './bullmq-queue';
 import { InProcessSyncQueue, type SyncQueueRunner } from './in-process-queue';
+import { NewsModule } from '../modules/news/news.module';
 import { SyncScheduler } from './sync-scheduler';
 import { PrismaSyncStore, SYNC_STORE } from './sync-store';
 import { CLOCK_NOW, SyncWorker } from './sync-worker';
@@ -27,7 +28,7 @@ export class JobsModule implements OnModuleInit, OnApplicationShutdown {
     const opts = loadIntegrationOptions(env);
     return {
       module: JobsModule,
-      imports: opts.jobsEnabled ? [sharedScheduleModule] : [],
+      imports: opts.jobsEnabled ? [sharedScheduleModule, NewsModule] : [],
       providers: [
         { provide: SYNC_STORE, useClass: PrismaSyncStore },
         { provide: CLOCK_NOW, useValue: () => new Date() },
