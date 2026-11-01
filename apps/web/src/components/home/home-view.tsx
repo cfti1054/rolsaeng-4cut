@@ -156,7 +156,7 @@ function NextScrimBody({ next }: { next: DashboardNextScrim }) {
       <div className="flex flex-wrap items-center gap-2">
         <span className="rounded-lg bg-accent px-2.5 py-1 font-display text-xs font-bold tracking-[0.14em] text-on-accent">NEXT MATCH</span>
         <span className={CHIP}>{scrimCapacityText(label, s)}</span>
-        {s.options.rated && <span className={CHIP}>시즌 ELO 반영</span>}
+        {s.options.rated && <span className={CHIP}>분기 ELO 반영</span>}
         {source === 'joined' && <span className={CHIP}>참가 중</span>}
       </div>
       <div className="flex flex-col gap-1.5">
@@ -427,7 +427,7 @@ function TopRankersPanel({
   return (
     <Panel
       eyebrow="LEADERBOARD"
-      label="시즌 ELO 상위"
+      label="분기 ELO 상위"
       title={
         <>
           <span className="md:hidden">{topRankersTitle(top, MOBILE_TOP_RANKERS)}</span>

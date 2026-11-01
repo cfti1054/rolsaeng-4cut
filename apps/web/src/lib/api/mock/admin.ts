@@ -421,8 +421,8 @@ export function seedS6(st: S6State, input: S6SeedInput): void {
     },
     {
       id: newId(),
-      title: '시즌 2 마무리 안내',
-      body: '시즌 2가 끝나면 최종 순위를 저장하고 상위 3명에게 뱃지를 드려요.',
+      title: '3분기 마무리 안내',
+      body: '분기가 끝나면 최종 순위를 저장하고 상위 3명에게 뱃지를 드려요.',
       author_id: admin2,
       notify_discord: true,
       discord_notified_at: null,

@@ -34,7 +34,7 @@ export const ADMIN_TAB_LABEL: Record<AdminTab, string> = {
   results: '결과·노쇼',
   members: '멤버',
   news: '공지·소식',
-  seasons: '시즌',
+  seasons: '분기',
   'api-keys': 'API 키',
   audit: '감사 로그',
 };
@@ -43,7 +43,7 @@ export const ADMIN_TAB_LABEL: Record<AdminTab, string> = {
 export const REVERT_BLOCK_TEXT: Record<ScrimResultRevertBlock, string> = {
   self_submitted: '내가 제출한 결과는 다른 운영진이 되돌려야 해요',
   window_passed: `승인 후 ${SCRIM_RESULT_REVERT_WINDOW_DAYS}일이 지나 되돌릴 수 없어요`,
-  season_closed: '시즌 종료 처리가 끝나 되돌릴 수 없어요',
+  season_closed: '분기 종료 처리가 끝나 되돌릴 수 없어요',
   later_games: '참가자의 다음 경기가 이미 반영돼 되돌릴 수 없어요',
   rating_mismatch: '레이팅 기록이 맞지 않아요. 개발자에게 알려 주세요',
 };

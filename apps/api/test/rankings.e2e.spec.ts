@@ -517,8 +517,8 @@ describe('프로필 badges·rank(4-4)', () => {
 
     const p = await profile(t, me.token, me.userId);
     expect(p.badges?.map((b) => [b.code, b.name, b.season?.name ?? null, b.game, b.place, b.earned_at])).toEqual([
-      ['season_lol_top1', '리그 오브 레전드 시즌 1위', '시즌 2', 'lol', 1, newer.endsAt.toISOString()],
-      ['season_tft_top1', '전략적 팀 전투 시즌 1위', '시즌 1', 'tft', 1, older.endsAt.toISOString()],
+      ['season_lol_top1', '리그 오브 레전드 1위', '시즌 2', 'lol', 1, newer.endsAt.toISOString()],
+      ['season_tft_top1', '전략적 팀 전투 1위', '시즌 1', 'tft', 1, older.endsAt.toISOString()],
       ['event_first', '첫 참가', null, null, null, '2025-01-01T00:00:00.000Z'],
     ]);
   });

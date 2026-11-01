@@ -12,7 +12,7 @@ export const ELO_INFO_LABEL = '내전/모집 ELO 설명';
 /** 더블업 2인 팀 설명. 숫자는 롤 밸런스와 같은 계약 상수다. */
 export function duoBalanceNote(): string {
   const n = percent(BALANCE_ELO_WEIGHT_MAX);
-  return `티어를 중심으로 2명씩 나눕니다. 이번 시즌 ${BALANCE_FULL_WEIGHT_GAMES}경기부터 내전/모집 ELO를 최대 ${n}% 반영해요.`;
+  return `티어를 중심으로 2명씩 나눕니다. 이번 분기 ${BALANCE_FULL_WEIGHT_GAMES}경기부터 내전/모집 ELO를 최대 ${n}% 반영해요.`;
 }
 
 const percent = (ratio: number) => Math.round(ratio * 100);
@@ -28,7 +28,7 @@ function asymmetrySentence(policy: DashboardRatingPolicy): string {
 function balanceSentence(policy: DashboardRatingPolicy): string {
   const n = percent(policy.elo_weight_max);
   if (n === 0) return '팀 자동 밸런스는 티어만으로 나눠요.';
-  return `팀 자동 밸런스는 티어를 중심으로 나누고, 내전/모집 ELO는 이번 시즌 경기 수에 따라 조금씩 섞어요. 이번 시즌 ${policy.full_weight_games}경기부터 최대 ${n}%이고, 티어 비중은 ${100 - n}% 아래로 내려가지 않아요.`;
+  return `팀 자동 밸런스는 티어를 중심으로 나누고, 내전/모집 ELO는 이번 분기 경기 수에 따라 조금씩 섞어요. 이번 분기 ${policy.full_weight_games}경기부터 최대 ${n}%이고, 티어 비중은 ${100 - n}% 아래로 내려가지 않아요.`;
 }
 
 export interface EloInfoSection {
@@ -44,12 +44,12 @@ function strengthSentence(lossRatio: number): string {
 export function eloInfoSections(policy: DashboardRatingPolicy | null): EloInfoSection[] {
   const what = {
     heading: '무슨 점수인가요',
-    body: '우리 서버 내전/모집 결과로만 정해지는 점수예요. 라이엇 티어와 상관없이 모두 같은 점수에서 시작하고, 게임과 시즌마다 따로 쌓여요.',
+    body: '우리 서버 내전/모집 결과로만 정해지는 점수예요. 라이엇 티어와 상관없이 모두 같은 점수에서 시작하고, 게임과 분기마다 따로 쌓여요.',
   };
   const whenBase = '운영진이 내전/모집 결과를 승인할 때만 바뀌어요. 실제로 뛴 멤버만 바뀌고, 노쇼나 팀에 들지 않은 멤버는 그대로예요.';
   const start = {
     heading: '시작 점수는 어떻게 정하나요',
-    body: `모든 멤버가 티어와 상관없이 ${RATING_START_ELO}점에서 시작해요. 새 시즌이 시작되면 모두 다시 ${RATING_START_ELO}점이 돼요. 지난 시즌 순위는 시즌 최종 순위와 뱃지로 남아요.`,
+    body: `모든 멤버가 티어와 상관없이 ${RATING_START_ELO}점에서 시작해요. 새 분기가 시작되면 모두 다시 ${RATING_START_ELO}점이 돼요. 지난 분기 순위는 분기 최종 순위와 뱃지로 남아요.`,
   };
   const balanceHeading = '팀을 나눌 때는요';
   if (!policy) {

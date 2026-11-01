@@ -15,7 +15,7 @@ const FEATURES = [
     mark: 'ELO',
     tile: 'bg-accent/10 text-accent-ink',
     title: '서버 자체 내전/모집 랭킹',
-    desc: `운영진 승인 결과만 반영 · 시즌마다 ${RATING_START_ELO}점에서 새로 시작`,
+    desc: `운영진 승인 결과만 반영 · 분기마다 ${RATING_START_ELO}점에서 새로 시작`,
   },
   {
     mark: 'API',

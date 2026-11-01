@@ -31,15 +31,15 @@ describe('시즌 카드', () => {
     expect(seasonFilledPips(1)).toBe(12);
   });
   it('시즌 초기화 문구: 전원 RATING_START_ELO', () => {
-    expect(seasonResetText()).toBe('종료 시 모두 1000점으로 초기화');
+    expect(seasonResetText()).toBe('분기 종료 시 모두 1000점으로 초기화');
   });
   it('모바일 머리', () => {
     expect(mobileSeasonText({ name: '시즌 2', days_left: 34 })).toBe('시즌 2 · D-34');
     expect(mobileSeasonText({ name: '시즌 2', days_left: 0 })).toBe('시즌 2 · D-DAY');
-    expect(mobileSeasonText(null)).toBe('다음 시즌 준비 중');
+    expect(mobileSeasonText(null)).toBe('다음 분기 준비 중');
   });
   it('프로필 레이팅 빈 문구: 시즌 공백이면 기록 없음이라 하지 않는다', () => {
-    expect(ratingEmptyText({ season: null })).toEqual({ value: '다음 시즌 준비 중', sub: '현재 진행 중인 시즌이 없어요' });
+    expect(ratingEmptyText({ season: null })).toEqual({ value: '다음 분기 준비 중', sub: '현재 진행 중인 분기가 없어요' });
     expect(ratingEmptyText({ season: { name: '시즌 2' } })).toEqual({ value: '내전/모집 기록 없음', sub: '시즌 2' });
     expect(ratingEmptyText(null).value).toBe('내전/모집 기록 없음');
   });
@@ -74,10 +74,10 @@ describe('다음 내전', () => {
 
 describe('TOP 랭커', () => {
   it('제목: 최종이면 시즌 이름, 모바일은 3명', () => {
-    expect(topRankersTitle({ is_final: false, season: SEASON })).toBe('시즌 ELO TOP 5');
-    expect(topRankersTitle({ is_final: false, season: SEASON }, 3)).toBe('시즌 ELO TOP 3');
+    expect(topRankersTitle({ is_final: false, season: SEASON })).toBe('분기 ELO TOP 5');
+    expect(topRankersTitle({ is_final: false, season: SEASON }, 3)).toBe('분기 ELO TOP 3');
     expect(topRankersTitle({ is_final: true, season: SEASON })).toBe('시즌 2 최종 ELO TOP 5');
-    expect(topRankersTitle(null)).toBe('시즌 ELO TOP 5');
+    expect(topRankersTitle(null)).toBe('분기 ELO TOP 5');
   });
   it('막대 폭 = elo ÷ 1위 elo', () => {
     expect(eloBarPercent(1512, 1512)).toBe(100);
@@ -106,7 +106,7 @@ describe('뱃지', () => {
   const b: ProfileBadge = {
     id: SEASON.id,
     code: 'season_lol_top1',
-    name: '리그 오브 레전드 시즌 1위',
+    name: '리그 오브 레전드 1위',
     description: null,
     earned_at: '2026-08-31T15:00:00.000Z',
     season: SEASON,
@@ -114,7 +114,7 @@ describe('뱃지', () => {
     place: 1,
   };
   it('시즌 뱃지', () => {
-    expect(badgeView(b)).toEqual({ mark: '#1', place: 1, title: '시즌 2 · 리그 오브 레전드 시즌 1위', when: '2026.08' });
+    expect(badgeView(b)).toEqual({ mark: '#1', place: 1, title: '시즌 2 · 리그 오브 레전드 1위', when: '2026.08' });
   });
   it('월 표시는 끝나는 달: 배타적 경계 바로 뒤 시각만 다음 달', () => {
     expect(badgeView({ ...b, earned_at: '2026-08-31T15:00:00.000Z' }).when).toBe('2026.08');

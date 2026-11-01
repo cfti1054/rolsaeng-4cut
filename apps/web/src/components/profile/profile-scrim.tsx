@@ -120,10 +120,10 @@ export function RatingHistoryPanel({ p, className }: { p: GetUserProfileResponse
           ))}
         </select>
         <label htmlFor={seasonSelectId} className="sr-only">
-          시즌
+          분기
         </label>
         <select id={seasonSelectId} className={selectClass} value={season ?? ''} onChange={(e) => setSeason(e.target.value || null)}>
-          <option value="">{seasons.data ? '현재 시즌' : '시즌'}</option>
+          <option value="">{seasons.data ? '현재 분기' : '분기'}</option>
           {(seasons.data?.items ?? []).map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
@@ -145,7 +145,7 @@ export function RatingHistoryPanel({ p, className }: { p: GetUserProfileResponse
       ) : q.isError && !data ? (
         <ErrorState message={isApiError(q.error) ? errorMessage(q.error.code) : errorMessage('NETWORK_ERROR')} onRetry={() => void q.refetch()} />
       ) : points.length === 0 ? (
-        <EmptyState mark="ELO" title="이 시즌 내전/모집 기록이 없어요" description="레이팅에 반영된 내전/모집이 쌓이면 변동 그래프가 그려져요." />
+        <EmptyState mark="ELO" title="이 분기 내전/모집 기록이 없어요" description="레이팅에 반영된 내전/모집이 쌓이면 변동 그래프가 그려져요." />
       ) : (
         <RatingChart points={points} truncated={data?.truncated ?? false} fetching={q.isFetching} />
       )}

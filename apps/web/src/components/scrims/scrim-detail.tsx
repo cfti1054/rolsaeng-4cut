@@ -222,7 +222,7 @@ function Hero({ s }: { s: ScrimDetail }) {
   const meta = [
     now === null ? null : scrimWhen(s.scheduled_at, now),
     `방장 ${s.host.nickname}`,
-    s.options.rated ? '시즌 ELO 반영' : 'ELO 미반영',
+    s.options.rated ? '분기 ELO 반영' : 'ELO 미반영',
     s.options.auto_balance ? '자동 밸런스' : null,
     s.options.use_positions ? '포지션 선택' : null,
   ].filter(Boolean);

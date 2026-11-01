@@ -59,10 +59,10 @@ describe('S3 표시 문구', () => {
     expect(skillFormulaText(null)).not.toMatch(/\d/);
     const policy = { k_base: 24, k_new: 36, new_player_games: 5, loss_ratio: 1, full_weight_games: 10, elo_weight_max: 0.2 };
     expect(skillFormulaText(policy)).toBe(
-      '실력값 = w × 내전/모집 ELO + (1 − w) × 티어 환산값. w는 이번 시즌 내전/모집 경기 수에 따라 0에서 20%까지 늘어요(10경기부터 20%). K = 24, 신규 멤버 K = 36.',
+      '실력값 = w × 내전/모집 ELO + (1 − w) × 티어 환산값. w는 이번 분기 내전/모집 경기 수에 따라 0에서 20%까지 늘어요(10경기부터 20%). K = 24, 신규 멤버 K = 36.',
     );
     expect(skillFormulaText({ ...policy, elo_weight_max: 0.3, full_weight_games: 6 })).toContain('0에서 30%까지 늘어요(6경기부터 30%)');
-    expect(skillFormulaText(null)).toBe('실력값은 티어를 중심으로 이번 시즌 내전/모집 ELO를 조금 섞어 계산해요.');
+    expect(skillFormulaText(null)).toBe('실력값은 티어를 중심으로 이번 분기 내전/모집 ELO를 조금 섞어 계산해요.');
     expect(skillFormulaText(policy)).not.toContain('시드');
     expect(skillFormulaText(policy)).not.toContain('패배 점수');
     expect(skillFormulaText({ ...policy, loss_ratio: 0.5 }).endsWith(' 패배 점수는 50%만 반영해요.')).toBe(true);

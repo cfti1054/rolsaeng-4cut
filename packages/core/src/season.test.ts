@@ -6,7 +6,9 @@ import {
   computeSeasonStandings,
   kstMonthStart,
   latestStartedSeason,
+  calendarQuarterOf,
   planAutoSeason,
+  planCalendarQuarter,
   resolveSeasonAt,
   seasonDaysLeft,
   seasonProgress,
@@ -220,6 +222,42 @@ describe('planAutoSeason (D116)', () => {
       checked++;
     }
     expect(checked).toBeGreaterThan(500);
+  });
+});
+
+describe('planCalendarQuarter', () => {
+  it('2026-11-03 KST는 2026년 4분기(10월 1일 ~ 1월 1일)', () => {
+    expect(calendarQuarterOf(kst('2026-11-03T20:00:00'))).toEqual({
+      year: 2026,
+      quarter: 4,
+      name: '2026년 4분기',
+      startsAt: kst('2026-10-01T00:00:00'),
+      endsAt: kst('2027-01-01T00:00:00'),
+    });
+    expect(planCalendarQuarter({ seasons: [], at: kst('2026-11-03T20:00:00') })).toEqual({
+      name: '2026년 4분기',
+      startsAt: kst('2026-10-01T00:00:00'),
+      endsAt: kst('2027-01-01T00:00:00'),
+    });
+  });
+  it('1월 1일 0시는 1분기, 12월 31일은 4분기', () => {
+    expect(calendarQuarterOf(kst('2027-01-01T00:00:00')).name).toBe('2027년 1분기');
+    expect(calendarQuarterOf(kst('2026-12-31T23:59:00')).name).toBe('2026년 4분기');
+    expect(calendarQuarterOf(kst('2026-04-01T00:00:00')).quarter).toBe(2);
+    expect(calendarQuarterOf(kst('2026-07-01T00:00:00')).quarter).toBe(3);
+  });
+  it('직전 기간이 분기 안에서 끝나면 그 끝부터, 다음 기간이 있으면 그 시작에서 자른다', () => {
+    const prev = season('p', '2026-07-01T00:00:00', '2026-10-15T00:00:00');
+    const next = season('n', '2026-12-01T00:00:00', '2027-01-01T00:00:00');
+    expect(planCalendarQuarter({ seasons: [prev, next], at: kst('2026-11-03T00:00:00') })).toEqual({
+      name: '2026년 4분기',
+      startsAt: kst('2026-10-15T00:00:00'),
+      endsAt: kst('2026-12-01T00:00:00'),
+    });
+  });
+  it('이미 기간이 있으면 RangeError', () => {
+    const cur = season('c', '2026-10-01T00:00:00', '2027-01-01T00:00:00');
+    expect(() => planCalendarQuarter({ seasons: [cur], at: kst('2026-11-03T00:00:00') })).toThrow(RangeError);
   });
 });
 

@@ -35,8 +35,8 @@ export type BadgeSeed = { code: string; name: string; description: string; condi
 export function seasonBadgeSeed(game: { code: GameCode; name: string }): BadgeSeed[] {
   return SEASON_BADGE_PLACES.map((place) => ({
     code: seasonBadgeCode(game.code, place),
-    name: `${game.name} 시즌 ${place}위`,
-    description: `${game.name} 내전 ELO 시즌 최종 순위 ${place}위`,
+    name: `${game.name} ${place}위`,
+    description: `${game.name} 내전 ELO 분기 최종 순위 ${place}위`,
     condition: `season_final_rank:${game.code}:${place}`,
   }));
 }

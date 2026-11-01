@@ -1,10 +1,9 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { planAutoSeason, resolveSeasonAt } from '@gcd/core';
+import { planCalendarQuarter, resolveSeasonAt } from '@gcd/core';
 import { ListSeasonsResponse, type SeasonRef } from '@gcd/shared';
 import type { Prisma, Season } from '@prisma/client';
 import { AppError } from '../../common/app-error';
 import { APP_CLOCK, type Clock } from '../../common/clock';
-import { APP_CONFIG, type AppConfig } from '../../config/env';
 import { PrismaService } from '../../prisma/prisma.service';
 import { lockSeasonAutoCreate } from './rating-locks';
 
@@ -16,7 +15,7 @@ export function seasonRef(s: Pick<Season, 'id' | 'name' | 'startsAt' | 'endsAt'>
 }
 
 /**
- * 시즌(계약 S3 6절, D116). 조회 경로는 시즌을 만들지 않는다. 자동 생성은 결과 승인 트랜잭션(ensureForApproval)에서만.
+ * 분기(저장 테이블은 seasons). 조회 경로는 기간을 만들지 않는다. 자동 생성은 결과 승인 트랜잭션에서만, 한국 시간 달력 분기로.
  */
 @Injectable()
 export class SeasonsService {
@@ -24,7 +23,6 @@ export class SeasonsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(APP_CLOCK) private readonly clock: Clock,
   ) {}
 
@@ -61,7 +59,7 @@ export class SeasonsService {
   }
 
   /**
-   * 승인 7b단계(모든 잠금 뒤, now 확정 후): now가 속한 시즌. 없으면 core planAutoSeason으로 1개 insert.
+   * 승인 7b단계(모든 잠금 뒤, now 확정 후): now가 속한 기간. 없으면 core planCalendarQuarter로 1개 insert.
    * 생성은 season-auto-create 잠금을 쥔 경우에만(lockIfMayCreate의 margin 규칙상 잠금 없이 여기 오면 계산 오류 → 롤백).
    */
   async resolveForApproval(tx: Tx, now: Date, holdsCreateLock: boolean): Promise<Season> {
@@ -72,9 +70,9 @@ export class SeasonsService {
       this.log.error(`승인 시각 ${now.toISOString()}에 시즌이 없는데 시즌 생성 잠금이 없음(트랜잭션 timeout 초과 의심)`);
       throw new AppError('INTERNAL_ERROR');
     }
-    const plan = planAutoSeason({ seasons, at: now, lengthMonths: this.config.seasonAutoLengthMonths });
+    const plan = planCalendarQuarter({ seasons, at: now });
     const created = await tx.season.create({ data: { name: plan.name, startsAt: plan.startsAt, endsAt: plan.endsAt } });
-    this.log.log(`시즌 자동 생성 ${created.name} ${plan.startsAt.toISOString()} ~ ${plan.endsAt.toISOString()}`);
+    this.log.log(`분기 자동 생성 ${created.name} ${plan.startsAt.toISOString()} ~ ${plan.endsAt.toISOString()}`);
     return created;
   }
 }

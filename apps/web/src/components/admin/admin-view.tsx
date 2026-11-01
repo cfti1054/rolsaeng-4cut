@@ -80,7 +80,7 @@ export function AdminView() {
       {tab === 'results' && <AdminResultsTab overview={overview} onToast={onToast} />}
       {tab === 'members' && <AdminMembersTab meId={me.data.id} onToast={onToast} />}
       {tab === 'news' && <AdminNewsTab onToast={onToast} />}
-      {tab === 'seasons' && <AdminSeasonsTab onToast={onToast} />}
+      {tab === 'seasons' && <AdminSeasonsTab />}
       {tab === 'api-keys' && <AdminApiKeysTab onToast={onToast} />}
       {tab === 'audit' && <AdminAuditTab />}
       <Toast message={toast?.message ?? null} tone={toast?.tone} onClose={closeToast} />

@@ -54,7 +54,7 @@ describe('갱신 상태', () => {
     expect(rankingStatusText({ synced_at: at, stale: true })).toEqual({ text: '갱신 지연 · 마지막 23:05', tone: 'warn' });
   });
   it('is_final이 stale보다 앞선다, 시각 없으면 null', () => {
-    expect(rankingStatusText({ synced_at: at, stale: false, is_final: true })?.text).toBe('시즌 최종 순위');
+    expect(rankingStatusText({ synced_at: at, stale: false, is_final: true })?.text).toBe('분기 최종 순위');
     expect(rankingStatusText({ synced_at: null, stale: false })).toBeNull();
   });
 });
@@ -63,17 +63,17 @@ describe('규칙·빈 상태 문구는 응답 min_games를 쓴다', () => {
   const season = { id: SEASON, name: '시즌 1', starts_at: '2026-01-01T00:00:00.000Z', ends_at: '2026-04-01T00:00:00.000Z' };
   it('규칙', () => {
     expect(eloRuleText({ min_games: 7, is_final: false })).toBe('7경기 이상 치른 멤버만 표시 · 동점이면 승률 순');
-    expect(eloRuleText({ min_games: 7, is_final: true })).toBe('시즌 종료 때 확정된 순위 · 동점이면 승률 순');
+    expect(eloRuleText({ min_games: 7, is_final: true })).toBe('분기 종료 때 확정된 순위 · 동점이면 승률 순');
   });
   it('빈 상태 4경우', () => {
     const base = { min_games: 7, is_final: false, synced_at: '2026-01-01T00:00:00.000Z', season };
     expect(eloEmptyState(base)).toBe('7경기 이상 치른 멤버가 아직 없어요');
-    expect(eloEmptyState({ ...base, season: null })).toBe('아직 시즌이 없어요');
-    expect(eloEmptyState({ ...base, synced_at: null })).toBe('아직 시작하지 않은 시즌이에요');
-    expect(eloEmptyState({ ...base, is_final: true })).toBe('이 시즌에 순위에 든 멤버가 없어요');
+    expect(eloEmptyState({ ...base, season: null })).toBe('아직 분기가 없어요');
+    expect(eloEmptyState({ ...base, synced_at: null })).toBe('아직 시작하지 않은 분기예요');
+    expect(eloEmptyState({ ...base, is_final: true })).toBe('이 분기에 순위에 든 멤버가 없어요');
   });
   it('홈 상위 랭커 없음은 시즌 없음과 계산 실패를 구분한다', () => {
-    expect(topRankersEmptyText('no_season')).toBe('아직 시즌이 없어요');
+    expect(topRankersEmptyText('no_season')).toBe('아직 분기가 없어요');
     expect(topRankersEmptyText('unavailable')).toBe('순위를 불러오지 못했어요');
   });
 });
@@ -84,7 +84,7 @@ describe('빈 상태 보조 문구', () => {
     const before = Date.parse(season.ends_at) - 1;
     expect(eloEmptyNote({ season, is_final: true }, before)).toBeNull();
     expect(eloEmptyNote({ season, is_final: false }, before)).toBe('운영진이 내전/모집 결과를 승인하면 순위가 쌓여요.');
-    expect(eloEmptyNote({ season: null, is_final: false }, before)).toBe('첫 내전/모집 결과가 승인되면 시즌이 시작돼요.');
+    expect(eloEmptyNote({ season: null, is_final: false }, before)).toBe('첫 내전/모집 결과가 승인되면 분기가 시작돼요.');
   });
   it('끝났지만 종료 처리 전 시즌(ends_at <= now)도 없다, 시각을 모르면 내지 않는다', () => {
     const ends = Date.parse(season.ends_at);

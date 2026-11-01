@@ -4,7 +4,7 @@ import { eloInfoSections } from './elo-info';
 
 const policy: DashboardRatingPolicy = { min_games: 7, k_base: 32, k_new: 40, new_player_games: 12, loss_ratio: 0.5, full_weight_games: 10, elo_weight_max: 0.2 };
 const text = (p: DashboardRatingPolicy | null) => eloInfoSections(p).map((s) => s.body).join('\n');
-const START = '모든 멤버가 티어와 상관없이 1000점에서 시작해요. 새 시즌이 시작되면 모두 다시 1000점이 돼요. 지난 시즌 순위는 시즌 최종 순위와 뱃지로 남아요.';
+const START = '모든 멤버가 티어와 상관없이 1000점에서 시작해요. 새 분기가 시작되면 모두 다시 1000점이 돼요. 지난 분기 순위는 분기 최종 순위와 뱃지로 남아요.';
 
 describe('ELO 설명 문구', () => {
   it('제목 5개, 숫자는 서버 값', () => {
@@ -16,7 +16,7 @@ describe('ELO 설명 문구', () => {
   });
   it('무슨 점수: 티어와 상관없이 같은 점수에서 시작', () => {
     expect(eloInfoSections(policy)[0]!.body).toBe(
-      '우리 서버 내전/모집 결과로만 정해지는 점수예요. 라이엇 티어와 상관없이 모두 같은 점수에서 시작하고, 게임과 시즌마다 따로 쌓여요.',
+      '우리 서버 내전/모집 결과로만 정해지는 점수예요. 라이엇 티어와 상관없이 모두 같은 점수에서 시작하고, 게임과 분기마다 따로 쌓여요.',
     );
   });
   it('시작 점수: 상수 문구, 값 유무와 같다', () => {
@@ -38,9 +38,9 @@ describe('ELO 설명 문구', () => {
   });
   it('팀을 나눌 때: elo_weight_max 0.2·0.35·0, full_weight_games는 서버 값', () => {
     expect(eloInfoSections(policy)[4]!.body).toBe(
-      '팀 자동 밸런스는 티어를 중심으로 나누고, 내전/모집 ELO는 이번 시즌 경기 수에 따라 조금씩 섞어요. 이번 시즌 10경기부터 최대 20%이고, 티어 비중은 80% 아래로 내려가지 않아요.',
+      '팀 자동 밸런스는 티어를 중심으로 나누고, 내전/모집 ELO는 이번 분기 경기 수에 따라 조금씩 섞어요. 이번 분기 10경기부터 최대 20%이고, 티어 비중은 80% 아래로 내려가지 않아요.',
     );
-    expect(eloInfoSections({ ...policy, elo_weight_max: 0.35, full_weight_games: 6 })[4]!.body).toContain('이번 시즌 6경기부터 최대 35%이고, 티어 비중은 65% 아래로');
+    expect(eloInfoSections({ ...policy, elo_weight_max: 0.35, full_weight_games: 6 })[4]!.body).toContain('이번 분기 6경기부터 최대 35%이고, 티어 비중은 65% 아래로');
     expect(eloInfoSections({ ...policy, elo_weight_max: 0 })[4]!.body).toBe('팀 자동 밸런스는 티어만으로 나눠요.');
   });
   it('패배 배율 0.5·1·0', () => {

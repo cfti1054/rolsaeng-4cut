@@ -24,10 +24,10 @@ export function seasonFilledPips(progress: number): number {
 
 /** 시즌마다 전원 RATING_START_ELO로 새로 시작한다(계약 20절 D183) */
 export function seasonResetText(): string {
-  return `종료 시 모두 ${RATING_START_ELO}점으로 초기화`;
+  return `분기 종료 시 모두 ${RATING_START_ELO}점으로 초기화`;
 }
 
-export const SEASON_WAITING_TITLE = '다음 시즌 준비 중';
+export const SEASON_WAITING_TITLE = '다음 분기 준비 중';
 export const SEASON_WAITING_NOTE = '첫 내전/모집 결과가 승인되면 시작돼요';
 
 /**
@@ -36,7 +36,7 @@ export const SEASON_WAITING_NOTE = '첫 내전/모집 결과가 승인되면 시
  */
 export function ratingEmptyText(scrim: { season: { name: string } | null } | null): { value: string; sub: string } {
   if (!scrim) return { value: '내전/모집 기록 없음', sub: '아직 반영된 내전/모집이 없어요' };
-  if (!scrim.season) return { value: SEASON_WAITING_TITLE, sub: '현재 진행 중인 시즌이 없어요' };
+  if (!scrim.season) return { value: SEASON_WAITING_TITLE, sub: '현재 진행 중인 분기가 없어요' };
   return { value: '내전/모집 기록 없음', sub: scrim.season.name };
 }
 
@@ -77,7 +77,7 @@ export function joinedPercent(s: Pick<ScrimSummary, 'joined_count' | 'capacity'>
 
 /** TOP 랭커 제목. is_final이면 시즌 이름을 붙인다 */
 export function topRankersTitle(t: Pick<DashboardTopRankers, 'is_final' | 'season'> | null, limit: number = DASHBOARD_TOP_RANKERS_LIMIT): string {
-  const head = t?.is_final ? `${t.season.name} 최종 ELO` : '시즌 ELO';
+  const head = t?.is_final ? `${t.season.name} 최종 ELO` : '분기 ELO';
   return `${head} TOP ${limit}`;
 }
 
@@ -120,7 +120,7 @@ export interface BadgeView {
   /** `#1`. 시즌 뱃지가 아니면 null(이름만) */
   mark: string | null;
   place: 1 | 2 | 3 | null;
-  /** 「시즌 1 · 리그 오브 레전드 시즌 1위」 */
+  /** 「2026년 3분기 · 리그 오브 레전드 1위」 */
   title: string;
   /** `2026.06`. 시즌 뱃지 earned_at은 ends_at(배타적, 다음 달 1일 00:00)이라 끝나는 달로 보이게 1ms 앞 시각의 월을 쓴다 */
   when: string;

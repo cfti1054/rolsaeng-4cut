@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { EventView } from '@gcd/shared';
 import { describe, expect, it } from 'vitest';
-import { eventDateText, eventScheduleText, eventTimeText, kstToday, monthGrid, newsDateBlock, parseMonth, shiftMonth, weekBars } from './news';
+import { eventDateText, eventScheduleText, eventTimeText, gameFilterOptions, kstToday, monthGrid, newsDateBlock, parseMonth, patchNoteGameOptions, shiftMonth, weekBars } from './news';
 import { routes } from './routes';
 
 const ev = (id: string, starts_on: string, ends_on: string): EventView => ({
@@ -75,6 +75,14 @@ describe('일정 시각 표기(23-8-5, D298)', () => {
     expect(eventTimeText(s('2026-11-08', '2026-11-08', '21:00', null))).toBe('21:00');
     expect(eventTimeText(s('2026-11-08', '2026-11-08', '21:00', '23:00'))).toBe('21:00–23:00');
     expect(eventTimeText(s('2026-11-08', '2026-11-10', '21:00', '18:00'))).toBe('21:00');
+  });
+});
+
+describe('게임 필터 칩', () => {
+  const games = [{ code: 'lol' as const }, { code: 'tft' as const }, { code: 'steam' as const }];
+  it('이벤트는 스팀을 포함하고, 패치노트는 뺀다', () => {
+    expect(gameFilterOptions(games)).toEqual([null, 'lol', 'tft', 'steam']);
+    expect(patchNoteGameOptions(games)).toEqual([null, 'lol', 'tft']);
   });
 });
 
