@@ -22,6 +22,7 @@ import {
   eventScheduleText,
   eventsOn,
   gameFilterOptions,
+  patchNoteGameOptions,
   isoDateDotted,
   kstToday,
   monthGrid,
@@ -83,8 +84,8 @@ export function NewsView() {
       {show('patch-notes') && (
         <PatchNotesSection
           manage={manage}
-          game={game}
-          gameOptions={gameFilterOptions(games.data?.items ?? [])}
+          game={game === 'steam' ? null : game}
+          gameOptions={patchNoteGameOptions(games.data?.items ?? [])}
           onGame={(g) => go({ game: g ?? undefined })}
         />
       )}

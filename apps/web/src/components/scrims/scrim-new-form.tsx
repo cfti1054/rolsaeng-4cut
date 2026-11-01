@@ -458,7 +458,7 @@ export function ScrimNewForm() {
                   onChange={() => setUsePositions((v) => !v)}
                 />
                 {game?.has_results !== false && (
-                  <Toggle label="시즌 ELO에 반영" desc="운영진 승인 후 레이팅이 바뀝니다" checked={rated} onChange={() => setRated((v) => !v)} />
+                  <Toggle label="분기 ELO에 반영" desc="운영진 승인 후 레이팅이 바뀝니다" checked={rated} onChange={() => setRated((v) => !v)} />
                 )}
               </div>
             </div>

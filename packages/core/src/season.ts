@@ -117,6 +117,55 @@ export function planAutoSeason(input: {
   return { name: autoSeasonName(seasons.length + 1), startsAt: start, endsAt: end };
 }
 
+export type CalendarQuarter = {
+  year: number;
+  quarter: 1 | 2 | 3 | 4;
+  name: string;
+  startsAt: Date;
+  endsAt: Date;
+};
+
+/**
+ * at이 속한 한국 시간 달력 분기. 1분기 1월 1일, 2분기 4월 1일, 3분기 7월 1일, 4분기 10월 1일 0시.
+ * 끝은 다음 분기 시작(포함하지 않음). 이름 `2026년 4분기`.
+ */
+export function calendarQuarterOf(at: Date): CalendarQuarter {
+  assertValidDate(at, 'at');
+  const kst = new Date(at.getTime() + KST_OFFSET_MS);
+  const year = kst.getUTCFullYear();
+  const quarter = (Math.floor(kst.getUTCMonth() / 3) + 1) as 1 | 2 | 3 | 4;
+  const startMonth = (quarter - 1) * 3;
+  const startsAt = new Date(Date.UTC(year, startMonth, 1) - KST_OFFSET_MS);
+  const endsAt = new Date(Date.UTC(year, startMonth + 3, 1) - KST_OFFSET_MS);
+  return { year, quarter, name: `${year}년 ${quarter}분기`, startsAt, endsAt };
+}
+
+/**
+ * 결과 승인으로 만드는 분기. at을 포함하는 기간이 이미 있으면 RangeError.
+ * 기본은 그 시각의 달력 분기 전체. 이미 있는 기간과 겹치면, 직전 끝 또는 다음 시작에 맞춰 자른다.
+ */
+export function planCalendarQuarter(input: { seasons: readonly SeasonLike[]; at: Date }): { name: string; startsAt: Date; endsAt: Date } {
+  const { seasons, at } = input;
+  assertValidDate(at, 'at');
+  if (resolveSeasonAt(seasons, at) !== null) {
+    throw new RangeError('at이 이미 어떤 분기에 속함');
+  }
+  const quarter = calendarQuarterOf(at);
+  const t = at.getTime();
+  let start = quarter.startsAt.getTime();
+  let end = quarter.endsAt.getTime();
+  for (const s of seasons) {
+    const e = s.endsAt.getTime();
+    const st = s.startsAt.getTime();
+    if (e <= t && e > start) start = e;
+    if (st > t && st < end) end = st;
+  }
+  if (!(start <= t && t < end)) {
+    throw new RangeError('분기 구간을 만들 수 없음');
+  }
+  return { name: quarter.name, startsAt: new Date(start), endsAt: new Date(end) };
+}
+
 // =============================================================================
 // S4 시즌 종료·표시(계약 S4 6절, D141–D145). 레이팅 이월(소프트 리셋)은 없다(20절 D183):
 // 새 시즌 행은 모두 RATING_START_ELO(@gcd/shared)로 시작한다.

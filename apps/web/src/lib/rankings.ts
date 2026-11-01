@@ -39,7 +39,7 @@ export const RANKING_TABS: readonly { value: RankingTab; label: string; descript
   {
     value: 'elo',
     label: '내전/모집 ELO',
-    description: `티어와 상관없이 모두 ${RATING_START_ELO}점에서 시작하는 서버 자체 내전/모집 점수입니다. 운영진이 승인한 결과만 반영되고, 시즌마다 새로 시작합니다.`,
+    description: `티어와 상관없이 모두 ${RATING_START_ELO}점에서 시작하는 서버 자체 내전/모집 점수입니다. 운영진이 승인한 결과만 반영되고, 분기마다 새로 시작합니다.`,
   },
   // 음성만 센다(D232)
   { value: 'activity', label: '활동', description: '디스코드 음성 채널 접속 시간 합계예요.' },
@@ -90,7 +90,7 @@ export type RankingStatusTone = 'ok' | 'warn' | 'final';
 
 /** 머리 오른쪽 알약. 시작 전 시즌처럼 시각이 없으면 null */
 export function rankingStatusText(r: { synced_at: string | null; stale: boolean; is_final?: boolean }): { text: string; tone: RankingStatusTone } | null {
-  if (r.is_final) return { text: '시즌 최종 순위', tone: 'final' };
+  if (r.is_final) return { text: '분기 최종 순위', tone: 'final' };
   if (!r.synced_at) return null;
   if (r.stale) return { text: `갱신 지연 · 마지막 ${formatClock(r.synced_at)}`, tone: 'warn' };
   return { text: `${RANKING_CACHE_INTERVAL_MIN}분마다 갱신 · ${formatClock(r.synced_at)}`, tone: 'ok' };
@@ -102,7 +102,7 @@ export function rankingStatusText(r: { synced_at: string | null; stale: boolean;
 
 export const TIER_RULE_TEXT = '티어 점수 = 티어 × 400 + 디비전 × 100 + LP';
 export const TIER_EMPTY_TEXT = '라이엇 계정을 연동한 멤버가 아직 없어요';
-export const SEASON_NONE_TEXT = '아직 시즌이 없어요';
+export const SEASON_NONE_TEXT = '아직 분기가 없어요';
 export const TOP_RANKERS_UNAVAILABLE_TEXT = '순위를 불러오지 못했어요';
 
 /** 홈 상위 랭커가 없을 때. no_season과 unavailable을 같은 문구로 두지 않는다(21절) */
@@ -112,7 +112,7 @@ export function topRankersEmptyText(state: 'no_season' | 'unavailable'): string 
 
 /** 종료 시즌은 그때 확정된 순위라, 지금 설정값 min_games를 기준처럼 보이면 틀릴 수 있다(계약 13절) */
 export function eloRuleText(r: Pick<GetEloRankingResponse, 'min_games' | 'is_final'>): string {
-  if (r.is_final) return '시즌 종료 때 확정된 순위 · 동점이면 승률 순';
+  if (r.is_final) return '분기 종료 때 확정된 순위 · 동점이면 승률 순';
   return `${r.min_games}경기 이상 치른 멤버만 표시 · 동점이면 승률 순`;
 }
 
@@ -123,8 +123,8 @@ export function eloEmptyText(minGames: number): string {
 /** ELO 빈 상태. season null → 시즌 없음, 시작 전(synced_at null) → 시작 전, 종료 시즌 → 순위 없음 */
 export function eloEmptyState(r: Pick<GetEloRankingResponse, 'season' | 'synced_at' | 'is_final' | 'min_games'>): string {
   if (!r.season) return SEASON_NONE_TEXT;
-  if (r.is_final) return '이 시즌에 순위에 든 멤버가 없어요';
-  if (!r.synced_at) return '아직 시작하지 않은 시즌이에요';
+  if (r.is_final) return '이 분기에 순위에 든 멤버가 없어요';
+  if (!r.synced_at) return '아직 시작하지 않은 분기예요';
   return eloEmptyText(r.min_games);
 }
 
@@ -133,7 +133,7 @@ export function eloEmptyState(r: Pick<GetEloRankingResponse, 'season' | 'synced_
  * ends_at이 지났으면 승인은 다음 시즌으로 간다(D116). now를 아직 모르면 문구를 내지 않는다.
  */
 export function eloEmptyNote(r: Pick<GetEloRankingResponse, 'season' | 'is_final'>, now: number | null): string | null {
-  if (!r.season) return '첫 내전/모집 결과가 승인되면 시즌이 시작돼요.';
+  if (!r.season) return '첫 내전/모집 결과가 승인되면 분기가 시작돼요.';
   if (r.is_final || now === null || Date.parse(r.season.ends_at) <= now) return null;
   return '운영진이 내전/모집 결과를 승인하면 순위가 쌓여요.';
 }

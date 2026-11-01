@@ -443,7 +443,7 @@ describe('POST /scrims/:id/result/approve', () => {
     expect(t.prisma.scrim.rows.find((s) => s.id === id)?.status).toBe('playing');
   });
 
-  it('rated 팀 게임: 시즌 자동 생성(시즌 1, KST 10월 1일 ~ 3개월), 새 행은 티어와 무관하게 1000(GOLD도, D182), ELO·이력·k_factor·wins/losses, finished, 잠금 순서', async () => {
+  it('rated 팀 게임: 분기 자동 생성(2026년 4분기, KST 10월 1일 ~ 1월 1일), 새 행은 티어와 무관하게 1000(GOLD도, D182), ELO·이력·k_factor·wins/losses, finished, 잠금 순서', async () => {
     t = await createTestApp({ fixedClock: true });
     const { host, a, b, c, admin } = await four(t);
     seedTier(t, b.userId, 'GOLD');
@@ -467,7 +467,7 @@ describe('POST /scrims/:id/result/approve', () => {
     const seasons = t.prisma.season.rows;
     expect(seasons).toHaveLength(1);
     expect(seasons[0]).toMatchObject({
-      name: '시즌 1',
+      name: '2026년 4분기',
       startsAt: new Date('2026-09-30T15:00:00.000Z'),
       endsAt: new Date('2026-12-31T15:00:00.000Z'),
     });
@@ -478,7 +478,7 @@ describe('POST /scrims/:id/result/approve', () => {
       approved_by: { id: admin.userId },
       approved_at: now,
       rating_status: 'applied',
-      season: { name: '시즌 1', starts_at: '2026-09-30T15:00:00.000Z', ends_at: '2026-12-31T15:00:00.000Z' },
+      season: { name: '2026년 4분기', starts_at: '2026-09-30T15:00:00.000Z', ends_at: '2026-12-31T15:00:00.000Z' },
     });
     const changes = d.result?.rating_changes ?? [];
     expect(changes.map((x) => x.delta)).toEqual([20, 20, -20, -20]);
@@ -873,7 +873,7 @@ describe('QA minor 1–3 반영', () => {
     expect(d.result?.approved_at).toBe(after);
     expect(t.prisma.ratingHistory.rows.map((h) => h.createdAt.toISOString())).toEqual([after, after]);
     const created = t.prisma.season.rows.find((s) => s.id !== s1.id);
-    expect(created).toMatchObject({ name: '시즌 2', startsAt: new Date(T + 10_000) });
+    expect(created).toMatchObject({ name: '2026년 4분기', startsAt: new Date(T + 10_000) });
     expect(d.result?.season?.id).toBe(created?.id);
     expect(t.prisma.ratingHistory.rows.every((h) => h.seasonId === created?.id)).toBe(true);
   });

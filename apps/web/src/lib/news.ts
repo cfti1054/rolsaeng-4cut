@@ -152,3 +152,8 @@ export function newsDateBlock(date: string): { mon: string; day: string } {
 export function gameFilterOptions(games: readonly { code: GameCode }[]): (GameCode | null)[] {
   return [null, ...games.map((g) => g.code)];
 }
+
+/** 패치노트 게임 칩. 스팀은 빼 둔다 */
+export function patchNoteGameOptions(games: readonly { code: GameCode }[]): (GameCode | null)[] {
+  return gameFilterOptions(games.filter((g) => g.code !== 'steam'));
+}

@@ -172,7 +172,7 @@ export function ScrimEditDialog({
                 onChange={() => setAutoBalance(false)}
               />
             )}
-            <Toggle label="시즌 ELO에 반영" desc="운영진 승인 후 레이팅이 바뀝니다" checked={rated} onChange={() => setRated((v) => !v)} />
+            <Toggle label="분기 ELO에 반영" desc="운영진 승인 후 레이팅이 바뀝니다" checked={rated} onChange={() => setRated((v) => !v)} />
           </div>
         ) : (
           <p className="m-0 text-xs text-muted">인원 모집이라 팀을 나누거나 승패를 입력하지 않아요.</p>

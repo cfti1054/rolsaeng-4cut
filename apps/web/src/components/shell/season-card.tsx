@@ -31,7 +31,7 @@ export function SeasonCard() {
       </div>
       <div
         role="img"
-        aria-label={`시즌 진행 ${Math.round(season.progress * 100)}%`}
+        aria-label={`분기 진행 ${Math.round(season.progress * 100)}%`}
         className="grid gap-[3px]"
         style={{ gridTemplateColumns: `repeat(${SEASON_PIPS}, minmax(0, 1fr))` }}
       >

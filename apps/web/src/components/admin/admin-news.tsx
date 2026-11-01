@@ -210,10 +210,10 @@ function NoticeForm({ editing, onDone, onToast }: { editing: NoticeView | null; 
   return (
     <>
       <Field label="제목">
-        <TextInput value={title} onChange={(e) => setTitle(e.target.value)} maxLength={NOTICE_TITLE_MAX_LENGTH} placeholder="예: 시즌 2 종료 안내" />
+        <TextInput value={title} onChange={(e) => setTitle(e.target.value)} maxLength={NOTICE_TITLE_MAX_LENGTH} placeholder="예: 4분기 종료 안내" />
       </Field>
       <Field label="내용">
-        <TextArea rows={5} value={body} onChange={(e) => setBody(e.target.value)} maxLength={NOTICE_BODY_MAX_LENGTH} placeholder="예: 시즌이 끝나면 최종 순위를 저장하고 상위 3명에게 뱃지를 드려요." />
+        <TextArea rows={5} value={body} onChange={(e) => setBody(e.target.value)} maxLength={NOTICE_BODY_MAX_LENGTH} placeholder="예: 분기가 끝나면 최종 순위를 저장하고 상위 3명에게 뱃지를 드려요." />
       </Field>
       <div className="flex flex-wrap items-center justify-between gap-2.5">
         <CheckboxRow checked={notify} onChange={setNotify} disabled={notifyLocked}>

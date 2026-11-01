@@ -260,12 +260,12 @@ export function RankingsView() {
           )}
           {q.tab === 'elo' && (
             <FilterSelect
-              label="시즌"
+              label="분기"
               value={seasonValue}
               disabled={!seasons.data?.items.length && !elo.data?.season}
               onChange={(v) => go({ tab: 'elo', ...keep, season: v === currentSeasonId ? null : v })}
             >
-              {!seasons.data?.items.length && <option value={seasonValue}>{elo.data?.season?.name ?? (seasons.data ? '시즌 없음' : '시즌')}</option>}
+              {!seasons.data?.items.length && <option value={seasonValue}>{elo.data?.season?.name ?? (seasons.data ? '분기 없음' : '분기')}</option>}
               {/* 목록에 없는 값이 다른 시즌처럼 보이지 않게 옵션을 하나 더 둔다 */}
               {!!seasons.data?.items.length && seasonFallback !== null && <option value={seasonValue}>{seasonFallback}</option>}
               {seasons.data?.items.map((s) => (
@@ -463,10 +463,10 @@ function EloPanel({ q, meId, onReset }: { q: PanelQuery<GetEloRankingResponse>; 
     return (
       <EmptyState
         mark="?"
-        title="시즌을 찾을 수 없어요"
-        description="주소의 시즌이 없어졌거나 잘못됐어요."
+        title="분기를 찾을 수 없어요"
+        description="주소의 분기가 없어졌거나 잘못됐어요."
         action={
-          <Button onClick={onReset}>기본 시즌 보기</Button>
+          <Button onClick={onReset}>기본 분기 보기</Button>
         }
       />
     );

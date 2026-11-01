@@ -37,7 +37,7 @@ describe('되돌리기 막는 이유 문구(계약 S6 13절)', () => {
     for (const b of ScrimResultRevertBlock.options) expect(REVERT_BLOCK_TEXT[b].length).toBeGreaterThan(0);
     expect(REVERT_BLOCK_TEXT.window_passed).toBe(`승인 후 ${SCRIM_RESULT_REVERT_WINDOW_DAYS}일이 지나 되돌릴 수 없어요`);
     expect(REVERT_BLOCK_TEXT.self_submitted).toBe('내가 제출한 결과는 다른 운영진이 되돌려야 해요');
-    expect(REVERT_BLOCK_TEXT.season_closed).toBe('시즌 종료 처리가 끝나 되돌릴 수 없어요');
+    expect(REVERT_BLOCK_TEXT.season_closed).toBe('분기 종료 처리가 끝나 되돌릴 수 없어요');
     expect(REVERT_BLOCK_TEXT.later_games).toBe('참가자의 다음 경기가 이미 반영돼 되돌릴 수 없어요');
     expect(REVERT_BLOCK_TEXT.rating_mismatch).toBe('레이팅 기록이 맞지 않아요. 개발자에게 알려 주세요');
   });
