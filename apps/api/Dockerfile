@@ -7,7 +7,9 @@
 # 이미지에 개발 의존성을 남기는 이유: 시작할 때 쓰는 prisma(마이그레이션)와 tsx(게임 시드 실행)가
 # devDependencies이기 때문이다. 이미지를 줄이려면 prisma·tsx를 dependencies로 옮긴 뒤 --prod로 설치한다.
 
-FROM node:22-bookworm-slim
+# Node 패치 버전까지 고정한다(22.23.4는 2026-10-21 보안 릴리스). 고정하지 않으면 Railway 빌드 캐시가 옛 22.x를 재사용할 수 있다.
+# 새 보안 릴리스가 나오면 이 태그를 올린다.
+FROM node:22.23.4-bookworm-slim
 
 # Prisma 엔진이 OpenSSL을 쓴다
 RUN apt-get update \

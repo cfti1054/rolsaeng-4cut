@@ -11,6 +11,8 @@ import {
   validateScrimSchedule,
 } from '@gcd/core';
 import {
+  appliedAutoBalance,
+  appliedRated,
   type CreateScrimRequest,
   type ErrorDetail,
   type JoinScrimRequest,
@@ -21,6 +23,7 @@ import {
   type ScrimDetail,
   type ScrimListStatus,
   type ScrimPlayerStatus,
+  scrimCapacityRange,
   type ScrimStatus,
   type SetScrimNoShowRequest,
   type SteamAppRef,
@@ -29,6 +32,7 @@ import {
 } from '@gcd/shared';
 import type { Game, Prisma } from '@prisma/client';
 import { AppError } from '../../common/app-error';
+import { scrimWriteTx } from '../../common/scrim-tx';
 import { APP_CLOCK, type Clock } from '../../common/clock';
 import type { AuthUser } from '../../common/decorators/current-user';
 import { type LockedScrim, lockScrim } from '../../common/scrim-lock';
@@ -82,6 +86,14 @@ export function countJoined(tx: Tx, scrimId: string): Promise<number> {
 }
 
 /**
+ * S3 5-1(D110): 명단(joined 집합)이 바뀌면 그 내전 팀 배정 전원 초기화. 같은 트랜잭션(내전 행 잠금 아래)에서 부른다.
+ * 노쇼 표시·정정은 부르지 않는다(노쇼는 반영 단계에서 빠진다).
+ */
+export async function resetTeams(tx: Tx, scrimId: string): Promise<void> {
+  await tx.scrimPlayer.updateMany({ where: { scrimId }, data: { team: null, position: null, duoIndex: null } });
+}
+
+/**
  * 내전 모집·참가·대기열·노쇼(계약 S2 5절). 명단·상태를 바꾸는 경로는 모두 트랜잭션 + 내전 행 잠금(5-0) 뒤에 판정한다.
  * 계산(대기 순번·승격·정원·시작 조건·노쇼 판정)은 @gcd/core 함수만 쓴다.
  * 상태 변경 응답은 모두 커밋 후 다시 읽은 ScrimDetail(D87).
@@ -130,7 +142,7 @@ export class ScrimsService {
     const page = rows.slice(0, q.limit);
     const last = page.at(-1);
     const next = rows.length > q.limit && last ? encodeScrimCursor({ tab, scheduledAt: last.scheduledAt, id: last.id }) : null;
-    return ListScrimsResponse.parse({ items: await this.views.summaries(page, viewer.id, now), next_cursor: next });
+    return ListScrimsResponse.parse({ items: await this.views.summaries(page, viewer, now), next_cursor: next });
   }
 
   /** GET /scrims/:id */
@@ -150,10 +162,14 @@ export class ScrimsService {
     return null;
   }
 
-  private capacityDetail(capacity: number, game: Game): ErrorDetail | null {
-    if (isCapacityInRange(capacity, { min: game.capacityMin, max: game.capacityMax, step: game.capacityStep })) return null;
-    const range = game.capacityMin === game.capacityMax ? `${game.capacityMin}명` : `${game.capacityMin}–${game.capacityMax}명`;
-    const unit = game.capacityStep > 1 ? ` ${game.capacityStep}명 단위` : '';
+  private capacityDetail(capacity: number, game: Game, tftMode: 'double_up' | 'normal' | 'ranked' | null): ErrorDetail | null {
+    const bounds = scrimCapacityRange(
+      { code: game.code, capacityMin: game.capacityMin, capacityMax: game.capacityMax, capacityStep: game.capacityStep },
+      tftMode === 'double_up' || tftMode === 'normal' || tftMode === 'ranked' ? tftMode : null,
+    );
+    if (isCapacityInRange(capacity, bounds)) return null;
+    const range = bounds.min === bounds.max ? `${bounds.min}명` : `${bounds.min}–${bounds.max}명`;
+    const unit = bounds.step > 1 ? ` ${bounds.step}명 단위` : '';
     return { path: 'capacity', message: `이 게임의 정원은 ${range}${unit}입니다.` };
   }
 
@@ -164,13 +180,25 @@ export class ScrimsService {
     if (!game) throw new AppError('INTERNAL_ERROR', undefined, { message: `games 시드 없음: ${body.game}` });
     // 진행 방식 적용값(D77)
     const usePositions = body.use_positions && game.hasPositions;
-    const autoBalance = body.auto_balance && game.hasTeams;
+    const tftMode = game.code === 'tft' ? (body.tft_mode ?? null) : null;
+    if (game.code === 'tft' && tftMode === null) {
+      throw new AppError('VALIDATION_FAILED', undefined, { details: [{ path: 'tft_mode', message: '롤체 모드를 골라 주세요.' }] });
+    }
+    if (game.code !== 'tft' && body.tft_mode != null) {
+      throw new AppError('VALIDATION_FAILED', undefined, { details: [{ path: 'tft_mode', message: '이 게임은 롤체 모드를 고를 수 없습니다.' }] });
+    }
+    const autoBalance = appliedAutoBalance({
+      game: body.game,
+      hasTeams: game.hasTeams,
+      tftMode,
+      requested: body.auto_balance,
+    });
     const scheduledAt = new Date(body.scheduled_at);
 
     const details: ErrorDetail[] = [];
     const sd = this.scheduleDetail(scheduledAt, now);
     if (sd) details.push(sd);
-    const cd = this.capacityDetail(body.capacity, game);
+    const cd = this.capacityDetail(body.capacity, game, tftMode);
     if (cd) details.push(cd);
     const pv = validatePreferredPositions(body.host_preferred_positions, game.positions, usePositions);
     if (!pv.ok) details.push({ path: 'host_preferred_positions', message: pv.message });
@@ -185,7 +213,7 @@ export class ScrimsService {
     await this.restriction.assertNotRestricted(user.id, now);
     const steamApp = steamAppId === null ? null : await this.resolveSteamApp(steamAppId);
 
-    const id = await this.prisma.$transaction(async (tx) => {
+    const id = await scrimWriteTx(this.prisma, async (tx) => {
       const scrim = await tx.scrim.create({
         data: {
           gameId: game.id,
@@ -195,9 +223,10 @@ export class ScrimsService {
           capacity: body.capacity,
           status: statusForJoinedCount(1, body.capacity),
           rules: body.rules ?? null,
-          rated: body.rated,
+          rated: appliedRated(game.hasResults, body.rated),
           autoBalance,
           usePositions,
+          tftMode,
           steamAppId: steamApp?.app_id ?? null,
           steamAppName: steamApp?.name ?? null,
         },
@@ -249,7 +278,7 @@ export class ScrimsService {
   async update(user: AuthUser, id: string, body: UpdateScrimRequest): Promise<ScrimDetail> {
     const now = this.clock.now();
     const steamApp = body.steam_app_id === undefined ? undefined : await this.steamAppForUpdate(user, id, body.steam_app_id);
-    await this.prisma.$transaction(async (tx) => {
+    await scrimWriteTx(this.prisma, async (tx) => {
       const s = await lockOrNotFound(tx, id);
       if (s.hostId !== user.id) throw new AppError('FORBIDDEN');
       if (!isOpenStatus(s.status)) throw new AppError('SCRIM_NOT_RECRUITING');
@@ -262,7 +291,7 @@ export class ScrimsService {
         if (sd) details.push(sd);
       }
       if (body.capacity !== undefined) {
-        const cd = this.capacityDetail(body.capacity, game);
+        const cd = this.capacityDetail(body.capacity, game, s.tftMode);
         if (cd) details.push(cd);
       }
       if (details.length > 0) throw new AppError('VALIDATION_FAILED', undefined, { details });
@@ -279,14 +308,24 @@ export class ScrimsService {
           scheduledAt,
           capacity: body.capacity,
           rules: body.rules === undefined ? undefined : body.rules,
-          rated: body.rated,
-          autoBalance: body.auto_balance === undefined ? undefined : body.auto_balance && game.hasTeams,
+          rated: body.rated === undefined ? undefined : appliedRated(game.hasResults, body.rated),
+          autoBalance:
+            body.auto_balance === undefined
+              ? undefined
+              : appliedAutoBalance({
+                  game: game.code as 'lol' | 'tft' | 'steam',
+                  hasTeams: game.hasTeams,
+                  tftMode: s.tftMode,
+                  requested: body.auto_balance,
+                }),
           steamAppId: steamApp?.app_id,
           steamAppName: steamApp?.name,
         },
       });
       if (body.capacity !== undefined) {
-        await this.applyRoster(tx, { ...s, capacity: body.capacity }, joinedCount);
+        const promoted = await this.applyRoster(tx, { ...s, capacity: body.capacity }, joinedCount);
+        // S3 5-1: 정원 확대로 승격이 일어나면 joined 집합이 바뀐다
+        if (promoted > 0) await resetTeams(tx, s.id);
       }
     });
     return this.views.detail(id, user, now);
@@ -294,9 +333,9 @@ export class ScrimsService {
 
   /**
    * 자리 변화 뒤 대기열 승격 + recruiting ↔ full(5-3 6단계, 5-4 4단계, core planRosterAfterChange).
-   * 승격자는 preferred_positions·joined_at을 그대로 둔다(메인 기본값 7).
+   * 승격자는 preferred_positions·joined_at을 그대로 둔다(메인 기본값 7). 반환: 승격 인원
    */
-  private async applyRoster(tx: Tx, s: LockedScrim, joinedCount: number): Promise<void> {
+  private async applyRoster(tx: Tx, s: LockedScrim, joinedCount: number): Promise<number> {
     const waitlist = await tx.scrimPlayer.findMany({
       where: { scrimId: s.id, status: 'waitlist' },
       select: { id: true, joinedAt: true },
@@ -314,6 +353,7 @@ export class ScrimsService {
       assertScrimTransition(s.status, plan.nextStatus);
       await tx.scrim.update({ where: { id: s.id }, data: { status: plan.nextStatus } });
     }
+    return plan.promoteIds.length;
   }
 
   // ---------------------------------------------------------------------------
@@ -323,7 +363,7 @@ export class ScrimsService {
   /** POST /scrims/:id/join */
   async join(user: AuthUser, id: string, body: JoinScrimRequest): Promise<ScrimDetail> {
     const now = this.clock.now();
-    await this.prisma.$transaction(async (tx) => {
+    await scrimWriteTx(this.prisma, async (tx) => {
       const s = await lockOrNotFound(tx, id);
       if (!isOpenStatus(s.status)) throw new AppError('SCRIM_NOT_RECRUITING');
       if (isJoinClosed(s.scheduledAt, now)) throw new AppError('SCRIM_JOIN_CLOSED');
@@ -347,7 +387,7 @@ export class ScrimsService {
         assertPlayerTransition(mine.status, place);
         await tx.scrimPlayer.update({
           where: { id: mine.id },
-          data: { status: place, preferredPositions: body.preferred_positions, joinedAt: now, position: null, team: null },
+          data: { status: place, preferredPositions: body.preferred_positions, joinedAt: now, position: null, team: null, duoIndex: null },
         });
       } else {
         await tx.scrimPlayer.create({
@@ -356,6 +396,8 @@ export class ScrimsService {
       }
       // 7
       if (place === 'joined') {
+        // S3 5-1(D110): 새 참가 확정으로 joined 집합이 바뀐다(재참가 행은 위에서 team·position도 null로 썼다)
+        await resetTeams(tx, s.id);
         const next = statusForJoinedCount(n + 1, s.capacity);
         if (next !== s.status) {
           assertScrimTransition(s.status, next);
@@ -369,7 +411,7 @@ export class ScrimsService {
   /** DELETE /scrims/:id/join */
   async leave(user: AuthUser, id: string): Promise<ScrimDetail> {
     const now = this.clock.now();
-    await this.prisma.$transaction(async (tx) => {
+    await scrimWriteTx(this.prisma, async (tx) => {
       const s = await lockOrNotFound(tx, id);
       if (!isOpenStatus(s.status)) throw new AppError('SCRIM_NOT_RECRUITING');
       if (isJoinClosed(s.scheduledAt, now)) throw new AppError('SCRIM_JOIN_CLOSED');
@@ -380,6 +422,8 @@ export class ScrimsService {
       await tx.scrimPlayer.update({ where: { id: mine.id }, data: { status: 'cancelled' } });
       if (mine.status === 'joined') {
         await this.applyRoster(tx, s, await countJoined(tx, s.id));
+        // S3 5-1: 참가 확정자 취소(승격 포함)로 joined 집합이 바뀐다. 대기자 취소는 그대로
+        await resetTeams(tx, s.id);
       }
     });
     return this.views.detail(id, user, now);
@@ -392,7 +436,7 @@ export class ScrimsService {
   /** POST /scrims/:id/start — 방장·운영진 */
   async start(user: AuthUser, id: string): Promise<ScrimDetail> {
     const now = this.clock.now();
-    await this.prisma.$transaction(async (tx) => {
+    await scrimWriteTx(this.prisma, async (tx) => {
       const s = await lockOrNotFound(tx, id);
       if (s.hostId !== user.id && user.role !== 'admin') throw new AppError('FORBIDDEN');
       if (!isOpenStatus(s.status)) throw new AppError('SCRIM_NOT_RECRUITING');
@@ -411,7 +455,7 @@ export class ScrimsService {
   /** POST /scrims/:id/cancel — 방장(reason host)·운영진(reason admin) */
   async cancel(user: AuthUser, id: string): Promise<ScrimDetail> {
     const now = this.clock.now();
-    await this.prisma.$transaction(async (tx) => {
+    await scrimWriteTx(this.prisma, async (tx) => {
       const s = await lockOrNotFound(tx, id);
       const isHost = s.hostId === user.id;
       if (!isHost && user.role !== 'admin') throw new AppError('FORBIDDEN');
@@ -426,13 +470,24 @@ export class ScrimsService {
     return this.views.detail(id, user, now);
   }
 
+  /** DELETE /scrims/:id — 운영진만. 승인된 결과가 있으면 409. 행을 지워 목록에서 카드가 사라진다. */
+  async remove(user: AuthUser, id: string): Promise<void> {
+    if (user.role !== 'admin') throw new AppError('FORBIDDEN');
+    await scrimWriteTx(this.prisma, async (tx) => {
+      const s = await lockOrNotFound(tx, id);
+      const approved = await tx.scrimResult.count({ where: { scrimId: s.id, status: 'approved' } });
+      if (approved > 0) throw new AppError('SCRIM_DELETE_NOT_ALLOWED');
+      await tx.scrim.delete({ where: { id: s.id } });
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // 노쇼 표시·정정 (5-7) — 운영진(@Roles('admin')은 컨트롤러)
   // ---------------------------------------------------------------------------
 
   async setNoShow(admin: AuthUser, id: string, targetUserId: string, body: SetScrimNoShowRequest): Promise<ScrimDetail> {
     const now = this.clock.now();
-    await this.prisma.$transaction(async (tx) => {
+    await scrimWriteTx(this.prisma, async (tx) => {
       const s = await lockOrNotFound(tx, id);
       if (s.status !== 'playing' && s.status !== 'finished') throw new AppError('SCRIM_NO_SHOW_NOT_ALLOWED');
       const row = await tx.scrimPlayer.findFirst({ where: { scrimId: s.id, userId: targetUserId } });

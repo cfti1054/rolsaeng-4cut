@@ -7,8 +7,11 @@
 # 주의: 아래 ARG 값은 빌드할 때 코드에 박힌다. 값을 바꾸면 이미지를 다시 빌드해야 한다.
 #   - NEXT_PUBLIC_*: 브라우저 번들에 들어간다
 #   - API_ORIGIN: next.config.ts의 rewrites가 빌드 때 계산되어 라우트 표에 저장된다
+# WEB_ORIGIN(공유 미리보기 주소)은 ARG가 아니다. 실행 중 Railway Variables에서 읽는다.
 
-FROM node:22-bookworm-slim
+# Node 패치 버전까지 고정한다(22.23.4는 2026-10-21 보안 릴리스). 고정하지 않으면 Railway 빌드 캐시가 옛 22.x를 재사용할 수 있다.
+# 새 보안 릴리스가 나오면 이 태그를 올린다.
+FROM node:22.23.4-bookworm-slim
 
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
@@ -22,8 +25,9 @@ COPY packages/shared/package.json packages/shared/
 COPY packages/core/package.json packages/core/
 RUN pnpm install --frozen-lockfile --prod=false --filter "web..."
 
-# 2) 소스 복사 → 빌드. 웹은 @gcd/shared를 TS 소스로 가져오므로 shared를 따로 빌드하지 않는다
+# 2) 소스 복사 → 빌드. 웹은 @gcd/shared·@gcd/core를 TS 소스로 가져오므로 따로 빌드하지 않는다
 COPY packages/shared ./packages/shared
+COPY packages/core ./packages/core
 COPY apps/web ./apps/web
 
 # 기본값은 로컬용이다. Railway에서는 같은 이름의 서비스 변수로 덮어쓴다

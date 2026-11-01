@@ -275,11 +275,36 @@ describe('computeOpenPositions', () => {
     ]);
   });
 
-  it('1지망 쏠림: 미드 3명 → 미드는 음수라 제외, 나머지 2자리', () => {
-    const r = computeOpenPositions(LOL, 10, ['mid', 'mid', 'mid']);
-    expect(r.find((p) => p.position === 'mid')).toBeUndefined();
-    expect(r).toHaveLength(4);
-    expect(r.every((p) => p.count === 2)).toBe(true);
+  it('D100: 1지망 미드 3명 → raw 2·2·0·2·2 = 8 > 빈 자리 7 → []', () => {
+    expect(computeOpenPositions(LOL, 10, ['mid', 'mid', 'mid'])).toEqual([]);
+  });
+
+  it('D100: 1지망 미드 9명 → raw 합계 8 > 빈 자리 1 → [](카드는 「1자리 남음」)', () => {
+    expect(computeOpenPositions(LOL, 10, Array(9).fill('mid'))).toEqual([]);
+  });
+
+  it('D100: 합계 = 빈 자리면 그대로(탑2·정글2·미드2·원딜1·서폿1 → 원딜1·서폿1)', () => {
+    const first = ['top', 'top', 'jungle', 'jungle', 'mid', 'mid', 'bot', 'support'];
+    expect(computeOpenPositions(LOL, 10, first)).toEqual([
+      { position: 'bot', count: 1 },
+      { position: 'support', count: 1 },
+    ]);
+  });
+
+  it('D100: 1지망 미드 2명(raw 합계 8 = 빈 자리 8) → 미드 제외 4포지션 2자리', () => {
+    expect(computeOpenPositions(LOL, 10, ['mid', 'mid'])).toEqual([
+      { position: 'top', count: 2 },
+      { position: 'jungle', count: 2 },
+      { position: 'bot', count: 2 },
+      { position: 'support', count: 2 },
+    ]);
+  });
+
+  it('D100: 경계 — 합계가 빈 자리보다 1 많으면 [], 같으면 그대로', () => {
+    // 2인 포지션(capacity 4, positions 2): 1지망 a 2명 → raw 0·2 = 2 = open 2
+    expect(computeOpenPositions(['a', 'b'], 4, ['a', 'a'])).toEqual([{ position: 'b', count: 2 }]);
+    // 1지망 a 3명 → open 1, raw 0·2 = 2 > 1
+    expect(computeOpenPositions(['a', 'b'], 4, ['a', 'a', 'a'])).toEqual([]);
   });
 
   it('빈 자리 0(정원 마지막 자리까지 참) → []', () => {
@@ -298,13 +323,46 @@ describe('computeOpenPositions', () => {
     expect(computeOpenPositions([], 8, [null, null])).toEqual([]);
   });
 
-  it('1지망 null·게임에 없는 값은 자리 수에만 반영', () => {
-    expect(computeOpenPositions(LOL, 5, [null, 'adc', 'top'])).toEqual([
-      { position: 'jungle', count: 1 },
-      { position: 'mid', count: 1 },
-      { position: 'bot', count: 1 },
-      { position: 'support', count: 1 },
-    ]);
+  it('D100: null·positions 밖 값 때문에 합계가 빈 자리를 넘으면 []', () => {
+    // capacity 5: open 2, raw = 0(top)+1+1+1+1 = 4 > 2
+    expect(computeOpenPositions(LOL, 5, [null, 'adc', 'top'])).toEqual([]);
+    // 10명, null 1 + 밖 값 1 + 나머지 6 → open 2, raw 원딜1·서폿2 = 3 > 2
+    const first = ['top', 'top', 'jungle', 'jungle', 'mid', 'mid', 'bot', null, 'adc'];
+    expect(computeOpenPositions(LOL, 10, first)).toEqual([]);
+  });
+
+  it('불변식(무작위 대조): 결과 count 합계 ≤ 빈 자리, 각 count ≥ 1, positions 순서', () => {
+    // 결정적 시드 PRNG(mulberry32) — 테스트가 항상 같은 입력을 쓴다
+    let seed = 0x5eed1234;
+    const rand = () => {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = seed;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const pick = <T,>(xs: readonly T[]): T => xs[Math.floor(rand() * xs.length)]!;
+    const pool: (string | null)[] = [...LOL, null, 'adc', 'unknown'];
+    let nonEmpty = 0;
+    let emptied = 0;
+    for (let i = 0; i < 2000; i++) {
+      const positions = LOL.slice(0, 1 + Math.floor(rand() * LOL.length));
+      const capacity = positions.length * (1 + Math.floor(rand() * 3));
+      const n = Math.floor(rand() * (capacity + 2));
+      const first = Array.from({ length: n }, () => pick(pool));
+      const r = computeOpenPositions(positions, capacity, first);
+      const open = capacity - first.length;
+      const sum = r.reduce((s, p) => s + p.count, 0);
+      expect(sum).toBeLessThanOrEqual(Math.max(0, open));
+      expect(r.every((p) => p.count >= 1 && p.count <= open)).toBe(true);
+      const idx = r.map((p) => positions.indexOf(p.position));
+      expect(idx.every((v, k) => v >= 0 && (k === 0 || v > idx[k - 1]!))).toBe(true);
+      if (r.length > 0) nonEmpty++;
+      else if (open > 0) emptied++;
+    }
+    // 대조가 의미 있도록 두 갈래 모두 나왔는지
+    expect(nonEmpty).toBeGreaterThan(0);
+    expect(emptied).toBeGreaterThan(0);
   });
 });
 

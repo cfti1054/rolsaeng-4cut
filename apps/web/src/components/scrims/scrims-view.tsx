@@ -19,9 +19,9 @@ import { RestrictionBanner, useRestriction } from './scrim-bits';
 import { ScrimCard } from './scrim-card';
 
 const EMPTY_TEXT: Record<ScrimListStatus, { title: string; description: string }> = {
-  open: { title: '모집 중인 내전이 없어요', description: '보고 싶은 내전이 없다면 직접 모집글을 올려 보세요.' },
-  playing: { title: '진행 중인 내전이 없어요', description: '시작한 내전이 여기에 보여요.' },
-  ended: { title: '끝난 내전이 아직 없어요', description: '종료되거나 취소된 내전이 여기에 남아요.' },
+  open: { title: '모집 중인 내전/모집이 없어요', description: '보고 싶은 글이 없다면 직접 모집글을 올려 보세요.' },
+  playing: { title: '진행 중인 내전/모집이 없어요', description: '시작한 내전/모집이 여기에 보여요.' },
+  ended: { title: '끝난 내전/모집이 아직 없어요', description: '종료되거나 취소된 내전/모집이 여기에 남아요.' },
 };
 
 /**
@@ -50,8 +50,8 @@ export function ScrimsView() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1.5">
           <Eyebrow className="text-xs">SCRIMS</Eyebrow>
-          <h1 className="m-0 text-[26px] font-bold tracking-[-0.03em] md:text-[30px]">내전</h1>
-          <p className="m-0 text-sm text-muted">정원이 차면 방장이 팀을 나누고, 정원을 넘으면 대기열에 들어갑니다.</p>
+          <h1 className="m-0 text-[26px] font-bold tracking-[-0.03em] md:text-[30px]">내전/모집</h1>
+          <p className="m-0 text-sm text-muted">내전/모집 팀을 모으거나, 같이 플레이할 사람을 모집해요. 정원을 넘으면 대기열에 들어갑니다.</p>
         </div>
         <NewScrimButton restricted={restricted} until={restriction?.until ?? null} />
       </header>
@@ -100,7 +100,7 @@ export function ScrimsView() {
       </div>
 
       {list.isPending ? (
-        <div aria-busy="true" aria-label="내전 목록 불러오는 중" className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 lg:grid-cols-3">
+        <div aria-busy="true" aria-label="내전/모집 목록 불러오는 중" className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }, (_, i) => (
             <Skeleton key={i} className="h-[330px] rounded-[20px]" />
           ))}
@@ -127,7 +127,7 @@ export function ScrimsView() {
           }
         />
       ) : (
-        <section aria-label="내전 목록" className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 lg:grid-cols-3">
+        <section aria-label="내전/모집 목록" className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 lg:grid-cols-3">
           {items.map((s) => (
             <ScrimCard key={s.id} s={s} now={now} />
           ))}

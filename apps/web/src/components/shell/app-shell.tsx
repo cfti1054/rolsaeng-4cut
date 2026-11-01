@@ -5,19 +5,23 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ThemeSegment, ThemeToggleButton } from '@/components/theme/theme-controls';
-import { LogoutIcon, ShieldIcon } from '@/components/ui/icons';
+import { LogoutIcon, MegaphoneIcon, ShieldIcon } from '@/components/ui/icons';
 import { Avatar, ErrorState, Eyebrow, FullScreenLoading, Skeleton } from '@/components/ui/primitives';
 import { isApiError } from '@/lib/api/client';
 import { cn } from '@/lib/cn';
 import { errorMessage } from '@/lib/errors';
+import { mobileSeasonText, userEloText } from '@/lib/dashboard';
 import { useLogout, useMe } from '@/lib/hooks/auth';
+import { useDashboardSummary } from '@/lib/hooks/rankings';
 import { routes } from '@/lib/routes';
 import { navItems } from './nav-items';
+import { SeasonCard } from './season-card';
 
 /**
  * (main) 공통 레이아웃(계약 9-5).
- * - md 이상: 좌측 사이드바(로고, MENU 5개, STAFF(admin만), 테마 세그먼트, 사용자 카드)
- * - md 미만: 상단 헤더(로고 + 테마 토글) + 하단 탭 5개
+ * - md 이상: 좌측 사이드바(로고, MENU 5개, STAFF(admin만), 테마 세그먼트, 시즌 카드, 사용자 카드)
+ * - md 미만: 상단 헤더(로고 + 시즌·D-day + 테마 토글) + 하단 탭 5개
+ * - 시즌 카드·내 ELO는 useDashboardSummary(홈과 같은 쿼리, D157). 요약이 실패해도 셸은 그대로 뜬다
  * - 세션 확인: useMe(토큰 없으면 refresh로 부팅). 실패하면 클라이언트가 /login으로 보낸다.
  * - needs_nickname_confirmation이면 /welcome?redirect={현재 경로}
  */
@@ -41,7 +45,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="min-h-dvh md:flex">
       <Sidebar me={me.data} pathname={pathname} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <MobileHeader />
+        <MobileHeader me={me.data} pathname={pathname} />
         <main className="flex-1 px-4 pb-32 pt-2 md:px-9 md:pb-14 md:pt-7">
           <div className="mx-auto flex max-w-[1180px] flex-col gap-6">
             {me.isError && !authLost ? (
@@ -59,12 +63,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
-function Logo({ compact = false }: { compact?: boolean }) {
+function Logo({ compact = false, sub = 'GAME CLUB' }: { compact?: boolean; sub?: string }) {
   return (
     <Link href={routes.home()} className="flex items-center gap-3 text-text no-underline hover:text-text">
       <span className="flex flex-col leading-tight">
         <span className={cn('font-bold tracking-[-0.02em]', compact ? 'text-base' : 'text-[17px]')}>롤생네컷</span>
-        <Eyebrow className={compact ? 'text-[10px]' : undefined}>GAME CLUB</Eyebrow>
+        <Eyebrow className={compact ? 'text-[10px]' : undefined}>{sub}</Eyebrow>
       </span>
     </Link>
   );
@@ -129,6 +133,7 @@ function Sidebar({ me, pathname }: { me: Me | undefined; pathname: string }) {
 
       <div className="mt-auto flex flex-col gap-3">
         <ThemeSegment />
+        <SeasonCard />
         <UserCard me={me} />
       </div>
     </nav>
@@ -141,6 +146,8 @@ function UserCard({ me }: { me: Me | undefined }) {
   const ref = useRef<HTMLDivElement>(null);
   const logout = useLogout();
   const router = useRouter();
+  const summary = useDashboardSummary();
+  const eloText = userEloText(summary.data?.me ?? null);
 
   useEffect(() => {
     if (!open) return;
@@ -217,27 +224,53 @@ function UserCard({ me }: { me: Me | undefined }) {
         />
         <span className="flex min-w-0 flex-col leading-snug">
           <span className="truncate text-sm font-semibold">{me.nickname}</span>
-          <span className="truncate text-xs text-muted">
-            {me.role === 'admin' ? '운영진' : '멤버'}
-            {me.discord_username ? ` · @${me.discord_username}` : ''}
-          </span>
+          {eloText ? (
+            <span className="truncate font-display text-xs text-muted">{eloText}</span>
+          ) : (
+            <span className="truncate text-xs text-muted">
+              {me.role === 'admin' ? '운영진' : '멤버'}
+              {me.discord_username ? ` · @${me.discord_username}` : ''}
+            </span>
+          )}
         </span>
       </button>
     </div>
   );
 }
 
-function MobileHeader() {
+/**
+ * 모바일 머리: 로고 + 정보(/news) + 관리자(admin만 렌더) + 테마 토글.
+ * 하단 탭 5칸이 꽉 차 있어 S6 「정보」·「관리자」는 여기서 연다(계약 S6 13절).
+ */
+function MobileHeader({ me, pathname }: { me: Me | undefined; pathname: string }) {
+  // 요약을 받기 전·실패하면 기본 표시(GAME CLUB)
+  const summary = useDashboardSummary();
+  const sub = summary.data ? mobileSeasonText(summary.data.season) : undefined;
+  const icon = (active: boolean) =>
+    cn(
+      'flex size-11 items-center justify-center rounded-[14px] border no-underline',
+      active ? 'border-accent/50 bg-accent/12 text-accent-ink hover:text-accent-ink' : 'border-line bg-surface text-text hover:text-text',
+    );
   return (
-    <header className="flex items-center justify-between px-4 pb-3 pt-[18px] md:hidden">
-      <Logo compact />
-      <ThemeToggleButton />
+    <header className="flex items-center justify-between gap-2 px-4 pb-3 pt-[18px] md:hidden">
+      <Logo compact sub={sub} />
+      <div className="flex items-center gap-2">
+        <Link href={routes.news()} aria-label="정보" title="정보" aria-current={pathname === '/news' ? 'page' : undefined} className={icon(pathname === '/news')}>
+          <MegaphoneIcon />
+        </Link>
+        {me?.role === 'admin' && (
+          <Link href={routes.admin()} aria-label="관리자" title="관리자" aria-current={pathname.startsWith('/admin') ? 'page' : undefined} className={icon(pathname.startsWith('/admin'))}>
+            <ShieldIcon />
+          </Link>
+        )}
+        <ThemeToggleButton />
+      </div>
     </header>
   );
 }
 
 function BottomTabs({ me, pathname }: { me: Me | undefined; pathname: string }) {
-  const items = navItems(me);
+  const items = navItems(me).filter((i) => i.tab);
   return (
     <nav
       aria-label="하단 탭"

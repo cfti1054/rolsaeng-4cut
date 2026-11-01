@@ -42,7 +42,7 @@
 
 ## 6. 노쇼 패널티 (7-4)
 
-`isScrimBanned(noShowDates, now)`: `now` 기준 최근 30일 안의 노쇼가 3회 이상이면, **3번째 노쇼 시각부터 7일간** 참가 제한.
+`isScrimBanned(noShowDates, now)`: `now` 기준 최근 30일 안의 노쇼가 3회 이상이면, **3번째 노쇼 시각부터 1일간** 참가 제한.
 - **[해석]** 제한 시작 기준을 "3번째 노쇼가 기록된 시각"으로 본다. 반환값 `{ banned: boolean, until?: Date }`.
 
 ## 7. ELO 랭킹 노출 조건

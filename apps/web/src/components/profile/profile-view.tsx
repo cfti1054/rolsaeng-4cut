@@ -8,6 +8,7 @@ import {
 } from '@gcd/shared';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { EloInfo } from '@/components/rankings/elo-info';
 import { Button, InlineError } from '@/components/ui/controls';
 import { RefreshIcon } from '@/components/ui/icons';
 import { EmptyState, ErrorState, Eyebrow, Skeleton } from '@/components/ui/primitives';
@@ -22,10 +23,12 @@ import { useSyncGameAccount, useUserProfile } from '@/lib/hooks/game-accounts';
 import { useNow } from '@/lib/hooks/use-now';
 import { routes } from '@/lib/routes';
 import { TIER_META, lolRankSub, tftRankSub, tierLabel, tierMark } from '@/lib/tiers';
+import { ProfileBadges } from './profile-badges';
+import { RatingHistoryPanel, RecentScrimsPanel, scrimRatingSummary } from './profile-scrim';
 
 /**
  * 멤버 프로필(목업 Profile, 계약 8·12절). 대표 라이엇 계정 기준 티어·주 포지션·최근 솔로 랭크.
- * 내전 레이팅·그래프·최근 내전(S3), 뱃지(P2)는 응답이 null이라 빈 상태 카드.
+ * S3: 내전 레이팅 카드·레이팅 그래프·최근 내전(profile-scrim.tsx). S4: 뱃지(profile-badges.tsx), 내전 순위.
  */
 export function ProfileView({ id }: { id: string }) {
   const validId = Uuid.safeParse(id).success;
@@ -69,17 +72,13 @@ export function ProfileView({ id }: { id: string }) {
       )}
       <SummaryCards p={p} now={now} />
       <div className="flex flex-wrap items-stretch gap-5">
-        <Panel eyebrow="RATING HISTORY" title="내전 레이팅 변동" className="flex-[2_1_540px]">
-          <EmptyState mark="ELO" title="내전 기록은 곧 열려요" description="내전 결과가 쌓이면 레이팅 변동 그래프가 여기에 그려져요." />
-        </Panel>
+        <RatingHistoryPanel p={p} className="flex-[2_1_540px]" />
         <Panel eyebrow="BADGES" title="뱃지" className="flex-[1_1_300px]">
-          <EmptyState mark="★" title="아직 뱃지가 없어요" description="뱃지는 이후 업데이트에서 열려요." />
+          <ProfileBadges badges={p.badges} />
         </Panel>
       </div>
       <div className="flex flex-wrap items-stretch gap-5">
-        <Panel eyebrow="SCRIMS" title="최근 내전" className="flex-[1_1_420px]">
-          <EmptyState mark="VS" title="내전 기록은 곧 열려요" description="참가한 내전과 레이팅 변동이 여기에 쌓여요." />
-        </Panel>
+        <RecentScrimsPanel p={p} className="flex-[1_1_420px]" />
         <RecentMatchesPanel p={p} now={now} />
       </div>
     </>
@@ -125,6 +124,7 @@ function Panel({
 
 function ProfileBanner({ p, now }: { p: GetUserProfileResponse; now: number | null }) {
   const firstPos = p.main_position?.positions[0]?.position;
+  const rank = scrimRatingSummary(p).rank;
   return (
     <section className="relative overflow-hidden rounded-[24px] border border-hero-line bg-hero">
       <div data-theme="dark" className="relative h-[140px] w-full">
@@ -154,6 +154,9 @@ function ProfileBanner({ p, now }: { p: GetUserProfileResponse; now: number | nu
         <div className="flex min-w-0 flex-[1_1_280px] flex-col gap-2.5">
           <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="m-0 text-[28px] font-bold tracking-[-0.03em]">{p.user.nickname}</h1>
+            {rank !== null && (
+              <span className="rounded-[7px] bg-accent px-[9px] py-[3px] font-display text-xs font-bold tracking-[0.1em] text-on-accent">#{rank} ELO</span>
+            )}
             <span className="rounded-[7px] bg-chip px-2 py-[3px] text-xs text-text-2">
               {p.user.role === 'admin' ? '운영진' : '멤버'} · {formatYearMonth(p.user.joined_at)} 가입
             </span>
@@ -270,7 +273,7 @@ function SummaryCard({ mark, tone, label, value, sub }: { mark: string; tone: st
     <div className="flex min-w-0 items-center gap-3.5 rounded-[18px] border border-line bg-surface p-[18px] shadow-[inset_0_1px_0_var(--hi)]">
       <HexMark mark={mark} className={tone} />
       <div className="flex min-w-0 flex-col gap-[3px]">
-        <span className="text-xs text-faint">{label}</span>
+        <div className="text-xs text-faint">{label}</div>
         <span className="truncate text-lg font-bold tracking-[-0.01em]">{value}</span>
         <span className="text-xs text-muted">{sub}</span>
       </div>
@@ -332,6 +335,7 @@ function SummaryCards({ p, now }: { p: GetUserProfileResponse; now: number | nul
   const tft = p.tiers.find((t) => t.game === 'tft');
   const mp = p.main_position;
   const top = mp?.positions[0];
+  const scrim = scrimRatingSummary(p);
   return (
     <section aria-label="게임별 요약" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <TierSummary card={lol} label="롤 솔로 랭크" isSelf={p.is_self} game="lol" now={now} />
@@ -353,7 +357,7 @@ function SummaryCards({ p, now }: { p: GetUserProfileResponse; now: number | nul
           sub={p.tiers.length ? '최근 솔로 랭크 경기가 쌓이면 나와요' : '라이엇 ID를 연동하면 나와요'}
         />
       )}
-      <SummaryCard mark="#" tone="text-accent-ink" label="내전 레이팅" value={<span className="text-muted">준비 중</span>} sub="내전 기록은 곧 열려요" />
+      <SummaryCard mark={scrim.rank === null ? 'ELO' : `#${scrim.rank}`} tone="text-accent-ink" label={<>내전/모집 레이팅<EloInfo /></>} value={scrim.value} sub={scrim.sub} />
     </section>
   );
 }

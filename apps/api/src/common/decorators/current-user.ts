@@ -2,7 +2,7 @@ import { createParamDecorator, type ExecutionContext } from '@nestjs/common';
 import type { UserRole } from '@gcd/shared';
 import type { Request } from 'express';
 
-/** JwtGuard가 요청에 붙이는 인증 사용자. role은 토큰 클레임 값(최대 15분 지연, 계약 5-2). */
+/** JwtGuard가 요청에 붙이는 인증 사용자. role은 DB 값(S6 D263, 요청마다 읽는다). */
 export interface AuthUser {
   id: string;
   role: UserRole;

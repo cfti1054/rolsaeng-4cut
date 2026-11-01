@@ -39,7 +39,7 @@ describe.skipIf(!DB_URL)('[DB] S1 게임 계정 e2e (PostgreSQL)', () => {
       await prisma.game.upsert({
         where: { code: g.code },
         update: {},
-        create: { code: g.code, name: g.name, hasPositions: g.has_positions, hasTeams: g.has_teams, positions: [...g.positions], sortOrder: g.sort_order },
+        create: { code: g.code, name: g.name, hasPositions: g.has_positions, hasTeams: g.has_teams, hasResults: g.has_results, positions: [...g.positions], sortOrder: g.sort_order },
       });
     }
     gameIds = Object.fromEntries((await prisma.game.findMany()).map((g) => [g.code, g.id]));

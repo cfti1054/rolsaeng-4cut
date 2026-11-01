@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EnvValidationError, isDiscordConfigured, loadConfig, scrimJobsEnabledFromEnv } from './env';
+import { EnvValidationError, isDiscordConfigured, loadConfig, rankingJobsEnabledFromEnv, scrimJobsEnabledFromEnv } from './env';
 
 const REQUIRED = {
   DATABASE_URL: 'postgresql://x',
@@ -87,7 +87,7 @@ describe('환경 변수', () => {
       scheduleMaxDaysAhead: 30,
       autoCloseAfterMin: 60,
       jobsEnabled: true,
-      noShow: { threshold: 3, windowDays: 30, restrictionDays: 7 },
+      noShow: { threshold: 3, windowDays: 30, restrictionDays: 1 },
       noShowMarkWindowDays: 7,
     });
   });
@@ -125,6 +125,61 @@ describe('환경 변수', () => {
       expect(() => loadConfig({ ...REQUIRED, [k]: '0' })).toThrow(new RegExp(k));
     }
     expect(() => loadConfig({ ...REQUIRED, SCRIM_JOBS_ENABLED: '1' })).toThrow(/SCRIM_JOBS_ENABLED/);
+  });
+
+  it('S3 기본값·검증(계약 S3 12절): K 32/40, 신규 기준 10, 자동 시즌 3개월(1–24)', () => {
+    const d = loadConfig({ ...REQUIRED, SCRIM_ELO_K_BASE: '' });
+    expect(d.rating).toEqual({ kBase: 32, kNew: 40, newPlayerGames: 10, lossRatio: 0.5 });
+    expect(d.seasonAutoLengthMonths).toBe(3);
+    const c = loadConfig({
+      ...REQUIRED,
+      SCRIM_ELO_K_BASE: '24',
+      SCRIM_ELO_K_NEW: '48',
+      SCRIM_ELO_NEW_PLAYER_GAMES: '5',
+      SEASON_AUTO_LENGTH_MONTHS: '24',
+    });
+    expect(c.rating).toEqual({ kBase: 24, kNew: 48, newPlayerGames: 5, lossRatio: 0.5 });
+    expect(c.seasonAutoLengthMonths).toBe(24);
+    for (const k of ['SCRIM_ELO_K_BASE', 'SCRIM_ELO_K_NEW', 'SCRIM_ELO_NEW_PLAYER_GAMES', 'SEASON_AUTO_LENGTH_MONTHS']) {
+      expect(() => loadConfig({ ...REQUIRED, [k]: '0' })).toThrow(new RegExp(k));
+      expect(() => loadConfig({ ...REQUIRED, [k]: '1.5' })).toThrow(new RegExp(k));
+    }
+    expect(() => loadConfig({ ...REQUIRED, SEASON_AUTO_LENGTH_MONTHS: '25' })).toThrow(/SEASON_AUTO_LENGTH_MONTHS/);
+  });
+
+  it('SCRIM_ELO_LOSS_RATIO(계약 19-1): 기본 0.5, 0–1 실수, 빈 값은 기본값, 범위 밖 기동 실패', () => {
+    expect(loadConfig({ ...REQUIRED }).rating.lossRatio).toBe(0.5);
+    expect(loadConfig({ ...REQUIRED, SCRIM_ELO_LOSS_RATIO: '' }).rating.lossRatio).toBe(0.5);
+    for (const [v, want] of [['0', 0], ['0.25', 0.25], ['1', 1]] as const) {
+      expect(loadConfig({ ...REQUIRED, SCRIM_ELO_LOSS_RATIO: v }).rating.lossRatio).toBe(want);
+    }
+    for (const v of ['-0.1', '1.1', 'half']) {
+      expect(() => loadConfig({ ...REQUIRED, SCRIM_ELO_LOSS_RATIO: v })).toThrow(/SCRIM_ELO_LOSS_RATIO/);
+    }
+  });
+
+  it('S4 기본값·검증(계약 S4 13절): 최소 경기 5, 작업 켜짐', () => {
+    const d = loadConfig({ ...REQUIRED, RANKING_ELO_MIN_GAMES: '' });
+    expect(d.ranking).toEqual({ eloMinGames: 5, jobsEnabled: true });
+    const c = loadConfig({ ...REQUIRED, RANKING_ELO_MIN_GAMES: '3', RANKING_JOBS_ENABLED: 'false' });
+    expect(c.ranking).toEqual({ eloMinGames: 3, jobsEnabled: false });
+    for (const v of ['0', '1.5']) {
+      expect(() => loadConfig({ ...REQUIRED, RANKING_ELO_MIN_GAMES: v })).toThrow(/RANKING_ELO_MIN_GAMES/);
+    }
+    expect(() => loadConfig({ ...REQUIRED, RANKING_JOBS_ENABLED: '1' })).toThrow(/RANKING_JOBS_ENABLED/);
+  });
+
+  it('없어진 SEASON_SOFT_RESET_RATIO(계약 20-2)가 env에 남아 있어도 기동 성공하고 설정에 나타나지 않는다', () => {
+    const base = loadConfig({ ...REQUIRED });
+    for (const v of ['0.5', '0.25', 'half', '-1']) {
+      expect(loadConfig({ ...REQUIRED, SEASON_SOFT_RESET_RATIO: v })).toEqual(base);
+    }
+  });
+
+  it('rankingJobsEnabledFromEnv: 모듈 구성용(잘못된 값은 true, 기동은 loadConfig가 막는다)', () => {
+    expect(rankingJobsEnabledFromEnv({})).toBe(true);
+    expect(rankingJobsEnabledFromEnv({ RANKING_JOBS_ENABLED: 'false' })).toBe(false);
+    expect(rankingJobsEnabledFromEnv({ RANKING_JOBS_ENABLED: 'nope' })).toBe(true);
   });
 
   it('scrimJobsEnabledFromEnv: 모듈 구성용(잘못된 값은 true, 기동은 loadConfig가 막는다)', () => {

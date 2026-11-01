@@ -12,8 +12,11 @@ import {
   type RefreshTokenResponse,
 } from '@gcd/shared';
 import type { FetchLike } from '../client';
+import { MOCK_ADMIN_SCENARIO_KEY, MockAdminScenario } from './admin';
+import { MOCK_BOT_SCENARIO_KEY, MockBotScenario } from './community';
 import { emptyS1State, handleS1, MockS1State, type MockS1Options } from './game-accounts';
-import { emptyS2State, handleS2, MockS2State, type MockS2Options } from './scrims';
+import { isRankingPath, MOCK_RANKING_SCENARIO_KEY, MockRankingScenario } from './rankings';
+import { emptyS2State, handleS2, isS2Path, mockProfileBadges, mockProfileScrim, MockS2State, type MockS2Options } from './scrims';
 
 /**
  * [목] 계약(_workspace/01_architect_contract.md 4·5절)을 흉내 내는 가짜 API.
@@ -58,15 +61,19 @@ export interface MockBackendOptions {
 export const MOCK_TAKEN_NICKNAMES = ['미드고정', '정글차이', 'admin'];
 
 const TOKEN_PREFIX = 'mock-access.';
+const RANKING_LOADING_MS = 60_000;
 
 export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike; discordSignIn: () => Me } {
   const now = opts.now ?? (() => Date.now());
   const ttl = opts.accessTtlSec ?? 900;
 
   const load = (): MockDb => opts.storage.get() ?? { user: null };
+  /** S6 gcd-mock-admin=demoted: 운영진 API가 403을 한 번 돌려준 뒤부터 GET /me가 member를 돌려준다(D263 강등 흉내) */
+  let demotedSeen = false;
   const save = (db: MockDb) => opts.storage.set(db);
 
   function json(status: number, body: unknown): Response {
+    if (status === 204) return new Response(null, { status: 204 });
     return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
   }
   function error(code: ErrorCode, message: string, details?: ErrorBody['details'], retryAfterSec?: number): Response {
@@ -118,6 +125,10 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
     const path = url.pathname.replace(API_PREFIX, '');
     const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : undefined;
 
+    if (opts.s2?.rankings?.scenario?.() === 'me_error' && ((method === 'POST' && path === ApiPath.authRefresh) || (method === 'GET' && path === ApiPath.me))) {
+      return error('INTERNAL_ERROR', '목 오류 상태');
+    }
+
     if (method === 'POST' && path === ApiPath.authRefresh) {
       const user = load().user;
       if (!opts.cookies.hasRefresh() || !user) {
@@ -156,7 +167,15 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
 
     if (path === ApiPath.me && method === 'GET') {
       const r = authorize(init);
-      return r instanceof Response ? r : json(200, r);
+      if (r instanceof Response) return r;
+      return json(200, demotedSeen ? { ...r, role: 'member' } : r);
+    }
+
+    if (opts.s2?.admin?.scenario?.() === 'demoted' && (path.startsWith('/admin/') || path.endsWith('/result/revert'))) {
+      const r = authorize(init);
+      if (r instanceof Response) return r;
+      demotedSeen = true;
+      return error('FORBIDDEN', '운영진만 사용할 수 있습니다.');
     }
 
     if (path === ApiPath.me && method === 'PATCH') {
@@ -179,7 +198,7 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
     }
 
     // S1 엔드포인트(스팀 콜백은 브라우저 이동이라 목에 없다 — authorize_url이 바로 /settings?steam=linked)
-    if (path.startsWith('/me/game-accounts') || path.startsWith('/users/')) {
+    if (path.startsWith('/me/game-accounts') || path === ApiPath.myPositionSuggestions || path.startsWith('/users/')) {
       const r = authorize(init);
       if (r instanceof Response) return r;
       const db = load();
@@ -187,6 +206,7 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
       const res = handleS1({
         method,
         path,
+        search: url.searchParams,
         body,
         me: r,
         now: now(),
@@ -196,17 +216,27 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
         error: (code, message, o) => error(code, message, o?.details, o?.retryAfterSec),
         opts: opts.s1 ?? {},
       });
+      // S3: 프로필 scrim 블록은 내전 목 저장소(S2 상태)로 채운다
+      const profileId = method === 'GET' ? /^\/users\/([^/]+)\/profile$/.exec(path)?.[1] : undefined;
+      if (res && res.status === 200 && profileId) {
+        const profile = (await res.json()) as Record<string, unknown>;
+        const s2Ctx = {
+          me: r,
+          now: now(),
+          state: load().s2 ?? emptyS2State(),
+          save: (s2: MockS2State) => save({ ...load(), s2 }),
+          opts: opts.s2,
+        };
+        const scrim = mockProfileScrim(s2Ctx, decodeURIComponent(profileId));
+        // S4: 시드가 방금 만들어졌을 수 있으므로 저장소를 다시 읽는다
+        const badges = mockProfileBadges({ ...s2Ctx, state: load().s2 ?? emptyS2State() }, decodeURIComponent(profileId));
+        return json(200, { ...profile, scrim, badges });
+      }
       if (res) return res;
     }
 
-    // S2 내전·게임·노쇼 제한
-    if (
-      path === ApiPath.games ||
-      path === ApiPath.steamApps ||
-      path === ApiPath.scrims ||
-      path.startsWith('/scrims/') ||
-      path === ApiPath.myScrimRestriction
-    ) {
+    // S2 내전·게임·노쇼 제한, S3 시즌·레이팅 그래프
+    if (isS2Path(path)) {
       const r = authorize(init);
       if (r instanceof Response) return r;
       const res = handleS2({
@@ -231,6 +261,10 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
   return {
     async fetch(input, init) {
       if (opts.latencyMs) await new Promise((r) => setTimeout(r, opts.latencyMs));
+      // S4 로딩 상태 확인용: 랭킹·요약만 오래 걸리게 한다
+      if (opts.s2?.rankings?.scenario?.() === 'loading' && isRankingPath(new URL(input, 'http://mock.local').pathname.replace(API_PREFIX, ''))) {
+        await new Promise((r) => setTimeout(r, RANKING_LOADING_MS));
+      }
       return handle(input, init);
     },
     /**
@@ -293,6 +327,16 @@ export function browserMockBackend() {
     },
     accessTtlSec: Number(process.env.NEXT_PUBLIC_API_MOCK_ACCESS_TTL_SEC) || 900,
     s1: { origin: () => window.location.origin },
+    // localStorage 값으로 랭킹·요약 상태를 바꿔 본다(mock/rankings.ts, 새로고침이면 적용)
+    s2: {
+      rankings: {
+        scenario: () => MockRankingScenario.safeParse(window.localStorage.getItem(MOCK_RANKING_SCENARIO_KEY)).data ?? null,
+        // S5 봇 상태(gcd-mock-bot, 기본 live)
+        bot: () => MockBotScenario.safeParse(window.localStorage.getItem(MOCK_BOT_SCENARIO_KEY)).data ?? null,
+      },
+      // S6 관리자·정보 상태(gcd-mock-admin: empty | error | demoted)
+      admin: { scenario: () => MockAdminScenario.safeParse(window.localStorage.getItem(MOCK_ADMIN_SCENARIO_KEY)).data ?? null },
+    },
     latencyMs: 250,
   });
 }

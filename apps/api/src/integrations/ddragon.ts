@@ -10,7 +10,7 @@ const FAILURE_BACKOFF_MS = 60_000;
 
 const VersionsSchema = z.array(z.string()).min(1);
 const ChampionsSchema = z.object({
-  data: z.record(z.object({ id: z.string(), key: z.string(), name: z.string() })),
+  data: z.record(z.string(), z.object({ id: z.string(), key: z.string(), name: z.string() })),
 });
 
 /**
@@ -75,7 +75,7 @@ export class DataDragonHttp implements DataDragon {
     return latest;
   }
 
-  private async fetchJson<T>(url: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>): Promise<T | null> {
+  private async fetchJson<T>(url: string, schema: z.ZodType<T, unknown>): Promise<T | null> {
     try {
       const res = await rawRequest(this.fetchFn, url, { method: 'GET' }, this.opts.timeoutMs, this.clock);
       if (res.status < 200 || res.status >= 300) return null;

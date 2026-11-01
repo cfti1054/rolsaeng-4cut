@@ -212,9 +212,10 @@ describe('profile', () => {
   it('빈 프로필(연동 없음)', () => {
     expect(GetUserProfileResponse.parse(base).scrim).toBeNull();
   });
-  it('S3·P2 자리는 S1에서 null만 허용', () => {
+  it('scrim·badges 자리는 정해진 모양만 허용(badges는 S4에서 배열로 넓힘)', () => {
     expect(GetUserProfileResponse.safeParse({ ...base, scrim: { elo: 1421 } }).success).toBe(false);
-    expect(GetUserProfileResponse.safeParse({ ...base, badges: [] }).success).toBe(false);
+    expect(GetUserProfileResponse.safeParse({ ...base, badges: [] }).success).toBe(true);
+    expect(GetUserProfileResponse.safeParse({ ...base, badges: [{ code: 'x' }] }).success).toBe(false);
   });
   it('티어·주 포지션·최근 전적', () => {
     const p = GetUserProfileResponse.parse({

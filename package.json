@@ -3,7 +3,7 @@
   "private": true,
   "packageManager": "pnpm@9.15.0",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12"
   },
   "scripts": {
     "build": "pnpm -r build",
@@ -18,5 +18,12 @@
   },
   "devDependencies": {
     "typescript": "5.9.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "postcss@<8.5.23": "8.5.32",
+      "multer@<2.5.0": "2.5.0",
+      "deepmerge-ts@<8.0.0": "8.0.2"
+    }
   }
 }

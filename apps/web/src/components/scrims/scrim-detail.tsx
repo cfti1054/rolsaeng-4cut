@@ -1,6 +1,12 @@
 'use client';
 
-import { Uuid, type GameView, type ScrimDetail, type ScrimPlayerView, type ScrimRestriction } from '@gcd/shared';
+import {
+  Uuid,
+  type GameView,
+  type ScrimDetail,
+  type ScrimPlayerView,
+  type ScrimRestriction,
+} from '@gcd/shared';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { Badge, Button, ConfirmDialog, InlineError, Notice, Toast } from '@/components/ui/controls';
@@ -8,10 +14,14 @@ import { Avatar, Card, EmptyState, ErrorState, Skeleton } from '@/components/ui/
 import { isApiError } from '@/lib/api/client';
 import { copyText } from '@/lib/clipboard';
 import { cn } from '@/lib/cn';
+import { duoBalanceNote } from '@/lib/elo-info';
 import { errorMessage } from '@/lib/errors';
 import { formatFull } from '@/lib/format';
+import { positionLabel } from '@/lib/games';
 import { useMe } from '@/lib/hooks/auth';
+import { usePositionDefaults } from '@/lib/hooks/position-defaults';
 import {
+  useAssignScrimDuos,
   useCancelScrim,
   useGames,
   useJoinScrim,
@@ -22,13 +32,16 @@ import {
 } from '@/lib/hooks/scrims';
 import { useNow } from '@/lib/hooks/use-now';
 import { routes } from '@/lib/routes';
+import { TEAM_LABEL } from '@/lib/scrim-results';
 import {
   CANCEL_REASON_TEXT,
-  SCRIM_STEP_LABELS,
   formatHms,
+  autoCloseHintText,
   isOpenStatus,
+  noShowMarkHintText,
+  noShowRuleText,
   positionsText,
-  restrictionText,
+  restrictionUntilText,
   samePositions,
   scrimDetailBadge,
   scrimShareText,
@@ -41,6 +54,9 @@ import {
 import { PositionPicker } from './position-picker';
 import { GameTag, PositionChips, SectionHead, StatusPill, scrimErrorText, useRestriction } from './scrim-bits';
 import { ScrimEditDialog } from './scrim-edit-dialog';
+import { ResultPanel } from './scrim-result';
+import { DeleteScrimButton } from './scrim-card';
+import { NewBadge, TEAM_TONE, TeamsPanel } from './scrim-teams';
 import { SteamAppImage, steamStoreUrl } from './steam-app-picker';
 
 type ToastState = { message: string; tone: 'success' | 'error' } | null;
@@ -61,11 +77,11 @@ export function ScrimDetailView({ id }: { id: string }) {
         <BackLink />
         <EmptyState
           mark="?"
-          title="내전을 찾을 수 없어요"
+          title="내전/모집을 찾을 수 없어요"
           description="주소가 잘못됐거나 지워진 모집글이에요."
           action={
             <Link href={routes.scrims()} className="text-sm font-semibold">
-              내전 목록으로
+              내전/모집 목록으로
             </Link>
           }
         />
@@ -131,8 +147,11 @@ function DetailBody({
   return (
     <>
       <div className="flex items-center justify-between gap-3">
-        <BackLink />
-        <ShareButton s={s} onToast={setToast} />
+        <BackLink align="self-center" />
+        <span className="flex items-center gap-2">
+          {s.can_delete && <DeleteScrimButton id={s.id} title={s.title} />}
+          <ShareButton s={s} onToast={setToast} />
+        </span>
       </div>
       <Hero s={s} />
       <HostMenu s={s} onToast={setToast} />
@@ -140,38 +159,21 @@ function DetailBody({
         <Roster s={s} onToast={setToast} />
         <div className="flex min-w-0 flex-[2_1_520px] flex-col gap-5">
           <JoinPanel s={s} onToast={setToast} />
-          <Card aria-labelledby="balance-title">
-            <SectionHead eyebrow="AUTO BALANCE" title="팀 자동 밸런스" id="balance-title" />
-            <EmptyState
-              mark="BAL"
-              title="팀 밸런스는 곧 열려요"
-              description={
-                s.options.auto_balance
-                  ? '정원이 차면 티어와 내전 레이팅으로 두 팀 전력을 맞춘 3가지 안을 보여 줄 예정이에요.'
-                  : '이 내전은 자동 밸런스를 쓰지 않아요. 방장이 직접 팀을 나눠요.'
-              }
-            />
-          </Card>
+          {s.game.has_teams && <TeamsPanel s={s} onToast={setToast} />}
+          {s.tft_mode === 'double_up' && s.options.auto_balance && <DuoPanel s={s} />}
         </div>
       </div>
-      <Card aria-labelledby="result-title">
-        <SectionHead
-          eyebrow="RESULT"
-          title="결과 입력"
-          id="result-title"
-          right={<span className="text-xs text-faint">방장 입력 → 운영진 승인 → 레이팅 반영</span>}
-        />
-        <EmptyState mark="WIN" title="결과 입력은 곧 열려요" description="경기가 끝나면 방장이 승리 팀을 입력하고 운영진이 승인하는 기능이 열릴 예정이에요." />
-      </Card>
+      <ResultPanel s={s} onToast={setToast} />
       <Toast message={toast?.message ?? null} tone={toast?.tone} onClose={closeToast} />
     </>
   );
 }
 
-function BackLink() {
+/** 기본 self-start(세로 쌓임에서 폭 전체로 늘어나지 않게). 상세 머리 줄처럼 버튼과 나란히 둘 때는 self-center로 맞춘다 */
+function BackLink({ align = 'self-start' }: { align?: 'self-start' | 'self-center' }) {
   return (
-    <Link href={routes.scrims()} className="self-start text-[13px] text-muted no-underline hover:text-text">
-      ← 내전 목록
+    <Link href={routes.scrims()} className={cn(align, 'text-[13px] text-muted no-underline hover:text-text')}>
+      ← 내전/모집 목록
     </Link>
   );
 }
@@ -215,7 +217,7 @@ function Hero({ s }: { s: ScrimDetail }) {
   const counting = open && !s.join_closed;
   const now = useNow(1_000, counting);
   const badge = scrimDetailBadge(s);
-  const steps = scrimSteps(s.status);
+  const steps = scrimSteps(s);
   const remaining = now === null ? null : (Date.parse(s.scheduled_at) - now) / 1000;
   const meta = [
     now === null ? null : scrimWhen(s.scheduled_at, now),
@@ -265,7 +267,7 @@ function Hero({ s }: { s: ScrimDetail }) {
           <div className="flex flex-col items-end gap-0.5" role="timer" aria-label="시작까지 남은 시간">
             <span className="text-xs text-faint">시작까지</span>
             <span className="font-display text-[32px] font-bold leading-none tabular-nums md:text-[40px]">
-              {remaining === null ? '--:--:--' : formatHms(remaining)}
+              {remaining === null ? '--:--:--' : remaining <= 0 ? '곧 시작' : formatHms(remaining)}
             </span>
           </div>
         ) : open ? (
@@ -278,10 +280,9 @@ function Hero({ s }: { s: ScrimDetail }) {
 
       {steps ? (
         <ol aria-label="진행 단계" className="m-0 grid list-none grid-cols-4 p-0">
-          {SCRIM_STEP_LABELS.map((label, i) => {
-            const st = steps[i]!;
+          {steps.map(({ label, state: st, note }, i) => {
             return (
-              <li key={label} className="flex flex-col gap-2.5" aria-current={st === 'current' ? 'step' : undefined}>
+              <li key={label} className="flex min-w-0 flex-col gap-2.5" aria-current={st === 'current' ? 'step' : undefined}>
                 <div className="flex items-center">
                   <span
                     className={cn(
@@ -298,6 +299,9 @@ function Hero({ s }: { s: ScrimDetail }) {
                 <span className={cn('text-[13px] font-semibold', st === 'todo' ? 'text-faint' : 'text-text')}>
                   {label}
                   <span className="sr-only">{st === 'done' ? ' (완료)' : st === 'current' ? ' (진행 중)' : ''}</span>
+                  {note && (
+                    <span className={cn('mt-0.5 block text-xs font-medium', note === '결과 반려됨' ? 'text-orange-text' : 'text-muted')}>{note}</span>
+                  )}
                 </span>
               </li>
             );
@@ -305,7 +309,7 @@ function Hero({ s }: { s: ScrimDetail }) {
         </ol>
       ) : (
         <div className="rounded-2xl border border-line-2 bg-surface px-4 py-3 text-sm text-muted">
-          <strong className="text-text">취소된 내전</strong> · {s.cancel_reason ? CANCEL_REASON_TEXT[s.cancel_reason] : '모집이 취소됐어요.'}
+          <strong className="text-text">취소된 내전/모집</strong> · {s.cancel_reason ? CANCEL_REASON_TEXT[s.cancel_reason] : '모집이 취소됐어요.'}
           {s.cancelled_at && <span className="text-faint"> ({kstMonthDayTime(s.cancelled_at)})</span>}
         </div>
       )}
@@ -320,6 +324,46 @@ function Hero({ s }: { s: ScrimDetail }) {
   );
 }
 
+function DuoPanel({ s }: { s: ScrimDetail }) {
+  const assign = useAssignScrimDuos(s.id);
+  const groups = new Map<number, ScrimPlayerView[]>();
+  for (const p of s.players) {
+    if (p.status !== 'joined' || p.duo_index === null) continue;
+    const list = groups.get(p.duo_index) ?? [];
+    list.push(p);
+    groups.set(p.duo_index, list);
+  }
+  const pairs = [...groups.entries()].sort((a, b) => a[0] - b[0]);
+  return (
+    <section className="flex flex-col gap-3 rounded-[18px] border border-line bg-surface p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="m-0 text-sm font-bold">2인 팀</h2>
+          <p className="m-0 mt-1 text-xs text-muted">{duoBalanceNote()}</p>
+        </div>
+        {s.viewer.can_balance && (
+          <Button variant="primary" onClick={() => assign.mutate()} disabled={assign.isPending}>
+            {assign.isPending ? '나누는 중…' : '팀 나누기'}
+          </Button>
+        )}
+      </div>
+      {pairs.length === 0 ? (
+        <p className="m-0 text-sm text-muted">아직 팀이 없어요. 인원이 짝수 2–8명일 때 나눌 수 있어요.</p>
+      ) : (
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
+          {pairs.map(([index, members]) => (
+            <li key={index} className="rounded-xl border border-line-2 bg-surface-2 px-3 py-2 text-sm">
+              <span className="mr-2 font-display text-xs text-faint">팀 {index}</span>
+              {members.map((m) => m.user.nickname).join(' · ')}
+            </li>
+          ))}
+        </ul>
+      )}
+      {assign.isError && <InlineError>{errorMessage(isApiError(assign.error) ? assign.error.code : 'INTERNAL_ERROR')}</InlineError>}
+    </section>
+  );
+}
+
 // -----------------------------------------------------------------------------
 // 방장(·운영진) 메뉴
 // -----------------------------------------------------------------------------
@@ -328,6 +372,7 @@ function HostMenu({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => 
   const games = useGames();
   const start = useStartScrim(s.id);
   const cancel = useCancelScrim(s.id);
+  const { restriction } = useRestriction();
   const [dialog, setDialog] = useState<'edit' | 'start' | 'cancel' | null>(null);
   const v = s.viewer;
   if (!v.can_edit && !v.can_cancel && !v.can_start) return null;
@@ -351,7 +396,7 @@ function HostMenu({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => 
       </div>
       {blocked && (
         <p id="start-blocked" className="m-0 px-1 text-xs text-faint">
-          {blocked} 시작 시각 60분 뒤까지 시작하지 않으면 자동으로 정리돼요.
+          {blocked} {autoCloseHintText(restriction?.scrim_policy)}
         </p>
       )}
       {(start.isError || cancel.isError) && <InlineError>{scrimErrorText(err)}</InlineError>}
@@ -392,7 +437,7 @@ function HostMenu({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => 
       <ConfirmDialog
         open={dialog === 'cancel'}
         title="모집을 취소할까요?"
-        description={`참가자 ${s.joined_count}명${s.waitlist_count ? `, 대기 ${s.waitlist_count}명` : ''}에게 취소된 내전으로 보여요. 되돌릴 수 없어요.`}
+        description={`참가자 ${s.joined_count}명${s.waitlist_count ? `, 대기 ${s.waitlist_count}명` : ''}에게 취소된 내전/모집으로 보여요. 되돌릴 수 없어요.`}
         confirmLabel="모집 취소"
         pending={cancel.isPending}
         onClose={() => setDialog(null)}
@@ -413,6 +458,9 @@ function HostMenu({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => 
 
 function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => void }) {
   const me = useMe();
+  const { restriction } = useRestriction();
+  // 정책 숫자는 GET /me/scrim-restriction 응답에서만 쓴다(D101). 응답 전이면 숫자 없는 문구
+  const policy = restriction?.policy;
   const isAdmin = me.data?.role === 'admin';
   const showNoShow = isAdmin && (s.status === 'playing' || s.status === 'finished');
   const noShow = useSetScrimNoShow(s.id);
@@ -443,6 +491,7 @@ function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => vo
               <Link href={routes.member(p.user.id)} className="truncate text-text no-underline hover:text-text hover:underline">
                 {p.user.nickname}
               </Link>
+              {p.is_new && <NewBadge />}
               {p.is_host && <Badge tone="accent">방장</Badge>}
               {p.user.id === me.data?.id && <span className="text-xs text-faint">(나)</span>}
               {p.status === 'no_show' && (
@@ -451,7 +500,18 @@ function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => vo
                 </span>
               )}
             </span>
-            <PositionChips positions={p.preferred_positions} />
+            {p.team ? (
+              <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-text-2">
+                <span aria-hidden="true" className={cn('size-2 rounded-full', TEAM_TONE[p.team].dot)} />
+                <span className="sr-only">{TEAM_LABEL[p.team].ko}</span>
+                {p.position ? positionLabel(p.position) : null}
+              </span>
+            ) : (
+              <PositionChips positions={p.preferred_positions} />
+            )}
+            <span className="w-10 shrink-0 text-right font-display text-sm font-semibold tabular-nums" title="실력값">
+              {p.skill}
+            </span>
             {showNoShow &&
               (p.status === 'no_show' ? (
                 <Button
@@ -482,7 +542,8 @@ function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => vo
           </li>
         ))}
       </ul>
-      {showNoShow && noShow.isError && <InlineError>{scrimErrorText(noShow.error)}</InlineError>}
+      {showNoShow && policy && <p className="m-0 px-1 text-xs text-faint">{noShowMarkHintText(policy)}</p>}
+      {showNoShow && noShow.isError &&<InlineError>{scrimErrorText(noShow.error)}</InlineError>}
 
       {open && (s.waitlist.length > 0 || s.status === 'full') && (
         <div className="mt-2.5 flex flex-col gap-2 rounded-[14px] bg-surface-2 p-3.5">
@@ -513,8 +574,9 @@ function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => vo
         description={
           markTarget && (
             <>
-              <strong className="text-text">{markTarget.user.nickname}</strong>님을 이 내전의 노쇼로 표시해요. 최근 30일 노쇼가 3회가
-              되면 7일 동안 내전 참가·모집이 제한돼요. 잘못 표시했다면 「노쇼 정정」으로 되돌릴 수 있어요.
+              <strong className="text-text">{markTarget.user.nickname}</strong>님을 이 내전의 노쇼로 표시해요. {noShowRuleText(policy)} 잘못 표시했다면 「노쇼
+              정정」으로 되돌릴 수 있어요.
+              {s.result?.status === 'approved' && <span className="mt-2 block">이미 반영된 레이팅은 바뀌지 않아요.</span>}
             </>
           )
         }
@@ -572,11 +634,11 @@ function ClosedStateText({ s }: { s: ScrimDetail }) {
   const text =
     s.status === 'playing'
       ? mine === 'joined'
-        ? '경기가 진행 중이에요. 즐거운 내전 되세요!'
+        ? '경기가 진행 중이에요. 즐거운 시간 되세요!'
         : '경기가 진행 중이에요. 참가 신청은 마감됐어요.'
       : s.status === 'finished'
-        ? '끝난 내전이에요.'
-        : '취소된 내전이라 참가할 수 없어요.';
+        ? '끝난 내전/모집이에요.'
+        : '취소된 내전/모집이라 참가할 수 없어요.';
   return <p className="m-0 text-sm text-muted">{text}</p>;
 }
 
@@ -597,6 +659,20 @@ function JoinControls({
   const [confirmLeave, setConfirmLeave] = useState(false);
   const inRoster = v.status === 'joined' || v.status === 'waitlist';
   const usePositions = s.options.use_positions;
+  // 참가·대기 중이면 저장된 희망 포지션이 우선이라 추천을 쓰지 않는다(20-5)
+  const canSuggest = usePositions && v.can_join && !inRoster;
+  const positionDefaults = usePositionDefaults({
+    game: s.game.code,
+    enabled: canSuggest,
+    eligible: canSuggest,
+    allowed: s.game.positions,
+    first,
+    second,
+    fill: (a, b) => {
+      setFirst(a);
+      setSecond(b);
+    },
+  });
   const picked = usePositions ? toPreferredPositions(first, second) : [];
   const changed = !samePositions(picked, v.preferred_positions);
   const willWait = s.status === 'full' || s.joined_count >= s.capacity;
@@ -629,8 +705,8 @@ function JoinControls({
   return (
     <div className="flex flex-col gap-4">
       {restrictedUntil && !inRoster && (
-        <Notice title={restriction ? (restrictionText(restriction) ?? '노쇼 제한 중이에요.') : `노쇼 누적으로 ${kstMonthDayTime(restrictedUntil)}까지 참가·모집이 제한돼요.`}>
-          제한이 풀리면 다시 참가할 수 있어요. 이미 참가한 내전은 그대로예요.
+        <Notice title={restrictionUntilText(restrictedUntil)}>
+          제한이 풀리면 다시 참가할 수 있어요. 이미 참가한 내전/모집은 그대로예요.
         </Notice>
       )}
 
@@ -653,9 +729,11 @@ function JoinControls({
           onChange={(a, b) => {
             setFirst(a);
             setSecond(b);
+            positionDefaults.touch();
           }}
         />
       )}
+      {usePositions && positionDefaults.hint && <p className="m-0 -mt-2 text-xs text-faint">{positionDefaults.hint}</p>}
 
       <div className="flex flex-wrap items-center gap-2">
         {v.can_join && (

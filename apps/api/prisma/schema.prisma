@@ -2,7 +2,9 @@
 // 게임 커뮤니티 대시보드 — 전체 스키마 (S0에서 일괄 생성)
 // 명세: 게임 커뮤니티 대시보드 개발 문서.md 5장 + _workspace/00_input/slice.md 결정 사항
 // 계약: _workspace/S0/01_architect_contract.md 6절(S0 전체), _workspace/S1/01_architect_contract.md 3절(S1 변경),
-//       _workspace/01_architect_contract.md 3절(S2 변경)
+//       _workspace/S2/01_architect_contract.md 3절(S2 변경), _workspace/S3/01_architect_contract.md 3절(S3 변경),
+//       _workspace/S4/01_architect_contract.md 3절(S4 변경), _workspace/S5/01_architect_contract.md 3절(S5 변경),
+//       _workspace/01_architect_contract.md 3절(S6 변경)
 //
 // 규칙
 // - 모든 테이블: id uuid(@default(uuid())), created_at.
@@ -67,10 +69,21 @@ enum ScrimTeam {
   @@map("scrim_team")
 }
 
+/// 롤체 내전 모드. shared TftMode. 다른 게임의 scrims.tft_mode는 null
+enum TftMode {
+  double_up
+  normal
+  ranked
+
+  @@map("tft_mode")
+}
+
 enum ScrimResultStatus {
   pending
   approved
   rejected
+  /// S6. 운영진이 승인을 되돌림(레이팅 역반영). 종착 상태, 활성 결과 아님
+  reverted
 
   @@map("scrim_result_status")
 }
@@ -139,6 +152,11 @@ model User {
   notifyResult           Boolean   @default(true) @map("notify_result")
   notifyWaitlist         Boolean   @default(true) @map("notify_waitlist")
   notifyPatch            Boolean   @default(false) @map("notify_patch")
+  /// S5. 봇이 서버 퇴장을 알린 시각(POST /bot/member-events leave). null이면 서버 멤버. 순위 대상에서 빠진다(rankableUserWhere, S4 Q4)
+  /// 재입장 이벤트 또는 길드 검사를 통과한 로그인이 null로 되돌린다(S5 계약 6-6)
+  leftAt                 DateTime? @map("left_at") @db.Timestamptz(3)
+  /// S5. 마지막으로 반영한 입장·퇴장 판단 시각(봇 occurred_at 또는 길드 검사 로그인 시각). 이보다 이른 이벤트는 무시(순서 뒤바뀜 방지)
+  guildMembershipAt      DateTime? @map("guild_membership_at") @db.Timestamptz(3)
   createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -161,6 +179,11 @@ model User {
   userBadges        UserBadge[]
   notices           Notice[]
   apiKeysCreated    ApiKey[]
+  /// S6
+  revertedResults   ScrimResult[]            @relation("ResultRevertedBy")
+  patchNotesCreated PatchNote[]
+  eventsCreated     CalendarEvent[]
+  adminAuditLogs    AdminAuditLog[]
 
   @@map("users")
 }
@@ -193,25 +216,27 @@ model RefreshToken {
 
 /// 게임 종류. 새 게임은 행만 추가(설계 원칙 3). 시드: packages/shared GAME_SEED
 model Game {
-  id              String   @id @default(uuid()) @db.Uuid
-  code            String   @unique
-  name            String
-  hasPositions    Boolean  @default(false) @map("has_positions")
-  /// 두 팀 대결 여부. false면 개인 순위(롤체)
-  hasTeams        Boolean  @default(true) @map("has_teams")
+  id                String   @id @default(uuid()) @db.Uuid
+  code              String   @unique
+  name              String
+  hasPositions      Boolean  @default(false) @map("has_positions")
+  /// 두 팀 대결 여부. false면 개인 순위(롤체) 또는 팀 배정 없는 모집(스팀)
+  hasTeams          Boolean  @default(true) @map("has_teams")
+  /// 승패·순위를 입력하는가. false면 인원 모집만(스팀)
+  hasResults        Boolean  @default(true) @map("has_results")
   /// 선택 가능한 포지션 코드, 표시 순서대로
-  positions       String[] @default([])
-  sortOrder       Int      @default(0) @map("sort_order")
+  positions         String[] @default([])
+  sortOrder         Int      @default(0) @map("sort_order")
   /// S2. 내전 정원 범위(방장 포함). 허용 값 = min부터 step 간격으로 max까지(롤 2–10, 2 단위). 시드: shared GAME_SEED
-  capacityMin     Int      @default(2) @map("capacity_min")
-  capacityMax     Int      @default(16) @map("capacity_max")
-  capacityDefault Int      @default(8) @map("capacity_default")
-  capacityStep    Int      @default(1) @map("capacity_step")
+  capacityMin       Int      @default(2) @map("capacity_min")
+  capacityMax       Int      @default(16) @map("capacity_max")
+  capacityDefault   Int      @default(8) @map("capacity_default")
+  capacityStep      Int      @default(1) @map("capacity_step")
   /// true면 정원이 꽉 차야 시작(롤), false면 2명 이상
-  startRequiresFull Boolean @default(false) @map("start_requires_full")
+  startRequiresFull Boolean  @default(false) @map("start_requires_full")
   /// true면 내전 작성 때 스팀 게임(app id)을 반드시 고른다(D98)
-  requiresSteamApp Boolean @default(false) @map("requires_steam_app")
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  requiresSteamApp  Boolean  @default(false) @map("requires_steam_app")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   gameAccounts    GameAccount[]
   scrims          Scrim[]
@@ -219,6 +244,9 @@ model Game {
   ratingHistory   RatingHistory[]
   seasonStandings SeasonStanding[]
   activityLogs    ActivityLog[]
+  /// S6
+  patchNotes      PatchNote[]
+  events          CalendarEvent[]
 
   @@map("games")
 }
@@ -375,37 +403,46 @@ model SteamPlaytime {
 // -----------------------------------------------------------------------------
 
 /// 랭킹 시즌 구간. 문서 5장
+/// S4: closed_at = 시즌 종료 처리(최종 순위·뱃지) 커밋 시각. 값이 있으면 그 시즌 ratings는 더 바뀌지 않는다.
+///     종료 처리는 이 행 FOR NO KEY UPDATE, 승인 반영은 FOR SHARE로 서로 기다린다(S4 계약 6-3).
 model Season {
-  id        String   @id @default(uuid()) @db.Uuid
+  id        String    @id @default(uuid()) @db.Uuid
   name      String
-  startsAt  DateTime @map("starts_at") @db.Timestamptz(3)
-  endsAt    DateTime @map("ends_at") @db.Timestamptz(3)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  startsAt  DateTime  @map("starts_at") @db.Timestamptz(3)
+  endsAt    DateTime  @map("ends_at") @db.Timestamptz(3)
+  closedAt  DateTime? @map("closed_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  ratings       Rating[]
-  ratingHistory RatingHistory[]
-  standings     SeasonStanding[]
-  userBadges    UserBadge[]
+  ratings        Rating[]         @relation("RatingSeason")
+  /// S4. 이 시즌 값에서 이월된 다음 시즌 행들(S4 20절 D184부터 새로 생기지 않는다)
+  carriedRatings Rating[]         @relation("RatingCarriedFrom")
+  ratingHistory  RatingHistory[]
+  standings      SeasonStanding[]
+  userBadges     UserBadge[]
 
   @@index([startsAt, endsAt])
   @@map("seasons")
 }
 
 /// 시즌별 내전 레이팅 현재값. 문서 5장. elo는 정수(계산 후 반올림)
+/// S4: 행은 그 시즌 첫 반영 때 한 번만 만든다. 시작값 = 티어와 무관하게 1000(S4 계약 20절 D182, 소프트 리셋 없음)
 model Rating {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  gameId    String   @map("game_id") @db.Uuid
-  seasonId  String   @map("season_id") @db.Uuid
-  elo       Int      @default(1000)
-  wins      Int      @default(0)
-  losses    Int      @default(0)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                  String   @id @default(uuid()) @db.Uuid
+  userId              String   @map("user_id") @db.Uuid
+  gameId              String   @map("game_id") @db.Uuid
+  seasonId            String   @map("season_id") @db.Uuid
+  elo                 Int      @default(1000)
+  wins                Int      @default(0)
+  losses              Int      @default(0)
+  /// S4. 시작값의 출처 시즌(소프트 리셋). 감사용. S4 20절(D184)부터 쓰지 않는다: 새 행은 항상 null, 기존 값은 그대로 둔다
+  carriedFromSeasonId String?  @map("carried_from_season_id") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  game   Game   @relation(fields: [gameId], references: [id])
-  season Season @relation(fields: [seasonId], references: [id])
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game              Game    @relation(fields: [gameId], references: [id])
+  season            Season  @relation("RatingSeason", fields: [seasonId], references: [id])
+  carriedFromSeason Season? @relation("RatingCarriedFrom", fields: [carriedFromSeasonId], references: [id], onDelete: SetNull)
 
   @@unique([userId, gameId, seasonId])
   @@index([gameId, seasonId, elo(sort: Desc)])
@@ -414,6 +451,8 @@ model Rating {
 
 /// 레이팅 변동 이력. 문서 5장 + game_id, season_id, scrim_result_id(그래프·감사용)
 /// (scrim_id, user_id) 유일: 같은 내전 레이팅 이중 반영 방지
+/// S3: 행 1개 = 승인된 rated 내전 1경기. K 판정 경기 수 = (user_id, game_id) 행 수(모든 시즌, D106).
+///     created_at = 결과 승인 시각(같은 트랜잭션의 now)
 model RatingHistory {
   id            String   @id @default(uuid()) @db.Uuid
   userId        String   @map("user_id") @db.Uuid
@@ -423,6 +462,8 @@ model RatingHistory {
   seasonId      String   @map("season_id") @db.Uuid
   eloBefore     Int      @map("elo_before")
   eloAfter      Int      @map("elo_after")
+  /// S3. 적용한 K(32·40 등, 감사용). 이 표가 비어 있는 S3 이전에 추가하므로 기본값 없이 NOT NULL
+  kFactor       Int      @map("k_factor")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -433,10 +474,13 @@ model RatingHistory {
 
   @@unique([scrimId, userId])
   @@index([userId, createdAt])
+  /// S3. 그래프(사용자·게임·시즌, 시각순)와 K 판정 경기 수(사용자·게임) 조회
+  @@index([userId, gameId, seasonId, createdAt])
   @@map("rating_history")
 }
 
 /// 시즌 종료 최종 순위 스냅샷(문서 7-3 「최종 순위를 스냅샷으로 저장」). 명세 공백 보완
+/// S4: 그 시즌 RANKING_ELO_MIN_GAMES 이상 치른 멤버만 저장한다(rank 1부터). 미만인 멤버의 최종값은 ratings 행에 남는다
 model SeasonStanding {
   id        String   @id @default(uuid()) @db.Uuid
   seasonId  String   @map("season_id") @db.Uuid
@@ -457,6 +501,31 @@ model SeasonStanding {
   @@map("season_standings")
 }
 
+/// S4 랭킹 캐시(문서 7-3 「5분 단위로 캐시」, 9장). Redis 유무와 관계없이 이 표 하나만 쓴다(D146).
+/// cache_key: `rankings:tier:{game}` | `rankings:elo:{game}:{season_id}` (S4 계약 7-1)
+/// payload·computed_at = 마지막 성공값. 갱신 실패는 last_failed_at만 남기고 값을 건드리지 않는다
+/// baseline_*: 순위 변동(+/−) 기준. KST 주가 바뀔 때만 교체(D153)
+model RankingCache {
+  id                  String    @id @default(uuid()) @db.Uuid
+  cacheKey            String    @unique @map("cache_key")
+  /// shared TierRankingCachePayload | EloRankingCachePayload
+  payload             Json
+  /// 마지막 성공 계산 시각(응답 synced_at)
+  computedAt          DateTime  @map("computed_at") @db.Timestamptz(3)
+  /// 마지막 실패 시각. 성공하면 null
+  lastFailedAt        DateTime? @map("last_failed_at") @db.Timestamptz(3)
+  /// 마지막 실패 사유(로그용, 응답에 노출하지 않음)
+  lastError           String?   @map("last_error")
+  /// baseline_ranks가 기준으로 삼는 KST 주 시작 시각
+  baselinePeriodStart DateTime  @map("baseline_period_start") @db.Timestamptz(3)
+  /// { user_id: rank } shared RankingBaselineRanks. 기준 자료가 없으면 {}
+  baselineRanks       Json      @default("{}") @map("baseline_ranks")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("ranking_caches")
+}
+
 // -----------------------------------------------------------------------------
 // 내전
 // -----------------------------------------------------------------------------
@@ -471,10 +540,12 @@ model Scrim {
   capacity     Int
   status       ScrimStatus        @default(recruiting)
   rules        String?
-  /// S2. 진행 방식(목업 ScrimNew 03). 저장값은 적용값: autoBalance = 입력 && games.has_teams, usePositions = 입력 && games.has_positions
+  /// S2. 진행 방식. autoBalance = appliedAutoBalance(롤은 입력 && has_teams, 롤체 더블업만 입력값, 스팀·롤체 일반·랭크는 false). usePositions = 입력 && has_positions
   rated        Boolean            @default(true)
   autoBalance  Boolean            @default(true) @map("auto_balance")
   usePositions Boolean            @default(true) @map("use_positions")
+  /// 롤체 모드. 다른 게임은 null
+  tftMode      TftMode?           @map("tft_mode")
   /// 스팀 내전에서 고른 게임(D98). 이름은 고른 시점의 값(멤버 보유 게임 이름 또는 스팀 상점)
   steamAppId   Int?               @map("steam_app_id")
   steamAppName String?            @map("steam_app_name")
@@ -506,11 +577,14 @@ model ScrimPlayer {
   scrimId            String            @map("scrim_id") @db.Uuid
   userId             String            @map("user_id") @db.Uuid
   status             ScrimPlayerStatus @default(joined)
-  /// 팀 밸런스 후 배정된 포지션(games.positions 값). 배정 전 null
+  /// 팀 구성 저장(S3 PUT /scrims/{id}/teams) 때 배정된 포지션(games.positions 값). 배정 전·포지션 미사용 내전은 null.
+  /// S3: 모집 중 명단(joined 집합)이 바뀌면 그 내전 전원의 team·position을 null로 지운다(S3 계약 5-1)
   position           String?
   /// 희망 포지션, 1지망부터 순서대로(문서 7-2 3번)
   preferredPositions String[]          @default([]) @map("preferred_positions")
   team               ScrimTeam?
+  /// 롤체 더블업 2인 팀 번호(1부터). 롤 팀(team)과 따로 둔다
+  duoIndex           Int?              @map("duo_index")
   /// 대기열 순서 기준. 재참가 시 갱신
   joinedAt           DateTime          @default(now()) @map("joined_at") @db.Timestamptz(3)
   /// 노쇼 30일 집계 기준 시각(문서 7-4)
@@ -530,8 +604,10 @@ model ScrimPlayer {
 }
 
 /// 결과 입력과 운영진 승인. 문서 5장 + 상태·반려 컬럼(slice.md 결정)
-/// 반려 후 재입력은 새 행. 한 내전에 pending·approved 행은 최대 1개(서비스에서 보장)
-/// 자기 승인 금지: approved_by != submitted_by (S3 서비스에서 검사)
+/// 반려 후 재입력은 새 행. 한 내전에 pending·approved 행은 최대 1개 — 서비스(내전 행 잠금) + 부분 고유 인덱스
+/// scrim_results_one_active_per_scrim (Prisma로 표현 불가, 마이그레이션 20261030120000_s3 SQL에 직접 추가. S3 계약 3절)
+/// 자기 승인·반려 금지: approved_by·rejected_by != submitted_by (S3 서비스에서 검사, SCRIM_RESULT_SELF_REVIEW)
+/// 제출 취소(DELETE /scrims/{id}/result)는 pending 행 삭제
 model ScrimResult {
   id            String            @id @default(uuid()) @db.Uuid
   scrimId       String            @map("scrim_id") @db.Uuid
@@ -546,6 +622,10 @@ model ScrimResult {
   rejectReason  String?           @map("reject_reason")
   rejectedById  String?           @map("rejected_by") @db.Uuid
   rejectedAt    DateTime?         @map("rejected_at") @db.Timestamptz(3)
+  /// S6. 승인 되돌리기(approved → reverted). approved_by·approved_at은 기록으로 남긴다
+  revertedById  String?           @map("reverted_by") @db.Uuid
+  revertedAt    DateTime?         @map("reverted_at") @db.Timestamptz(3)
+  revertReason  String?           @map("revert_reason")
   createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -553,6 +633,7 @@ model ScrimResult {
   submittedBy   User                 @relation("ResultSubmittedBy", fields: [submittedById], references: [id])
   approvedBy    User?                @relation("ResultApprovedBy", fields: [approvedById], references: [id])
   rejectedBy    User?                @relation("ResultRejectedBy", fields: [rejectedById], references: [id])
+  revertedBy    User?                @relation("ResultRevertedBy", fields: [revertedById], references: [id])
   disputes      ScrimResultDispute[]
   ratingHistory RatingHistory[]
 
@@ -562,6 +643,8 @@ model ScrimResult {
 }
 
 /// 결과 이의 제기(slice.md 결정, 목업 Admin)
+/// S6 D281(사용자 결정 2026-11-01): 이의 제기 기능 제거. 표·enum은 S0 마이그레이션으로 운영 DB에 있을 수 있어 DROP하지 않고 남긴다.
+///     앱 코드는 이 표를 읽거나 쓰지 않는다(결과 제출 취소·내전 삭제 때 cascade로 지워지는 것만 남는다).
 model ScrimResultDispute {
   id            String        @id @default(uuid()) @db.Uuid
   scrimResultId String        @map("scrim_result_id") @db.Uuid
@@ -588,6 +671,7 @@ model ScrimResultDispute {
 // -----------------------------------------------------------------------------
 
 /// 봇이 보내는 음성·채팅·플레이 활동. idempotency_key 유일 = 재전송 중복 저장 방지
+/// S5: chat은 duration_sec 0(활동 일수·활동 멤버에만 쓴다). 랭킹 시간은 voice만(D232, play는 저장만 한다). 기간 귀속은 started_at(S5 계약 7-1)
 model ActivityLog {
   id             String       @id @default(uuid()) @db.Uuid
   userId         String       @map("user_id") @db.Uuid
@@ -596,10 +680,13 @@ model ActivityLog {
   startedAt      DateTime     @map("started_at") @db.Timestamptz(3)
   durationSec    Int          @default(0) @map("duration_sec")
   idempotencyKey String       @unique @map("idempotency_key")
+  /// S5. 이 행을 보낸 봇 키(감사용). 키를 지워도 활동은 남는다
+  apiKeyId       String?      @map("api_key_id") @db.Uuid
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  game Game? @relation(fields: [gameId], references: [id])
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game   Game?   @relation(fields: [gameId], references: [id])
+  apiKey ApiKey? @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
 
   @@index([userId, startedAt])
   @@index([startedAt])
@@ -607,6 +694,7 @@ model ActivityLog {
 }
 
 /// 업적 정의. 문서 5장
+/// S4 시드: shared SEASON_BADGE_SEED — 시즌 최종 순위 뱃지 `season_{game}_top{1|2|3}` (게임마다 3행, seed.ts)
 model Badge {
   id          String   @id @default(uuid()) @db.Uuid
   code        String   @unique
@@ -622,6 +710,7 @@ model Badge {
 }
 
 /// 업적 획득 기록. 문서 5장 + season_id(시즌 보상 뱃지 구분, 선택)
+/// S4: 시즌 뱃지는 (user, badge, season) 유일 키가 이중 지급의 마지막 방어선. earned_at = 시즌 ends_at
 model UserBadge {
   id        String   @id @default(uuid()) @db.Uuid
   userId    String   @map("user_id") @db.Uuid
@@ -644,6 +733,7 @@ model UserBadge {
 // -----------------------------------------------------------------------------
 
 /// 봇용 API 키. 원문은 저장하지 않고 해시만(문서 5장). key_prefix는 목록 식별용 앞 8자(비밀 아님)
+/// S5: 원문 `gcd_` + base64url 43자, key_hash = SHA-256(원문) hex, key_prefix = `gcd_` 뒤 8자. 발급은 CLI(apps/api/scripts/api-key.ts)
 model ApiKey {
   id          String    @id @default(uuid()) @db.Uuid
   name        String
@@ -656,12 +746,34 @@ model ApiKey {
   createdById String?   @map("created_by") @db.Uuid
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy    User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  activityLogs ActivityLog[]
+  presences    BotPresence[]
 
   @@map("api_keys")
 }
 
+/// S5. 봇이 보낸 마지막 접속 현황(PUT /bot/presence). 홈 「음성 채널 접속」「지금 플레이 중」(S5 계약 6-7, 8절)
+/// source당 1행을 덮어쓴다. 지금은 'default' 하나(디스코드 서버 1개). captured_at이 더 새로울 때만 덮는다
+model BotPresence {
+  id               String   @id @default(uuid()) @db.Uuid
+  source           String   @unique
+  /// 봇이 집계한 시각. 오래되면(shared BOT_PRESENCE_STALE_AFTER_SEC) 홈은 숫자를 숨긴다
+  capturedAt       DateTime @map("captured_at") @db.Timestamptz(3)
+  voiceMemberCount Int      @map("voice_member_count")
+  /// shared BotPresencePlayingStored
+  playing          Json     @default("[]")
+  apiKeyId         String?  @map("api_key_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  apiKey ApiKey? @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+
+  @@map("bot_presence")
+}
+
 /// 공지(slice.md 결정, 목업 Admin 「공지 작성」)
+/// S6: 운영진 작성·수정·영구 삭제(감사 로그). notify_discord && discord_notified_at null → 봇 GET /bot/notices/pending
 model Notice {
   id                String    @id @default(uuid()) @db.Uuid
   title             String
@@ -678,4 +790,85 @@ model Notice {
 
   @@index([createdAt(sort: Desc)])
   @@map("notices")
+}
+
+/// S6. 패치노트 요약(문서 2장 정보, 6장 GET /patch-notes). 운영진 수기 입력과 목록 슬러그 자동 등록. 영구 삭제 + 감사 로그
+/// notify_discord && discord_notified_at null → 봇 GET /bot/patch-notes/pending(notify_patch 회원 DM)
+/// auto_registered: 서버가 공식 목록 슬러그로 만든 글. 수기는 false. 수정해도 유지
+model PatchNote {
+  id                String    @id @default(uuid()) @db.Uuid
+  gameId            String    @map("game_id") @db.Uuid
+  /// 게임 패치 버전 표기(예 26.21). 선택
+  version           String?
+  title             String
+  summary           String
+  /// 공식 원문 외부 링크(http·https). 서버는 열지 않는다
+  url               String?
+  /// KST 달력 날짜
+  publishedOn       DateTime  @map("published_on") @db.Date
+  notifyDiscord     Boolean   @default(false) @map("notify_discord")
+  discordNotifiedAt DateTime? @map("discord_notified_at") @db.Timestamptz(3)
+  /// 목록 슬러그로 자동 등록한 글. 수기 작성은 false
+  autoRegistered    Boolean   @default(false) @map("auto_registered")
+  createdById       String?   @map("created_by") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  game      Game  @relation(fields: [gameId], references: [id])
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([publishedOn(sort: Desc)])
+  @@index([gameId, publishedOn(sort: Desc)])
+  @@map("patch_notes")
+}
+
+/// S6. 이벤트 캘린더(문서 2장 「게임 출시·업데이트 캘린더」, 6장 GET /events). 기간은 양 끝 포함 KST 날짜, 하루짜리는 starts_on = ends_on
+/// game_id null = 게임 무관 행사. 모델 이름은 DOM Event와 헷갈리지 않게 CalendarEvent
+/// S6 후속(계약 S6 8-1·23-8, D298–D301): 선택 시각 start_time(starts_on 날)·end_time(ends_on 날). KST 벽시계 시각을 time(0)에 그대로 저장
+/// (시간대 변환 없음 — 날짜 컬럼과 같은 원칙). 둘 다 null = 종일. end_time은 start_time이 있을 때만(shared eventScheduleIssues)
+/// 마이그레이션 20261101120000_s6_event_times(ADD COLUMN nullable 2개, 기존 행 = 종일)
+model CalendarEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  gameId      String?   @map("game_id") @db.Uuid
+  title       String
+  description String?
+  url         String?
+  startsOn    DateTime  @map("starts_on") @db.Date
+  endsOn      DateTime  @map("ends_on") @db.Date
+  /// 시작 시각(KST HH:mm:00). 쓸 때 new Date('1970-01-01THH:mm:00.000Z'), 읽을 때 toISOString().slice(11, 16)
+  startTime   DateTime? @map("start_time") @db.Time(0)
+  /// 종료 시각(KST HH:mm:00). start_time이 없으면 null
+  endTime     DateTime? @map("end_time") @db.Time(0)
+  createdById String?   @map("created_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  game      Game? @relation(fields: [gameId], references: [id])
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([startsOn, endsOn])
+  @@index([endsOn])
+  @@map("events")
+}
+
+/// S6. 운영진 행위 감사 기록(계약 S6 10절). 행위와 같은 트랜잭션에서 쓴다. 수정·삭제 경로 없음
+/// action·target_type = shared AdminAuditAction·AdminAuditTargetType(text, 값이 늘어도 마이그레이션 없음)
+model AdminAuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  action     String
+  targetType String   @map("target_type")
+  /// 대상 행 id. 대상이 지워져도 남는다(FK 없음)
+  targetId   String?  @map("target_id") @db.Uuid
+  summary    String
+  /// 행위별 전후 값(계약 S6 10-2)
+  details    Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@index([targetType, targetId])
+  @@map("admin_audit_logs")
 }

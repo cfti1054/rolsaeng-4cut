@@ -29,8 +29,10 @@ export const GameView = z.object({
   name: z.string(),
   /** 참가 시 1지망·2지망 포지션을 고르는 게임인가 */
   has_positions: z.boolean(),
-  /** 두 팀 대결인가(false = 개인 순위, 롤체) */
+  /** 두 팀 대결인가(false = 개인 순위, 롤체·스팀 모집) */
   has_teams: z.boolean(),
+  /** 승패·순위를 입력하는가. false면 인원 모집. 옛 응답에 없으면 true */
+  has_results: z.boolean().default(true),
   /** 포지션 코드(표시 순서). has_positions=false면 [] */
   positions: z.array(z.string()),
   sort_order: z.number().int(),

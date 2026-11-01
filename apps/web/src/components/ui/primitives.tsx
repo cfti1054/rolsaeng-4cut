@@ -46,7 +46,7 @@ export function EmptyState({
   mark: string;
   image?: string;
   title: string;
-  description: ReactNode;
+  description?: ReactNode;
   action?: ReactNode;
 }) {
   return (
@@ -63,7 +63,7 @@ export function EmptyState({
         </span>
       )}
       <p className="m-0 text-base font-bold">{title}</p>
-      <p className="m-0 max-w-sm text-[13px] leading-relaxed text-muted">{description}</p>
+      {description ? <p className="m-0 max-w-sm text-[13px] leading-relaxed text-muted">{description}</p> : null}
       {action}
     </div>
   );

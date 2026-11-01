@@ -17,6 +17,8 @@ export type LockedScrim = {
   hostId: string;
   usePositions: boolean;
   gameId: string;
+  autoBalance: boolean;
+  tftMode: 'double_up' | 'normal' | 'ranked' | null;
 };
 
 type LockedRow = {
@@ -27,12 +29,15 @@ type LockedRow = {
   host_id: string;
   use_positions: boolean;
   game_id: string;
+  auto_balance: boolean;
+  tft_mode: 'double_up' | 'normal' | 'ranked' | null;
 };
 
 /** 없으면 null(호출자가 NOT_FOUND). id는 컨트롤러에서 UUID 검증을 거친 값 */
 export async function lockScrim(tx: RawQueryExecutor, id: string): Promise<LockedScrim | null> {
   const rows = await tx.$queryRaw<LockedRow[]>`
-    SELECT id::text AS id, status::text AS status, capacity, scheduled_at, host_id::text AS host_id, use_positions, game_id::text AS game_id
+    SELECT id::text AS id, status::text AS status, capacity, scheduled_at, host_id::text AS host_id, use_positions, game_id::text AS game_id,
+           auto_balance, tft_mode::text AS tft_mode
     FROM scrims WHERE id = ${id}::uuid FOR UPDATE`;
   const r = rows[0];
   if (!r) return null;
@@ -44,5 +49,7 @@ export async function lockScrim(tx: RawQueryExecutor, id: string): Promise<Locke
     hostId: r.host_id,
     usePositions: r.use_positions,
     gameId: r.game_id,
+    autoBalance: r.auto_balance,
+    tftMode: r.tft_mode,
   };
 }

@@ -31,12 +31,71 @@ export const ApiPath = {
   // S2 내전
   scrims: '/scrims',
   scrim: '/scrims/:id',
+  /** 롤체 더블업 2인 팀 저장. POST, 방장·운영진. 응답은 ScrimDetail */
+  scrimDuos: '/scrims/:id/duos',
   scrimJoin: '/scrims/:id/join',
   scrimStart: '/scrims/:id/start',
   scrimCancel: '/scrims/:id/cancel',
   scrimPlayerNoShow: '/scrims/:id/players/:userId/no-show',
   // S2 내 노쇼 제한 상태
   myScrimRestriction: '/me/scrim-restriction',
+  // S3 팀 밸런스·팀 구성·결과 (scrimResult: POST 제출, DELETE 제출 취소)
+  scrimBalance: '/scrims/:id/balance',
+  scrimTeams: '/scrims/:id/teams',
+  scrimResult: '/scrims/:id/result',
+  scrimResultApprove: '/scrims/:id/result/approve',
+  scrimResultReject: '/scrims/:id/result/reject',
+  // S3 시즌·레이팅 그래프
+  seasons: '/seasons',
+  userRatingHistory: '/users/:id/rating-history',
+  // S4 랭킹·홈 요약
+  rankingsTier: '/rankings/tier',
+  rankingsElo: '/rankings/elo',
+  dashboardSummary: '/dashboard/summary',
+  // S4 후속 변경 2 라인 추천(계약 S4 20절 D190)
+  myPositionSuggestions: '/me/position-suggestions',
+  // S5 활동·플레이타임 랭킹
+  rankingsActivity: '/rankings/activity',
+  rankingsPlaytime: '/rankings/playtime',
+  // S5 디스코드 봇(X-API-Key). 문서 6장 5개 중 /bot/link 제외 4개(D237) + 서버 입장·퇴장, 음성 접속 현황(D214)
+  botActivity: '/bot/activity',
+  botUserLookup: '/bot/users/lookup',
+  botUpcomingScrims: '/bot/scrims/upcoming',
+  botRanking: '/bot/rankings/:type',
+  botMemberEvents: '/bot/member-events',
+  botPresence: '/bot/presence',
+  // S6 결과 되돌리기(scrims 리소스 아래, 승인·반려와 같은 자리). 결과 이의 제기 경로는 제거됨(D281)
+  scrimResultRevert: '/scrims/:id/result/revert',
+  // S6 내 알림 설정
+  myNotificationSettings: '/me/notification-settings',
+  // S6 정보(멤버 전원 읽기, 문서 6장 /patch-notes·/events)
+  notices: '/notices',
+  patchNotes: '/patch-notes',
+  events: '/events',
+  // S6 후속 커뮤니티 캘린더(멤버 전원 읽기, 내전 + 운영진 일정 한 달 묶음, D284). 쓰기는 adminEvents·adminEvent
+  calendar: '/calendar',
+  // S6 관리자(JWT + admin). 비운영진 403
+  adminOverview: '/admin/overview',
+  adminResults: '/admin/results',
+  adminNoShowScrims: '/admin/no-show/scrims',
+  adminMembers: '/admin/members',
+  adminMemberRole: '/admin/members/:id/role',
+  adminNotices: '/admin/notices',
+  adminNotice: '/admin/notices/:id',
+  adminPatchNotes: '/admin/patch-notes',
+  adminPatchNote: '/admin/patch-notes/:id',
+  adminEvents: '/admin/events',
+  adminEvent: '/admin/events/:id',
+  adminApiKeys: '/admin/api-keys',
+  adminApiKeyRevoke: '/admin/api-keys/:id/revoke',
+  adminSeasons: '/admin/seasons',
+  adminSeason: '/admin/seasons/:id',
+  adminAuditLogs: '/admin/audit-logs',
+  // S6 봇 공지·패치노트 전송(X-API-Key)
+  botPendingNotices: '/bot/notices/pending',
+  botNoticeDelivered: '/bot/notices/:id/delivered',
+  botPendingPatchNotes: '/bot/patch-notes/pending',
+  botPatchNoteDelivered: '/bot/patch-notes/:id/delivered',
 } as const;
 export type ApiPath = (typeof ApiPath)[keyof typeof ApiPath];
 

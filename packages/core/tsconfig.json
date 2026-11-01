@@ -5,7 +5,7 @@
     "moduleResolution": "node10",
     "rootDir": "src",
     "outDir": "dist",
-    "types": []
+    "types": ["node"]
   },
   "include": ["src/**/*.ts"]
 }

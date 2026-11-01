@@ -86,11 +86,16 @@ export const PROVIDER_META: Record<
   },
 };
 
-/** 롤 포지션 표기. 순서는 shared LolPosition과 같다 */
-export const POSITION_META: Record<LolPosition, { ko: string; banner: string }> = {
-  top: { ko: '탑', banner: 'TOP LANER' },
-  jungle: { ko: '정글', banner: 'JUNGLER' },
-  mid: { ko: '미드', banner: 'MID LANER' },
-  bot: { ko: '원딜', banner: 'BOT LANER' },
-  support: { ko: '서포터', banner: 'SUPPORT' },
+/** 롤 포지션 표기. 순서는 shared LolPosition과 같다. code = 팀 카드 약칭(목업 ScrimDetail 「TOP·JGL·MID·ADC·SUP」) */
+export const POSITION_META: Record<LolPosition, { ko: string; banner: string; code: string }> = {
+  top: { ko: '탑', banner: 'TOP LANER', code: 'TOP' },
+  jungle: { ko: '정글', banner: 'JUNGLER', code: 'JGL' },
+  mid: { ko: '미드', banner: 'MID LANER', code: 'MID' },
+  bot: { ko: '원딜', banner: 'BOT LANER', code: 'ADC' },
+  support: { ko: '서포터', banner: 'SUPPORT', code: 'SUP' },
 };
+
+/** 포지션 약칭(모르는 코드는 앞 3글자 대문자) */
+export function positionCode(code: string): string {
+  return (POSITION_META as Record<string, { code: string } | undefined>)[code]?.code ?? code.slice(0, 3).toUpperCase();
+}

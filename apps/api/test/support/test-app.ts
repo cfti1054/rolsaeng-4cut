@@ -11,9 +11,12 @@ import {
   type DiscordOAuthClient,
   type DiscordUser,
 } from '../../src/modules/auth/discord-oauth.client';
+import { RANKING_CACHE_STORE } from '../../src/modules/rankings/ranking-cache.store';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { FakePrisma } from './fake-prisma';
+import { MemoryRankingCache } from './memory-ranking-cache';
 import { APP_CLOCK } from '../../src/common/clock';
+import { PATCH_LISTING_FETCH } from '../../src/modules/news/patch-note-sync.service';
 import { DATA_DRAGON, RIOT_API, STEAM_API, SYNC_QUEUE } from '../../src/integrations/contracts';
 import { RANDOM } from '../../src/modules/game-accounts/riot-link.service';
 import {
@@ -46,6 +49,8 @@ export const BASE_ENV: Record<string, string> = {
   // S1: 키가 있어야 연동·동기화가 동작(값은 가짜. 외부 호출은 목)
   RIOT_API_KEY: 'test-riot-key',
   STEAM_API_KEY: 'test-steam-key',
+  // S4 후속: 기존 수치 테스트는 대칭 값으로 유지한다(기본값 0.5 동작은 test/loss-ratio.e2e.spec.ts)
+  SCRIM_ELO_LOSS_RATIO: '1',
 };
 
 export function testConfig(overrides: Record<string, string | undefined> = {}): AppConfig {
@@ -88,6 +93,7 @@ export interface TestApp {
   ddragon: MockDataDragon;
   queue: MockQueue;
   clock: TestClock;
+  rankingCache: MemoryRankingCache;
   close: () => Promise<void>;
 }
 
@@ -111,6 +117,7 @@ export async function createTestApp(
   const config = testConfig(opts.env);
   const prisma = opts.prisma ?? new FakePrisma();
   const discord = opts.discord ?? mockDiscord();
+  const rankingCache = new MemoryRankingCache();
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(APP_CONFIG)
     .useValue(config)
@@ -130,6 +137,10 @@ export async function createTestApp(
     .useValue(clockProvider)
     .overrideProvider(RANDOM)
     .useValue(opts.random ?? (() => 0))
+    .overrideProvider(RANKING_CACHE_STORE)
+    .useValue(rankingCache)
+    .overrideProvider(PATCH_LISTING_FETCH)
+    .useValue(async () => ({ status: 404, headers: { get: () => null }, text: async () => '' }))
     .compile();
   const app = moduleRef.createNestApplication({ logger: false });
   configureApp(app, config);
@@ -146,6 +157,7 @@ export async function createTestApp(
     ddragon,
     queue,
     clock,
+    rankingCache,
     close: () => app.close(),
   };
 }

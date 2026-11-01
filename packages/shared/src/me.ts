@@ -69,3 +69,38 @@ export type UpdateMeRequest = z.infer<typeof UpdateMeRequest>;
 /** PATCH /me */
 export const UpdateMeResponse = Me;
 export type UpdateMeResponse = z.infer<typeof UpdateMeResponse>;
+
+// -----------------------------------------------------------------------------
+// S6 GET·PATCH /me/notification-settings — 알림 설정(목업 Settings NOTIFICATIONS, 계약 S6 9절)
+// S1 D48 「알림 설정은 알림 발송 기능이 생기는 슬라이스에서」의 실행. 실제로 발송 경로가 있는 두 항목만 연다(D259):
+// - scrim_start(users.notify_scrim_start): 봇 GET /bot/scrims/upcoming의 notify_discord_ids(S5 D222)
+// - patch(users.notify_patch): 봇 GET /bot/patch-notes/pending의 notify_discord_ids(S6)
+// notify_result·notify_waitlist는 봇 수신 경로가 없어(S5 Q12) 노출하지 않는다.
+// -----------------------------------------------------------------------------
+
+export const NotificationSettings = z.object({
+  /** 참가한 내전 시작 30분 전 디스코드 DM */
+  scrim_start: z.boolean(),
+  /** 새 패치 요약 디스코드 DM */
+  patch: z.boolean(),
+  /** DM을 받을 수 있는 상태인가(isLinkedDiscordId(discord_id)). false면 화면이 「디스코드 연동 회원만 받아요」 안내 */
+  discord_linked: z.boolean(),
+});
+export type NotificationSettings = z.infer<typeof NotificationSettings>;
+
+export const GetMyNotificationSettingsResponse = NotificationSettings;
+export type GetMyNotificationSettingsResponse = z.infer<typeof GetMyNotificationSettingsResponse>;
+
+/** 바꿀 항목만 보낸다. 빈 본문·모르는 필드는 VALIDATION_FAILED */
+export const UpdateMyNotificationSettingsRequest = z
+  .object({
+    scrim_start: z.boolean(),
+    patch: z.boolean(),
+  })
+  .partial()
+  .strict()
+  .refine((v) => v.scrim_start !== undefined || v.patch !== undefined, { message: '바꿀 항목이 하나 이상 있어야 함' });
+export type UpdateMyNotificationSettingsRequest = z.infer<typeof UpdateMyNotificationSettingsRequest>;
+
+export const UpdateMyNotificationSettingsResponse = NotificationSettings;
+export type UpdateMyNotificationSettingsResponse = z.infer<typeof UpdateMyNotificationSettingsResponse>;

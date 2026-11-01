@@ -3,17 +3,23 @@ import {
   NO_SHOW_RESTRICTION_DAYS_DEFAULT,
   NO_SHOW_THRESHOLD_DEFAULT,
   NO_SHOW_WINDOW_DAYS_DEFAULT,
+  RANKING_ELO_MIN_GAMES_DEFAULT,
   REFRESH_ROTATE_AFTER_HOURS_DEFAULT,
   RIOT_ACCOUNTS_MAX_DEFAULT,
   RIOT_VERIFICATION_TTL_SEC_DEFAULT,
   SCRIM_AUTO_CLOSE_AFTER_MIN_DEFAULT,
+  SCRIM_ELO_K_BASE_DEFAULT,
+  SCRIM_ELO_K_NEW_DEFAULT,
+  SCRIM_ELO_LOSS_RATIO_DEFAULT,
+  SCRIM_ELO_NEW_PLAYER_GAMES_DEFAULT,
   SCRIM_SCHEDULE_MAX_DAYS_AHEAD_DEFAULT,
+  SEASON_AUTO_LENGTH_MONTHS_DEFAULT,
   SYNC_DAILY_LIMIT_DEFAULT,
 } from '@gcd/shared';
 import { z } from 'zod';
 
 /**
- * API 환경 변수(S0 계약 10절 + S1 계약 11절 + S2 계약 11절). 기동 시 한 번 검증하고, 필수값이 없으면 시작하지 않는다.
+ * API 환경 변수(S0 계약 10절 + S1 계약 11절 + S2 계약 11절 + S3 계약 12절 + S4 계약 13절). 기동 시 한 번 검증하고, 필수값이 없으면 시작하지 않는다.
  * 빈 문자열은 "설정 안 함"으로 본다(.env.example의 `KEY=` 형태).
  */
 const emptyToUndefined = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v);
@@ -27,7 +33,7 @@ const strictBool = (def: boolean) =>
   z.preprocess(
     (v) => (typeof v === 'string' ? (v.trim() === '' ? undefined : v.trim().toLowerCase()) : v),
     z
-      .enum(['true', 'false'], { errorMap: () => ({ message: 'true 또는 false' }) })
+      .enum(['true', 'false'], { error: 'true 또는 false' })
       .default(def ? 'true' : 'false')
       .transform((v) => v === 'true'),
   );
@@ -38,6 +44,11 @@ const strictBool = (def: boolean) =>
  */
 export function scrimJobsEnabledFromEnv(env: Record<string, string | undefined> = process.env): boolean {
   const r = strictBool(true).safeParse(env.SCRIM_JOBS_ENABLED);
+  return r.success ? r.data : true;
+}
+/** RANKING_JOBS_ENABLED만 따로 읽는다(RankingJobsModule.forRoot, 위 scrimJobsEnabledFromEnv와 같은 방식) */
+export function rankingJobsEnabledFromEnv(env: Record<string, string | undefined> = process.env): boolean {
+  const r = strictBool(true).safeParse(env.RANKING_JOBS_ENABLED);
   return r.success ? r.data : true;
 }
 /** 라이엇 라우팅 값: 소문자 영문·숫자 */
@@ -61,17 +72,17 @@ const EnvSchema = z.object({
       .default('http://localhost:3000')
       .transform((v) => new URL(v).origin),
   ),
-  DATABASE_URL: z.string({ required_error: 'DATABASE_URL 필수' }).min(1, 'DATABASE_URL 필수'),
+  DATABASE_URL: z.string({ error: (iss) => (iss.input === undefined ? 'DATABASE_URL 필수' : undefined) }).min(1, 'DATABASE_URL 필수'),
   REDIS_URL: optionalString,
   JWT_ACCESS_SECRET: z
-    .string({ required_error: 'JWT_ACCESS_SECRET 필수' })
+    .string({ error: (iss) => (iss.input === undefined ? 'JWT_ACCESS_SECRET 필수' : undefined) })
     .min(32, 'JWT_ACCESS_SECRET은 32자 이상'),
   JWT_ACCESS_TTL_SEC: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(900)),
   REFRESH_TOKEN_TTL_DAYS: z.preprocess(
     emptyToUndefined,
     z.coerce.number().int().positive().default(30),
   ),
-  COOKIE_SECRET: z.string({ required_error: 'COOKIE_SECRET 필수' }).min(32, 'COOKIE_SECRET은 32자 이상'),
+  COOKIE_SECRET: z.string({ error: (iss) => (iss.input === undefined ? 'COOKIE_SECRET 필수' : undefined) }).min(32, 'COOKIE_SECRET은 32자 이상'),
   DISCORD_CLIENT_ID: optionalString,
   DISCORD_CLIENT_SECRET: optionalString,
   DISCORD_REDIRECT_URI: z.preprocess(emptyToUndefined, z.string().url().optional()),
@@ -108,6 +119,22 @@ const EnvSchema = z.object({
   SCRIM_NO_SHOW_WINDOW_DAYS: posInt(NO_SHOW_WINDOW_DAYS_DEFAULT),
   SCRIM_NO_SHOW_RESTRICTION_DAYS: posInt(NO_SHOW_RESTRICTION_DAYS_DEFAULT),
   SCRIM_NO_SHOW_MARK_WINDOW_DAYS: posInt(NO_SHOW_MARK_WINDOW_DAYS_DEFAULT),
+  // ---- S3 (계약 S3 12절) ----
+  SCRIM_ELO_K_BASE: posInt(SCRIM_ELO_K_BASE_DEFAULT),
+  SCRIM_ELO_K_NEW: posInt(SCRIM_ELO_K_NEW_DEFAULT),
+  SCRIM_ELO_NEW_PLAYER_GAMES: posInt(SCRIM_ELO_NEW_PLAYER_GAMES_DEFAULT),
+  // S4 후속(계약 19-1, D169)
+  SCRIM_ELO_LOSS_RATIO: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().min(0).max(1).default(SCRIM_ELO_LOSS_RATIO_DEFAULT),
+  ),
+  SEASON_AUTO_LENGTH_MONTHS: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(1).max(24).default(SEASON_AUTO_LENGTH_MONTHS_DEFAULT),
+  ),
+  // ---- S4 (계약 S4 13절) ----
+  RANKING_ELO_MIN_GAMES: posInt(RANKING_ELO_MIN_GAMES_DEFAULT),
+  RANKING_JOBS_ENABLED: strictBool(true),
 });
 
 export interface AppConfig {
@@ -159,6 +186,12 @@ export interface AppConfig {
     /** 노쇼 표시 기한(시작 시각부터 일수, D83) */
     noShowMarkWindowDays: number;
   };
+  /** S3 내전 ELO(계약 S3 12절). core EloPolicy와 같은 모양 */
+  rating: { kBase: number; kNew: number; newPlayerGames: number; lossRatio: number };
+  /** S3 자동 생성 시즌 길이(개월, 1–24, D116) */
+  seasonAutoLengthMonths: number;
+  /** S4 랭킹. eloMinGames = ELO 노출·최종 순위 최소 경기 수. jobsEnabled = false면 종료·캐시 cron 미등록(D164) */
+  ranking: { eloMinGames: number; jobsEnabled: boolean };
 }
 
 export const APP_CONFIG = Symbol('APP_CONFIG');
@@ -219,6 +252,14 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       },
       noShowMarkWindowDays: e.SCRIM_NO_SHOW_MARK_WINDOW_DAYS,
     },
+    rating: {
+      kBase: e.SCRIM_ELO_K_BASE,
+      kNew: e.SCRIM_ELO_K_NEW,
+      newPlayerGames: e.SCRIM_ELO_NEW_PLAYER_GAMES,
+      lossRatio: e.SCRIM_ELO_LOSS_RATIO,
+    },
+    seasonAutoLengthMonths: e.SEASON_AUTO_LENGTH_MONTHS,
+    ranking: { eloMinGames: e.RANKING_ELO_MIN_GAMES, jobsEnabled: e.RANKING_JOBS_ENABLED },
   };
 }
 

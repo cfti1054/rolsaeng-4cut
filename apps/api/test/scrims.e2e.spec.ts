@@ -53,7 +53,7 @@ async function detailOf(res: Response, status = 200): Promise<ScrimDetail> {
 }
 
 const LOL_BASE = { game: 'lol', title: '금요 내전', capacity: 10, host_preferred_positions: ['mid'] } as const;
-const TFT_BASE = { game: 'tft', title: '롤체 한 판', capacity: 2 } as const;
+const TFT_BASE = { game: 'tft', title: '롤체 한 판', capacity: 2, tft_mode: 'normal' } as const;
 
 async function create(app: TestApp, who: Who, over: Partial<CreateScrimRequestInput> = {}, base: object = LOL_BASE) {
   const res = await call(app, 'POST', '/scrims', who.token, { ...base, scheduled_at: at(app, DAY), ...over });
@@ -95,6 +95,11 @@ describe('GET /games', () => {
     expect(res.status).toBe(200);
     const body = ListGamesResponse.parse(await res.json());
     expect(body.next_cursor).toBeNull();
+    expect(body.items.map((g) => [g.code, g.has_teams, g.has_results])).toEqual([
+      ['lol', true, true],
+      ['tft', false, true],
+      ['steam', false, false],
+    ]);
     expect(body.items.map((g) => [g.code, g.capacity])).toEqual([
       ['lol', { min: 2, max: 10, default: 10, step: 2, start_requires_full: true }],
       ['tft', { min: 2, max: 8, default: 8, step: 1, start_requires_full: false }],
@@ -137,7 +142,14 @@ describe('POST /scrims 작성', () => {
     const a = await login(t, 'alice');
     const d = await create(t, a, { auto_balance: true, use_positions: true }, TFT_BASE);
     expect(d.options).toEqual({ rated: true, auto_balance: false, use_positions: false });
-    expect(d.game).toEqual({ code: 'tft', name: expect.any(String), has_positions: false, has_teams: false, positions: [] });
+    expect(d.game).toEqual({
+      code: 'tft',
+      name: expect.any(String),
+      has_positions: false,
+      has_teams: false,
+      has_results: true,
+      positions: [],
+    });
   });
 
   it('서버 검사 details를 한 번에: 지난 시각·정원 범위 밖·1지망 없음', async () => {
@@ -184,16 +196,16 @@ describe('POST /scrims 작성', () => {
     t = await createTestApp({ fixedClock: true });
     const a = await login(t, 'alice');
     const now = t.clock.now().getTime();
-    seedNoShows(t, a.userId, [new Date(now - 3 * DAY), new Date(now - 2 * DAY), new Date(now - DAY - 500)]);
+    seedNoShows(t, a.userId, [new Date(now - 3 * HOUR), new Date(now - 2 * HOUR), new Date(now - HOUR - 500)]);
     const res = await call(t, 'POST', '/scrims', a.token, { ...LOL_BASE, scheduled_at: at(t, DAY) });
-    expect(res.headers.get('retry-after')).toBe(String(Math.ceil((6 * DAY - 500) / 1000)));
+    expect(res.headers.get('retry-after')).toBe(String(Math.ceil((DAY - HOUR - 500) / 1000)));
     const err = await expectError(res, 403, 'SCRIM_BANNED');
     expect(Object.keys(err).sort()).toEqual(['code', 'message']);
   });
 });
 
 describe('GET /me/scrim-restriction', () => {
-  it('제한 없음 / 30일 3회 → until = 마지막 발동 + 7일, policy', async () => {
+  it('제한 없음 / 30일 3회 → until = 마지막 발동 + 1일, policy', async () => {
     t = await createTestApp({ fixedClock: true });
     const a = await login(t, 'alice');
     const get = async () => GetMyScrimRestrictionResponse.parse(await (await call(t as TestApp, 'GET', '/me/scrim-restriction', a.token)).json());
@@ -202,24 +214,49 @@ describe('GET /me/scrim-restriction', () => {
       until: null,
       recent_no_show_count: 0,
       last_no_show_at: null,
-      policy: { threshold: 3, window_days: 30, restriction_days: 7 },
+      policy: { threshold: 3, window_days: 30, restriction_days: 1, mark_window_days: 7 },
+      scrim_policy: { schedule_max_days_ahead: 30, auto_close_after_min: 60 },
     });
     const now = t.clock.now().getTime();
-    const last = new Date(now - DAY);
+    const last = new Date(now - HOUR);
     seedNoShows(t, a.userId, [new Date(now - 20 * DAY), new Date(now - 10 * DAY), last]);
     const r = await get();
     expect(r).toMatchObject({ restricted: true, recent_no_show_count: 3, last_no_show_at: last.toISOString() });
-    expect(r.until).toBe(new Date(last.getTime() + 7 * DAY).toISOString());
+    expect(r.until).toBe(new Date(last.getTime() + DAY).toISOString());
+    // 제한 중에도 정책 값은 같다(전역 값, D101)
+    expect(r.policy).toEqual({ threshold: 3, window_days: 30, restriction_days: 1, mark_window_days: 7 });
+    expect(r.scrim_policy).toEqual({ schedule_max_days_ahead: 30, auto_close_after_min: 60 });
   });
 
   it('환경 변수 정책(SCRIM_NO_SHOW_THRESHOLD=2)', async () => {
     t = await createTestApp({ fixedClock: true, env: { SCRIM_NO_SHOW_THRESHOLD: '2' } });
     const a = await login(t, 'alice');
     const now = t.clock.now().getTime();
-    seedNoShows(t, a.userId, [new Date(now - 2 * DAY), new Date(now - DAY)]);
+    seedNoShows(t, a.userId, [new Date(now - 2 * HOUR), new Date(now - HOUR)]);
     const r = GetMyScrimRestrictionResponse.parse(await (await call(t, 'GET', '/me/scrim-restriction', a.token)).json());
     expect(r.restricted).toBe(true);
     expect(r.policy.threshold).toBe(2);
+  });
+
+  it('env 6개를 바꾸면 policy·scrim_policy가 그대로 따라감(제한 아님에도 채움, D101)', async () => {
+    t = await createTestApp({
+      fixedClock: true,
+      env: {
+        SCRIM_NO_SHOW_THRESHOLD: '5',
+        SCRIM_NO_SHOW_WINDOW_DAYS: '14',
+        SCRIM_NO_SHOW_RESTRICTION_DAYS: '3',
+        SCRIM_NO_SHOW_MARK_WINDOW_DAYS: '2',
+        SCRIM_SCHEDULE_MAX_DAYS_AHEAD: '45',
+        SCRIM_AUTO_CLOSE_AFTER_MIN: '90',
+      },
+    });
+    const a = await login(t, 'alice');
+    const res = await call(t, 'GET', '/me/scrim-restriction', a.token);
+    expect(res.status).toBe(200);
+    const r = GetMyScrimRestrictionResponse.parse(await res.json());
+    expect(r.restricted).toBe(false);
+    expect(r.policy).toEqual({ threshold: 5, window_days: 14, restriction_days: 3, mark_window_days: 2 });
+    expect(r.scrim_policy).toEqual({ schedule_max_days_ahead: 45, auto_close_after_min: 90 });
   });
 });
 
@@ -297,6 +334,20 @@ describe('GET /scrims 목록', () => {
       { position: 'support', count: 2 },
     ]);
     expect(page.items[0]?.my_status).toBe('joined');
+  });
+
+  it('open_positions(D100): 포지션별 남은 수 합계 > 빈 자리면 []', async () => {
+    t = await createTestApp({ fixedClock: true });
+    const a = await login(t, 'alice');
+    const b = await login(t, 'bob');
+    const c = await login(t, 'carol');
+    const s = await create(t, a); // 방장 mid
+    await join(t, b, s.id, ['mid']);
+    await join(t, c, s.id, ['mid']);
+    // mid 3명(정원 2 초과) → 나머지 4포지션 × 2 = 8 > 빈 자리 7
+    const page = ListScrimsResponse.parse(await (await call(t, 'GET', '/scrims', a.token)).json());
+    expect(page.items[0]?.joined_count).toBe(3);
+    expect(page.items[0]?.open_positions).toEqual([]);
   });
 });
 
@@ -397,11 +448,11 @@ describe('POST /scrims/:id/join 참가·대기·포지션 변경', () => {
     const now = t.clock.now().getTime();
     seedNoShows(t, a.userId, [new Date(now - 3 * HOUR), new Date(now - 2 * HOUR), new Date(now - HOUR)]);
     const banned = await join(t, a, s2.id, ['top']);
-    expect(banned.headers.get('retry-after')).toBe(String((7 * DAY - HOUR) / 1000));
+    expect(banned.headers.get('retry-after')).toBe(String((DAY - HOUR) / 1000));
     await expectError(banned, 403, 'SCRIM_BANNED');
     const viewS2 = await getScrim(t, a, s2.id);
     expect(viewS2.viewer.can_join).toBe(false);
-    expect(viewS2.viewer.restricted_until).toBe(new Date(now - HOUR + 7 * DAY).toISOString());
+    expect(viewS2.viewer.restricted_until).toBe(new Date(now - HOUR + DAY).toISOString());
     expect((await join(t, a, s1.id, ['bot'])).status).toBe(200);
     expect((await leave(t, a, s1.id)).status).toBe(200);
     // 취소 후 재참가는 새 신청 → 막힘(제한 우회 불가)

@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs
 import { Cron } from '@nestjs/schedule';
 import { canStartScrim, decideOverdueScrim } from '@gcd/core';
 import { APP_CLOCK, type Clock } from '../../common/clock';
+import { scrimWriteTx } from '../../common/scrim-tx';
 import { APP_CONFIG, type AppConfig } from '../../config/env';
 import { PrismaService } from '../../prisma/prisma.service';
 import { assertScrimTransition, countJoined, loadGame, lockOrNotFound } from './scrims.service';
@@ -63,7 +64,7 @@ export class ScrimAutoCloser {
 
   /** 한 건: 별도 트랜잭션 + 행 잠금 후 다시 판정(그사이 수정·시작된 건은 null → 건너뜀) */
   async closeOne(id: string, now: Date): Promise<AutoCloseOutcome> {
-    return this.prisma.$transaction(async (tx) => {
+    return scrimWriteTx(this.prisma, async (tx) => {
       const s = await lockOrNotFound(tx, id);
       const game = await loadGame(tx, s.gameId);
       const joinedCount = await countJoined(tx, s.id);
