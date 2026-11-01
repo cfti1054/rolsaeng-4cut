@@ -158,7 +158,7 @@ function DetailBody({
       <HostMenu s={s} onToast={setToast} />
       <div className="flex flex-wrap items-start gap-5">
         <Roster s={s} onToast={setToast} />
-        <div className="flex min-w-0 flex-[2_1_520px] flex-col gap-5">
+        <div className="flex min-w-0 flex-[1.7_1_460px] flex-col gap-5">
           <JoinPanel s={s} onToast={setToast} />
           {s.game.has_teams && <TeamsPanel s={s} onToast={setToast} />}
           {s.tft_mode === 'double_up' && s.options.auto_balance && <DuoPanel s={s} />}
@@ -202,8 +202,8 @@ function DetailSkeleton() {
       <Skeleton className="h-5 w-24" />
       <Skeleton className="h-[220px] rounded-[24px]" />
       <div className="flex flex-wrap gap-5">
-        <Skeleton className="h-[420px] flex-[1_1_300px] rounded-[20px]" />
-        <Skeleton className="h-[420px] flex-[2_1_520px] rounded-[20px]" />
+        <Skeleton className="h-[420px] flex-[1.3_1_400px] rounded-[20px]" />
+        <Skeleton className="h-[420px] flex-[1.7_1_460px] rounded-[20px]" />
       </div>
     </div>
   );
@@ -459,7 +459,7 @@ function HostMenu({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => 
 
 function SkillEloTip() {
   return (
-    <InfoTip label="실력값과 분기 ELO 설명">
+    <InfoTip compact label="실력값과 분기 ELO 설명">
       <h3 className="m-0 text-sm font-bold text-text">실력값과 분기 ELO</h3>
       <p className="m-0 mt-1">{rosterSkillEloText()}</p>
     </InfoTip>
@@ -481,16 +481,16 @@ function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => vo
   const showSlot = usePositions || s.players.some((p) => p.team !== null);
   const rowGrid = cn(
     'grid items-center gap-x-3',
-    showSlot && showNoShow && 'grid-cols-[minmax(0,1fr)_auto_auto_auto]',
-    showSlot && !showNoShow && 'grid-cols-[minmax(0,1fr)_auto_auto]',
-    !showSlot && showNoShow && 'grid-cols-[minmax(0,1fr)_auto_auto]',
-    !showSlot && !showNoShow && 'grid-cols-[minmax(0,1fr)_auto]',
+    showSlot && showNoShow && 'grid-cols-[minmax(0,1fr)_auto_max-content_auto]',
+    showSlot && !showNoShow && 'grid-cols-[minmax(0,1fr)_auto_max-content]',
+    !showSlot && showNoShow && 'grid-cols-[minmax(0,1fr)_max-content_auto]',
+    !showSlot && !showNoShow && 'grid-cols-[minmax(0,1fr)_max-content]',
   );
 
   return (
     <section
       aria-labelledby="roster-title"
-      className="flex min-w-0 flex-[1_1_300px] flex-col gap-2 rounded-[20px] border border-line bg-surface p-[22px] shadow-[inset_0_1px_0_var(--hi)]"
+      className="flex min-w-0 flex-[1.3_1_400px] flex-col gap-2 rounded-[20px] border border-line bg-surface p-[22px] shadow-[inset_0_1px_0_var(--hi)]"
     >
       <SectionHead
         eyebrow="ROSTER"
@@ -502,19 +502,18 @@ function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => vo
           </span>
         }
       />
-      <div className={cn(rowGrid, 'mt-3 border-b border-line pb-1 text-xs font-medium text-faint')}>
-        <span>참가자</span>
-        {showSlot && <span className="text-right">{usePositions ? '포지션' : '팀'}</span>}
-        <span className="inline-flex items-center justify-end">
+      <div className={cn(rowGrid, 'mt-3')}>
+        <span className="pb-1.5 text-xs font-medium text-faint">참가자</span>
+        {showSlot && <span className="pb-1.5 text-right text-xs font-medium text-faint">{usePositions ? '포지션' : '팀'}</span>}
+        <span className="flex items-center justify-end whitespace-nowrap pb-1.5 text-xs font-medium text-faint">
           실력값 (분기 ELO)
           <SkillEloTip />
         </span>
-        {showNoShow && <span />}
-      </div>
-      <ul className="m-0 flex list-none flex-col p-0">
+        {showNoShow && <span className="pb-1.5" />}
+        <span className="col-span-full border-b border-line" />
         {s.players.map((p) => (
-          <li key={p.user.id} className={cn(rowGrid, 'min-h-[42px] py-1')}>
-            <span className="flex min-w-0 items-center gap-2.5">
+          <div key={p.user.id} className="contents">
+            <span className="flex min-h-[42px] min-w-0 items-center gap-2.5 py-1">
               <Avatar src={p.user.avatar_url} name={p.user.nickname} size={30} />
               <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-sm font-medium">
                 <Link href={routes.member(p.user.id)} className="truncate text-text no-underline hover:text-text hover:underline">
@@ -532,13 +531,13 @@ function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => vo
             </span>
             {showSlot &&
               (p.team ? (
-                <span className="flex shrink-0 items-center justify-end gap-1.5 text-[11px] text-text-2">
+                <span className="flex items-center justify-end gap-1.5 text-[11px] text-text-2">
                   <span aria-hidden="true" className={cn('size-2 rounded-full', TEAM_TONE[p.team].dot)} />
                   <span className="sr-only">{TEAM_LABEL[p.team].ko}</span>
                   {p.position ? positionLabel(p.position) : null}
                 </span>
               ) : (
-                <span className="flex justify-end">
+                <span className="flex items-center justify-end">
                   <PositionChips positions={p.preferred_positions} />
                 </span>
               ))}
@@ -547,7 +546,7 @@ function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => vo
               <span className="text-[13px] font-medium text-muted">({p.elo})</span>
             </span>
             {showNoShow && (
-              <span className="flex justify-end">
+              <span className="flex items-center justify-end">
                 {p.status === 'no_show' ? (
                   <Button
                     className="h-8 px-2.5 text-xs"
@@ -570,15 +569,15 @@ function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => vo
                 )}
               </span>
             )}
-          </li>
+          </div>
         ))}
         {Array.from({ length: empty }, (_, i) => (
-          <li key={`empty-${i}`} className="flex min-h-[42px] items-center gap-2.5 py-1 text-sm text-faint">
+          <div key={`empty-${i}`} className="col-span-full flex min-h-[42px] items-center gap-2.5 py-1 text-sm text-faint">
             <span aria-hidden="true" className="size-[30px] shrink-0 rounded-full border border-dashed border-line-3" />
             빈 자리
-          </li>
+          </div>
         ))}
-      </ul>
+      </div>
       {showNoShow && policy && <p className="m-0 px-1 text-xs text-faint">{noShowMarkHintText(policy)}</p>}
       {showNoShow && noShow.isError &&<InlineError>{scrimErrorText(noShow.error)}</InlineError>}
 

@@ -15,7 +15,7 @@ const MOBILE_TAB_INSET = 96;
  * - 포커스가 버튼·패널 안에 있으면 닫지 않고, 둘 다 벗어나면 닫는다. Esc는 닫은 뒤 패널에 있던 포커스를 버튼으로 돌린다.
  * - position: fixed라 조상에 transform·filter가 있으면 안 된다.
  */
-export function InfoTip({ label, children }: { label: string; children: ReactNode }) {
+export function InfoTip({ label, children, compact = false }: { label: string; children: ReactNode; compact?: boolean }) {
   const panelId = useId();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -136,9 +136,13 @@ export function InfoTip({ label, children }: { label: string; children: ReactNod
           pinKind.current = next ? (e.detail === 0 ? 'key' : 'pointer') : null;
           if (!next) closeAll();
         }}
-        className="relative -my-3.5 ml-0 inline-flex size-11 items-center justify-center rounded-full align-middle text-faint hover:text-text"
+        className={
+          compact
+            ? 'relative ml-1 inline-flex size-4 shrink-0 items-center justify-center rounded-full text-faint hover:text-text'
+            : 'relative -my-3.5 ml-0 inline-flex size-11 items-center justify-center rounded-full align-middle text-faint hover:text-text'
+        }
       >
-        <InfoIcon size={16} />
+        <InfoIcon size={compact ? 15 : 16} />
       </button>
       <div
         ref={panelRef}
