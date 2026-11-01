@@ -1009,6 +1009,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
           no_show_marked_at: p.status === 'no_show' ? p.no_show_marked_at : null,
           position_preference: p.team && p.position && s.use_positions ? positionPreferenceOf(p.preferred_positions, p.position) : null,
           skill: k.skill,
+          elo: k.rating,
           is_new: k.isNew,
         };
       }),

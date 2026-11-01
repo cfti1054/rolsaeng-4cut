@@ -417,8 +417,10 @@ export const ScrimPlayerView = z.object({
   no_show_marked_at: IsoDateTime.nullable(),
   /** S3. 배정 포지션의 희망 순위(team·position이 있고 use_positions 내전일 때), 그 외 null */
   position_preference: PositionPreference.nullable(),
-  /** S3. 이 게임 실력값(core computeSkill, 정수, w는 현재 시즌 경기 수 기준 D187). 목업 ROSTER 숫자 */
+  /** S3. 이 게임 실력값(core computeSkill, 정수, w는 현재 분기 경기 수 기준). 참가자 목록의 앞 숫자 */
   skill: z.number().int(),
+  /** 이번 분기 내전/모집 ELO. 이 분기에 레이팅 행이 없으면 시작 점수. 실력값에 섞는 값과 같다 */
+  elo: z.number().int(),
   /** S3. 이 게임 승인된 rated 내전 경기 수 < rating_policy.new_player_games(신규 K 적용 대상). 목업 「NEW」 */
   is_new: z.boolean(),
 });

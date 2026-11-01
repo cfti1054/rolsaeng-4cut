@@ -82,6 +82,7 @@ const detail = {
       position_preference: null,
       duo_index: null,
       skill: 1000,
+      elo: 1000,
       is_new: true,
     },
   ],

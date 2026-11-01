@@ -450,7 +450,7 @@ describe('POST /scrims/:id/result/approve', () => {
     const id = seedScrim(t, host, [a, b, c]);
     await saveTeams(t, host, id, { blue: [{ user_id: host.userId }, { user_id: a.userId }], orange: [{ user_id: b.userId }, { user_id: c.userId }] });
     const pending = await detailOf(await submit(t, host, id, { winner_team: 'blue' }));
-    expect(pending.players.find((p) => p.user.id === b.userId)).toMatchObject({ skill: 1200, is_new: true });
+    expect(pending.players.find((p) => p.user.id === b.userId)).toMatchObject({ skill: 1200, elo: 1000, is_new: true });
     t.prisma.rawCalls = [];
 
     const d = await detailOf(await approve(t, admin, id, pending.result?.id as string));

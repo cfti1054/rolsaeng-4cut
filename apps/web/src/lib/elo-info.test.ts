@@ -1,6 +1,6 @@
 import type { DashboardRatingPolicy } from '@gcd/shared';
 import { describe, expect, it } from 'vitest';
-import { eloInfoSections } from './elo-info';
+import { eloInfoSections, rosterSkillEloText } from './elo-info';
 
 const policy: DashboardRatingPolicy = { min_games: 7, k_base: 32, k_new: 40, new_player_games: 12, loss_ratio: 0.5, full_weight_games: 10, elo_weight_max: 0.2 };
 const text = (p: DashboardRatingPolicy | null) => eloInfoSections(p).map((s) => s.body).join('\n');
@@ -59,6 +59,11 @@ describe('ELO 설명 문구', () => {
     expect(eloInfoSections({ ...policy, loss_ratio: 1 })[3]!.heading).toBe('승패 점수');
     expect(eloInfoSections(policy)[3]!.heading).toBe('승패 점수는 왜 다른가요');
     expect(eloInfoSections(null)[3]!.heading).toBe('승패 점수는 왜 다른가요');
+  });
+  it('참가자 목록은 실력값과 괄호 안 분기 ELO를 구분한다', () => {
+    expect(rosterSkillEloText()).toBe(
+      '앞 숫자는 팀을 나눌 때 쓰는 실력값이에요. 괄호 안은 이번 분기 내전/모집 ELO예요. 실력값은 티어를 중심으로 이번 분기 ELO를 조금 섞고, 10경기부터 ELO 비중이 최대 20%예요.',
+    );
   });
   it('값이 없으면 서버 값·기본값 숫자를 보여 주지 않는다(시작 점수 상수만)', () => {
     const t = text(null);

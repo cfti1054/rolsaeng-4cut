@@ -44,6 +44,7 @@ const player = (u: typeof user, team: 'blue' | 'orange') => ({
   position_preference: null,
   duo_index: null,
   skill: 1400,
+  elo: 1400,
   is_new: false,
 });
 

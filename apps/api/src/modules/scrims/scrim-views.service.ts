@@ -375,6 +375,7 @@ export class ScrimViews {
               ? positionPreferenceOf(p.preferredPositions, p.position)
               : null,
           skill: s.skill,
+          elo: s.rating,
           is_new: s.isNew,
         };
       }),
