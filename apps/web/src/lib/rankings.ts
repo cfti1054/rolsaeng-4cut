@@ -68,10 +68,12 @@ export function parseRankingsQuery(sp: { get(name: string): string | null }): Ra
   return { tab, game, season, period, appId };
 }
 
-/** 표시 순서대로 고른 게임 목록 + 현재 선택. 티어 탭은 랭크 큐가 있는 게임만 */
+/** 표시 순서대로 고른 게임 목록 + 현재 선택. 티어 탭은 랭크 큐가 있는 게임만, 내전/모집 ELO는 스팀을 뺀다 */
 export function rankingGames(tab: RankingTab, games: readonly GameView[]): GameView[] {
   const list = [...games].sort((a, b) => a.sort_order - b.sort_order);
-  return tab === 'tier' ? list.filter((g) => TierRankingGame.safeParse(g.code).success) : list;
+  if (tab === 'tier') return list.filter((g) => TierRankingGame.safeParse(g.code).success);
+  if (tab === 'elo') return list.filter((g) => g.code !== 'steam');
+  return list;
 }
 
 /** 주소의 게임이 이 탭에서 고를 수 없으면 첫 게임 */
