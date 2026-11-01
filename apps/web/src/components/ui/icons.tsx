@@ -179,3 +179,60 @@ export function ShieldCheckIcon(p: IconProps) {
     </svg>
   );
 }
+
+/** S6 정보(공지·패치노트·이벤트) 메뉴 */
+export function MegaphoneIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M3 10v4a1 1 0 0 0 1 1h3l6 4V5L7 9H4a1 1 0 0 0-1 1z" />
+      <path d="M17 9a4 4 0 0 1 0 6" />
+      <path d="M19.5 6.5a7.5 7.5 0 0 1 0 11" />
+    </svg>
+  );
+}
+
+export function CalendarIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" />
+      <path d="M8 3v4M16 3v4M3.5 10h17" />
+    </svg>
+  );
+}
+
+export function LockIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <rect x="5" y="11" width="14" height="9.5" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </svg>
+  );
+}
+
+export function SearchIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
+export function ExternalIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M14 4h6v6" />
+      <path d="M20 4 10 14" />
+      <path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+    </svg>
+  );
+}
+
+export function ChevronIcon({ dir = 'right', ...p }: IconProps & { dir?: 'left' | 'right' | 'down' }) {
+  const d = dir === 'left' ? 'm15 6-6 6 6 6' : dir === 'down' ? 'm6 9 6 6 6-6' : 'm9 6 6 6-6 6';
+  return (
+    <svg {...base(p)}>
+      <path d={d} />
+    </svg>
+  );
+}

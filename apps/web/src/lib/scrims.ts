@@ -204,7 +204,10 @@ export function scrimCardBadge(
     case 'full':
       return s.join_closed ? { label: '시작 대기', tone: 'violet' } : { label: '정원 마감', tone: 'orange' };
     case 'playing':
-      return s.result_status === 'pending' ? { label: '승인 대기', tone: 'violet' } : { label: '진행 중', tone: 'cyan' };
+      if (s.result_status === 'pending') return { label: '승인 대기', tone: 'violet' };
+      // S6: 승인을 되돌려 결과 재입력 전
+      if (s.result_status === 'reverted') return { label: '결과 되돌림', tone: 'orange' };
+      return { label: '진행 중', tone: 'cyan' };
     case 'finished':
       return { label: '종료', tone: 'neutral' };
     case 'cancelled':
@@ -234,7 +237,9 @@ export function scrimDetailBadge(
       if (s.balance) return { label: '팀 구성 완료 · 시작 대기', tone: 'violet' };
       return s.join_closed ? { label: '시작 대기', tone: 'violet' } : { label: '정원 마감 · 팀 구성 중', tone: 'orange' };
     case 'playing':
-      return s.result_status === 'pending' ? { label: '결과 승인 대기', tone: 'violet' } : { label: '경기 진행 중', tone: 'cyan' };
+      if (s.result_status === 'pending') return { label: '결과 승인 대기', tone: 'violet' };
+      if (s.result_status === 'reverted') return { label: '결과 되돌림 · 재입력 대기', tone: 'orange' };
+      return { label: '경기 진행 중', tone: 'cyan' };
     case 'finished':
       return { label: '종료', tone: 'neutral' };
     case 'cancelled':
@@ -348,6 +353,7 @@ export function scrimSteps(
         done = 2;
         current = 2;
         if (s.result_status === 'rejected') notes[2] = '결과 반려됨';
+        if (s.result_status === 'reverted') notes[2] = '결과 되돌림';
       }
       break;
     case 'finished':

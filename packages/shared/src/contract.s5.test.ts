@@ -60,14 +60,16 @@ describe('S5 경로·오류·scope', () => {
       expect(ErrorCode.options).toContain(c);
       expect(ERROR_HTTP_STATUS[c as ErrorCode]).toBe(status);
     }
-    expect(ErrorCode.options).toHaveLength(46);
+    // 전체 개수는 슬라이스마다 늘어난다(S6 contract.s6.test.ts가 57개를 단언)
+    expect(ErrorCode.options.length).toBeGreaterThanOrEqual(46);
     expect(Object.keys(ERROR_HTTP_STATUS).sort()).toEqual([...ErrorCode.options].sort());
   });
   it('엔드포인트 scope는 모두 ApiKeyScope 값이고 서로 다르다', () => {
     const vals = Object.values(BOT_ENDPOINT_SCOPE);
     for (const v of vals) expect(ApiKeyScope.options).toContain(v);
     expect(new Set(vals).size).toBe(vals.length);
-    expect(ApiKeyScope.options).toHaveLength(6);
+    // S6에서 bot:notices·bot:patch-notes를 더했다(전체 개수는 contract.s6.test.ts). scope ↔ BOT_ENDPOINT_SCOPE 1:1은 그대로
+    expect(ApiKeyScope.options.length).toBeGreaterThanOrEqual(6);
     expect([...ApiKeyScope.options].sort()).toEqual([...vals].sort());
   });
   it('API 키 형식', () => {
@@ -344,6 +346,8 @@ describe('GET /dashboard/summary community(8절)', () => {
     next_scrim: null,
     recruiting: [],
     stats: { recruiting_scrims: 3, scrims_this_week: 11, week_start: '2026-10-26T00:00:00.000+09:00' },
+    // S6 필수 블록(계약 S6 8-3)
+    news: { notice: null, items: [] },
     top_rankers: null,
     top_rankers_state: 'no_season',
     recent_results: [],

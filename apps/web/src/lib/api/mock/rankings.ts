@@ -34,6 +34,7 @@ import {
   seasonBadgeCode,
   seasonBadgeSeed,
   type DashboardCommunity,
+  type DashboardNews,
   type DashboardRecentResult,
   type EloRankingEntry,
   type ErrorCode,
@@ -304,6 +305,7 @@ export interface RankingScrim {
 
 interface SummaryCtx {
   community: DashboardCommunity;
+  news: DashboardNews;
   policy: EloPolicy;
   me: Me;
   now: number;
@@ -435,6 +437,8 @@ function dashboardResponse(st: S3Data, ctx: SummaryCtx): GetDashboardSummaryResp
     stats: { recruiting_scrims: open.length, scrims_this_week: ctx.scrims.filter(inWeek).length, week_start: week.start.toISOString() },
     // S5: 목 접속 현황·활동 기록(community.ts, gcd-mock-bot)
     community: ctx.community,
+    // S6: 목 공지·패치노트·이벤트(admin.ts, gcd-mock-admin)
+    news: ctx.news,
     top_rankers: top,
     top_rankers_state: topState,
     recent_results: recentResults(st, ctx),
@@ -510,6 +514,8 @@ export interface MockRankingContext {
   steamApps: readonly SteamAppOption[];
   /** S5 활동 scrim_count 출처(승인된 내전 joined 참가, community.ts mockScrimJoins) */
   scrimJoins: readonly MockScrimJoin[];
+  /** S6 홈 news 블록(admin.ts mockDashboardNews) */
+  news: DashboardNews;
 }
 
 /** 세 엔드포인트 + S5 활동·플레이타임. GET 외에는 NOT_FOUND */
@@ -557,6 +563,7 @@ export function handleRankings(ctx: MockRankingContext): Response {
     200,
     dashboardResponse(st, {
       community: mockCommunity({ bot: ctx.bot, now, logs }),
+      news: ctx.news,
       policy: ctx.policy,
       me,
       now,

@@ -6,6 +6,8 @@ import {
   SaveScrimTeamsResponse,
   SubmitScrimResultResponse,
   WithdrawScrimResultResponse,
+  RevertScrimResultResponse,
+  type RevertScrimResultRequestInput,
   type ApproveScrimResultRequest,
   type RejectScrimResultRequestInput,
   type SaveScrimTeamsRequestInput,
@@ -163,3 +165,13 @@ export function approveScrimResult(id: string, body: ApproveScrimResultRequest) 
 export function rejectScrimResult(id: string, body: RejectScrimResultRequestInput) {
   return apiClient.request(fillPath(ApiPath.scrimResultReject, { id }), RejectScrimResultResponse, { method: 'POST', body });
 }
+
+// -----------------------------------------------------------------------------
+// S6 승인 되돌리기(계약 S6 4절). ScrimDetail
+// -----------------------------------------------------------------------------
+
+/** POST /scrims/:id/result/revert (운영진, 제출자 본인 제외) */
+export function revertScrimResult(id: string, body: RevertScrimResultRequestInput) {
+  return apiClient.request(fillPath(ApiPath.scrimResultRevert, { id }), RevertScrimResultResponse, { method: 'POST', body });
+}
+

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ThemeSegment, ThemeToggleButton } from '@/components/theme/theme-controls';
-import { LogoutIcon, ShieldIcon } from '@/components/ui/icons';
+import { LogoutIcon, MegaphoneIcon, ShieldIcon } from '@/components/ui/icons';
 import { Avatar, ErrorState, Eyebrow, FullScreenLoading, Skeleton } from '@/components/ui/primitives';
 import { isApiError } from '@/lib/api/client';
 import { cn } from '@/lib/cn';
@@ -45,7 +45,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="min-h-dvh md:flex">
       <Sidebar me={me.data} pathname={pathname} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <MobileHeader />
+        <MobileHeader me={me.data} pathname={pathname} />
         <main className="flex-1 px-4 pb-32 pt-2 md:px-9 md:pb-14 md:pt-7">
           <div className="mx-auto flex max-w-[1180px] flex-col gap-6">
             {me.isError && !authLost ? (
@@ -238,20 +238,39 @@ function UserCard({ me }: { me: Me | undefined }) {
   );
 }
 
-function MobileHeader() {
+/**
+ * 모바일 머리: 로고 + 정보(/news) + 관리자(admin만 렌더) + 테마 토글.
+ * 하단 탭 5칸이 꽉 차 있어 S6 「정보」·「관리자」는 여기서 연다(계약 S6 13절).
+ */
+function MobileHeader({ me, pathname }: { me: Me | undefined; pathname: string }) {
   // 요약을 받기 전·실패하면 기본 표시(GAME CLUB)
   const summary = useDashboardSummary();
   const sub = summary.data ? mobileSeasonText(summary.data.season) : undefined;
+  const icon = (active: boolean) =>
+    cn(
+      'flex size-11 items-center justify-center rounded-[14px] border no-underline',
+      active ? 'border-accent/50 bg-accent/12 text-accent-ink hover:text-accent-ink' : 'border-line bg-surface text-text hover:text-text',
+    );
   return (
-    <header className="flex items-center justify-between px-4 pb-3 pt-[18px] md:hidden">
+    <header className="flex items-center justify-between gap-2 px-4 pb-3 pt-[18px] md:hidden">
       <Logo compact sub={sub} />
-      <ThemeToggleButton />
+      <div className="flex items-center gap-2">
+        <Link href={routes.news()} aria-label="정보" title="정보" aria-current={pathname === '/news' ? 'page' : undefined} className={icon(pathname === '/news')}>
+          <MegaphoneIcon />
+        </Link>
+        {me?.role === 'admin' && (
+          <Link href={routes.admin()} aria-label="관리자" title="관리자" aria-current={pathname.startsWith('/admin') ? 'page' : undefined} className={icon(pathname.startsWith('/admin'))}>
+            <ShieldIcon />
+          </Link>
+        )}
+        <ThemeToggleButton />
+      </div>
     </header>
   );
 }
 
 function BottomTabs({ me, pathname }: { me: Me | undefined; pathname: string }) {
-  const items = navItems(me);
+  const items = navItems(me).filter((i) => i.tab);
   return (
     <nav
       aria-label="하단 탭"

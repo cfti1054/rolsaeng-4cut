@@ -16,6 +16,8 @@ import {
   type LeaveScrimResponse,
   RejectScrimResultRequest,
   type RejectScrimResultResponse,
+  RevertScrimResultRequest,
+  type RevertScrimResultResponse,
   SaveScrimTeamsRequest,
   type SaveScrimTeamsResponse,
   SubmitScrimResultRequest,
@@ -220,6 +222,21 @@ export class ScrimsController {
     @Body(new ZodValidationPipe(RejectScrimResultRequest)) body: RejectScrimResultRequest,
   ): Promise<RejectScrimResultResponse> {
     return this.results.reject(user, params.id, body);
+  }
+
+  // ---- S6 승인 되돌리기(계약 S6 4절, D275) ----
+
+  /** POST /scrims/:id/result/revert → 200 RevertScrimResultResponse (운영진, 제출자 본인 제외. 없는 내전도 403이 먼저) */
+  @Post(ApiPath.scrimResultRevert)
+  @HttpCode(200)
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  revertResult(
+    @CurrentUser() user: AuthUser,
+    @Param(idPipe) params: IdParam,
+    @Body(new ZodValidationPipe(RevertScrimResultRequest)) body: RevertScrimResultRequest,
+  ): Promise<RevertScrimResultResponse> {
+    return this.results.revert(user, params.id, body);
   }
 
   /** GET /me/scrim-restriction → 200 GetMyScrimRestrictionResponse */

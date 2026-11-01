@@ -91,6 +91,9 @@ const finishedDetail = {
     can_submit_result: false,
     can_withdraw_result: false,
     can_review_result: false,
+    // S6 추가 필드
+    can_revert_result: false,
+    revert_blocked_reason: null,
   },
   balance: { blue: side, orange: side, blue_win_probability: 0.5, power_diff: 0, position_cost: 0, unassigned_user_ids: [] },
   result: {
@@ -105,6 +108,10 @@ const finishedDetail = {
     rejected_by: null,
     rejected_at: null,
     reject_reason: null,
+    // S6 추가 필드
+    reverted_by: null,
+    reverted_at: null,
+    revert_reason: null,
     rating_status: 'applied',
     season,
     rating_changes: [
@@ -137,7 +144,8 @@ describe('S3 errors', () => {
 describe('S3 transitions', () => {
   it('playing → finished만 결과 승인으로, 결과 행은 pending에서만', () => {
     expect(canTransition(SCRIM_STATUS_TRANSITIONS, 'playing', 'finished')).toBe(true);
-    expect(SCRIM_STATUS_TRANSITIONS.finished).toEqual([]);
+    // S6: finished → playing은 승인 되돌리기 전용(계약 S6 6절). 그 밖의 finished 전이는 없다
+    expect(SCRIM_STATUS_TRANSITIONS.finished).toEqual(['playing']);
     expect(canTransition(SCRIM_RESULT_STATUS_TRANSITIONS, 'pending', 'approved')).toBe(true);
     expect(canTransition(SCRIM_RESULT_STATUS_TRANSITIONS, 'rejected', 'pending')).toBe(false);
     expect(canTransition(SCRIM_RESULT_STATUS_TRANSITIONS, 'approved', 'rejected')).toBe(false);

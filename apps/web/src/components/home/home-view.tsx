@@ -1,9 +1,10 @@
 'use client';
 
-import { DASHBOARD_TOP_RANKERS_LIMIT, type DashboardNextScrim, type DashboardNowPlaying, type DashboardRecentResult, type DashboardTopRankers, type GetDashboardSummaryResponse, type ScrimSummary } from '@gcd/shared';
+import { DASHBOARD_TOP_RANKERS_LIMIT, type DashboardNews, type DashboardNewsItem, type DashboardNextScrim, type DashboardNowPlaying, type DashboardRecentResult, type DashboardTopRankers, type GetDashboardSummaryResponse, type ScrimSummary } from '@gcd/shared';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { Avatar, ErrorState, Eyebrow, Skeleton } from '@/components/ui/primitives';
+import { CommunityCalendar } from '@/components/calendar/community-calendar';
 import { CapacityPips } from '@/components/scrims/scrim-bits';
 import { isApiError } from '@/lib/api/client';
 import { brand } from '@/lib/brand';
@@ -31,6 +32,7 @@ import { useMe } from '@/lib/hooks/auth';
 import { useDashboardSummary } from '@/lib/hooks/rankings';
 import { useNow } from '@/lib/hooks/use-now';
 import { eloEmptyState, rankingStatusText, topRankersEmptyText } from '@/lib/rankings';
+import { eventTimeText, newsDateBlock } from '@/lib/news';
 import { routes } from '@/lib/routes';
 import { formatHms, scrimCardAction, scrimNeedLine, scrimWhen } from '@/lib/scrims';
 
@@ -38,7 +40,10 @@ const dateFmt = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'sho
 
 /**
  * 홈(목업 Main·MobileHome, 계약 10절). 값은 모두 GET /dashboard/summary.
- * 음성 접속·활동 멤버·지금 플레이 중은 community 블록 상태대로(S5). 스파크라인·증감, 패치·이벤트는 그리지 않는다(자료 없음).
+ * 음성 접속·활동 멤버·지금 플레이 중은 community 블록 상태대로(S5). 스파크라인·증감은 그리지 않는다(자료 없음).
+ * S6: 「패치 · 이벤트」 카드와 상단 공지 줄은 news 블록(계약 S6 13절).
+ * S6 후속: 커뮤니티 캘린더(읽기 전용, 계약 S6 23-6·D293) — 패널 그리드 아래 전체 폭, GET /calendar를 따로 부른다
+ * (요약 응답에 넣지 않음, 캘린더가 실패해도 다른 블록은 그대로). 운영진이어도 편집 UI 없음(D294).
  */
 export function HomeView() {
   const me = useMe();
@@ -66,7 +71,7 @@ export function HomeView() {
       </header>
 
       {q.data ? (
-        <Dashboard d={q.data} meId={me.data?.id} />
+        <Dashboard d={q.data} meId={me.data?.id} isAdmin={me.data?.role === 'admin'} />
       ) : q.isError ? (
         <ErrorState message={isApiError(q.error) ? errorMessage(q.error.code) : errorMessage('NETWORK_ERROR')} onRetry={() => void q.refetch()} />
       ) : me.isError ? null : (
@@ -90,9 +95,10 @@ function HomeSkeleton() {
   );
 }
 
-function Dashboard({ d, meId }: { d: GetDashboardSummaryResponse; meId: string | undefined }) {
+function Dashboard({ d, meId, isAdmin }: { d: GetDashboardSummaryResponse; meId: string | undefined; isAdmin: boolean }) {
   return (
     <>
+      {d.news.notice && <NoticeStrip notice={d.news.notice} />}
       <NextScrimHero next={d.next_scrim} />
       <StatsRow d={d} />
       {d.community.now_playing && <NowPlayingStrip np={d.community.now_playing} />}
@@ -102,7 +108,9 @@ function Dashboard({ d, meId }: { d: GetDashboardSummaryResponse; meId: string |
           <TopRankersPanel top={d.top_rankers} state={d.top_rankers_state} minGames={d.rating_policy.min_games} meId={meId} />
         </div>
         <RecentResultsPanel results={d.recent_results} />
+        <NewsPanel news={d.news} isAdmin={isAdmin} />
       </div>
+      <CommunityCalendar mode="read" />
     </>
   );
 }
@@ -506,7 +514,7 @@ function OutcomeBar({ r }: { r: DashboardRecentResult }) {
 
 function RecentResultsPanel({ results }: { results: readonly DashboardRecentResult[] }) {
   return (
-    <Panel eyebrow="MATCH HISTORY" title="최근 내전/모집 결과" label="최근 내전/모집 결과" className="xl:col-span-2">
+    <Panel eyebrow="MATCH HISTORY" title="최근 내전/모집 결과" label="최근 내전/모집 결과">
       {results.length === 0 ? (
         <PanelEmpty>아직 입력된 내전/모집 결과가 없어요</PanelEmpty>
       ) : (
@@ -524,6 +532,96 @@ function RecentResultsPanel({ results }: { results: readonly DashboardRecentResu
                 </Link>
                 <OutcomeBar r={r} />
                 <span className={cn('flex-[0_0_104px] rounded-full py-1 text-center text-xs font-semibold', PILL_TONE[st.tone])}>{st.text}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// S6 공지 줄·패치 · 이벤트(news 블록)
+// -----------------------------------------------------------------------------
+
+/** 홈 상단 얇은 공지 줄. 누르면 /news */
+function NoticeStrip({ notice }: { notice: NonNullable<DashboardNews['notice']> }) {
+  return (
+    <Link
+      href={routes.news({ tab: 'notices' })}
+      className="flex min-w-0 items-center gap-3 rounded-[16px] border border-line bg-surface px-4 py-2.5 text-text no-underline shadow-[inset_0_1px_0_var(--hi)] hover:text-text"
+    >
+      <span className="shrink-0 rounded-md bg-accent/15 px-2 py-0.5 font-display text-[11px] font-bold tracking-[0.12em] text-accent-ink">NOTICE</span>
+      <span className="min-w-0 flex-1 truncate text-sm font-semibold">{notice.title}</span>
+      <time dateTime={notice.created_at} title={formatFull(notice.created_at)} className="shrink-0 text-xs text-faint">
+        {formatMonthDay(notice.created_at)}
+      </time>
+    </Link>
+  );
+}
+
+const NEWS_TAG_NEUTRAL = 'bg-chip text-text-2';
+
+function newsTag(item: DashboardNewsItem): { text: string; className: string } {
+  const game = item.game ? GAME_SCRIM_META[item.game.code] : null;
+  const short = item.game ? (GAME_META[item.game.code]?.short ?? item.game.name) : null;
+  if (item.kind === 'patch_note') return { text: `${short} 패치`, className: game?.tile ?? NEWS_TAG_NEUTRAL };
+  return { text: short ? `${short} 이벤트` : '이벤트', className: game?.tile ?? NEWS_TAG_NEUTRAL };
+}
+
+function NewsPanel({ news, isAdmin }: { news: DashboardNews; isAdmin: boolean }) {
+  return (
+    <Panel
+      eyebrow="PATCH & EVENTS"
+      title="패치 · 이벤트"
+      label="패치 · 이벤트"
+      right={
+        <Link href={routes.news()} className="shrink-0 text-[13px] font-semibold no-underline">
+          전체 보기 →
+        </Link>
+      }
+    >
+      {news.items.length === 0 ? (
+        <PanelEmpty>
+          등록된 소식이 없어요
+          {isAdmin && (
+            <>
+              {' · '}
+              <Link href={routes.admin('news')} className="font-semibold no-underline">
+                관리
+              </Link>
+            </>
+          )}
+        </PanelEmpty>
+      ) : (
+        <ul className="m-0 flex list-none flex-col p-0">
+          {news.items.map((n) => {
+            const d = newsDateBlock(n.date);
+            const tag = newsTag(n);
+            return (
+              <li key={`${n.kind}-${n.id}`} className="border-t border-line">
+                <Link
+                  href={routes.news(n.kind === 'patch_note' ? { tab: 'patch-notes' } : { tab: 'events', month: n.date.slice(0, 7) })}
+                  className="flex items-center gap-3.5 py-2.5 text-text no-underline hover:text-text"
+                >
+                  <span className="flex h-[52px] w-12 shrink-0 flex-col items-center justify-center rounded-xl border border-line-2 bg-surface-2 font-display">
+                    <span className="text-[10px] tracking-[0.1em] text-faint">{d.mon}</span>
+                    <span className="text-lg font-bold leading-tight">{d.day}</span>
+                  </span>
+                  <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className={cn('shrink-0 rounded-md px-[7px] py-px text-[11px] font-bold', tag.className)}>{tag.text}</span>
+                      {n.kind === 'event' && n.start_time && (
+                        <span className="truncate font-display text-[11px] font-semibold text-muted tabular-nums">
+                          {eventTimeText({ starts_on: n.date, ends_on: n.ends_on, start_time: n.start_time, end_time: n.end_time })}
+                        </span>
+                      )}
+                    </span>
+                    <span className="truncate text-sm font-semibold">{n.title}</span>
+                    {n.subtitle && <span className="truncate text-xs text-muted">{n.subtitle}</span>}
+                  </span>
+                </Link>
               </li>
             );
           })}

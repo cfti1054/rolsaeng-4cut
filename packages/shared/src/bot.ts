@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { paginated } from './common/pagination';
-import { DiscordSnowflake, IsoDateTime, Uuid } from './common/primitives';
+import { DiscordSnowflake, IsoDate, IsoDateTime, Uuid } from './common/primitives';
 import { ActivityType, ApiKeyScope, UserRole } from './constants/enums';
 import { GameCode } from './constants/games';
 import { RankTier, RiotDivision } from './constants/riot';
@@ -41,6 +41,10 @@ export const BOT_ENDPOINT_SCOPE = {
   rankings: 'bot:rankings:read',
   memberEvents: 'bot:members',
   presence: 'bot:presence',
+  /** S6. GET /bot/notices/pending, POST /bot/notices/{id}/delivered 두 엔드포인트가 같은 scope(리소스 단위, D255) */
+  notices: 'bot:notices',
+  /** S6. GET /bot/patch-notes/pending, POST /bot/patch-notes/{id}/delivered */
+  patchNotes: 'bot:patch-notes',
 } as const satisfies Record<string, ApiKeyScope>;
 
 /** 봇이 보는 회원 참조. profile_url = `{WEB_ORIGIN}/members/{id}` */
@@ -391,3 +395,74 @@ export type PutBotPresenceResponse = z.infer<typeof PutBotPresenceResponse>;
 /** bot_presence.playing JSON(서버 내부 저장 형식). 읽을 때 parse 실패면 [] */
 export const BotPresencePlayingStored = z.array(BotPresencePlaying);
 export type BotPresencePlayingStored = z.infer<typeof BotPresencePlayingStored>;
+
+// -----------------------------------------------------------------------------
+// S6 공지·패치노트 디스코드 전송(계약 S6 8-4). 봇이 가져가 보내고 「보냈음」을 알린다(서버는 디스코드를 직접 부르지 않는다)
+// GET /bot/notices/pending (scope bot:notices)         · POST /bot/notices/{id}/delivered (scope bot:notices)
+// GET /bot/patch-notes/pending (scope bot:patch-notes) · POST /bot/patch-notes/{id}/delivered (scope bot:patch-notes)
+// -----------------------------------------------------------------------------
+
+/** 대기 목록 최대 행 수(페이징 없음, next_cursor 항상 null) */
+export const BOT_ANNOUNCEMENT_PENDING_LIMIT = 20;
+/**
+ * 대기 기준 나이(시간). created_at이 now − 이 값보다 오래된 행은 대기 목록에 넣지 않는다 — 봇이 오래 꺼졌다 켜져도
+ * 지난 공지·패치를 몰아서 보내지 않는다(D256). 그런 행은 discord_notified_at null로 남는다(화면 「전송 안 됨」).
+ */
+export const BOT_ANNOUNCEMENT_PENDING_MAX_AGE_HOURS = 72;
+
+/**
+ * 대기 공지: notify_discord && discord_notified_at null && created_at ≥ now − MAX_AGE. 정렬 created_at ASC, id ASC.
+ * 봇은 공지 채널에 올린다(개인 DM 아님). web_url = `{WEB_ORIGIN}/news`
+ */
+export const BotPendingNotice = z.object({
+  id: Uuid,
+  title: z.string(),
+  body: z.string(),
+  author: BotUserRef,
+  created_at: IsoDateTime,
+  web_url: z.string().url(),
+});
+export type BotPendingNotice = z.infer<typeof BotPendingNotice>;
+
+export const GetBotPendingNoticesResponse = paginated(BotPendingNotice).extend({
+  generated_at: IsoDateTime,
+});
+export type GetBotPendingNoticesResponse = z.infer<typeof GetBotPendingNoticesResponse>;
+
+/**
+ * 대기 패치노트: 조건은 공지와 같다. notify_discord_ids = 연동(snowflake)·notify_patch=true·탈퇴 아님인 회원 전원(설정 「새 패치 요약」).
+ * 봇은 이 회원들에게 DM을 보낸다(0명이어도 delivered를 알린다).
+ */
+export const BotPendingPatchNote = z.object({
+  id: Uuid,
+  game: ScrimGameRef,
+  version: z.string().nullable(),
+  title: z.string(),
+  summary: z.string(),
+  url: z.string().url().nullable(),
+  published_on: IsoDate,
+  created_at: IsoDateTime,
+  web_url: z.string().url(),
+  notify_discord_ids: z.array(DiscordSnowflake),
+});
+export type BotPendingPatchNote = z.infer<typeof BotPendingPatchNote>;
+
+export const GetBotPendingPatchNotesResponse = paginated(BotPendingPatchNote).extend({
+  generated_at: IsoDateTime,
+});
+export type GetBotPendingPatchNotesResponse = z.infer<typeof GetBotPendingPatchNotesResponse>;
+
+/** 전송 완료 알림 본문(없음 또는 {}). 모르는 필드는 VALIDATION_FAILED */
+export const PostBotDeliveredRequest = z.object({}).strict();
+export type PostBotDeliveredRequest = z.infer<typeof PostBotDeliveredRequest>;
+
+/**
+ * 200. 멱등: discord_notified_at이 null이면 now로 채우고 delivered, 이미 값이 있으면 그대로 already_delivered.
+ * notify_discord가 그사이 꺼졌어도 실제로 보냈으므로 기록한다. 행이 없으면(삭제됨) NOT_FOUND.
+ */
+export const PostBotDeliveredResponse = z.object({
+  id: Uuid,
+  status: z.enum(['delivered', 'already_delivered']),
+  discord_notified_at: IsoDateTime,
+});
+export type PostBotDeliveredResponse = z.infer<typeof PostBotDeliveredResponse>;

@@ -74,6 +74,10 @@ export const MockResult = z.object({
   rejected_by: Uuid.nullable(),
   rejected_at: IsoDateTime.nullable(),
   reject_reason: z.string().nullable(),
+  /** S6 승인 되돌리기(status reverted일 때만). 이 필드 전에 저장된 목 DB도 읽히도록 기본 null */
+  reverted_by: Uuid.nullable().default(null),
+  reverted_at: IsoDateTime.nullable().default(null),
+  revert_reason: z.string().nullable().default(null),
 });
 export type MockResult = z.infer<typeof MockResult>;
 
@@ -388,7 +392,12 @@ export function activeResult(st: S3Data, scrimId: string): MockResult | null {
 export function resultView(
   st: S3Data,
   r: MockResult,
-  ctx: { rated: boolean; hasTeams: boolean; userRef: (id: string) => ScrimUserRef | null; teamOf: (userId: string) => ScrimTeam | null },
+  ctx: {
+    rated: boolean;
+    hasTeams: boolean;
+    userRef: (id: string) => ScrimUserRef | null;
+    teamOf: (userId: string) => ScrimTeam | null;
+  },
 ): ScrimResultView {
   const ref = (id: string | null) => (id ? ctx.userRef(id) : null);
   const history = st.history
@@ -426,6 +435,10 @@ export function resultView(
     rejected_by: ref(r.rejected_by),
     rejected_at: r.rejected_at,
     reject_reason: r.reject_reason,
+    // S6 승인 되돌리기(계약 S6 6-4)
+    reverted_by: ref(r.reverted_by),
+    reverted_at: r.reverted_at,
+    revert_reason: r.revert_reason,
     rating_status: status,
     season: season ? seasonRef(season) : null,
     rating_changes:

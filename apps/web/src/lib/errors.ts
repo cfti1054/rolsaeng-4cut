@@ -62,6 +62,15 @@ export const ERROR_MESSAGES: Record<AppErrorCode, string> = {
   // S5. 봇 전용 코드(API_KEY_*)는 웹이 받지 않지만 표를 채운다
   API_KEY_INVALID: '봇 인증에 실패했어요.',
   API_KEY_SCOPE_MISSING: '봇 권한이 부족해요.',
+  // S6
+  SCRIM_RESULT_NOT_APPROVED: '결과가 이미 바뀌었어요. 화면을 새로 고쳤어요.',
+  SCRIM_RESULT_REVERT_NOT_ALLOWED: '이 결과는 되돌릴 수 없어요. 되돌리기 기한이 지났거나 참가자의 다음 경기가 이미 반영됐어요.',
+  ADMIN_SELF_ROLE_CHANGE: '내 역할은 바꿀 수 없어요. 다른 운영진에게 부탁해 주세요.',
+  ADMIN_ROLE_LOCKED: '서버 설정으로 지정된 운영진이라 웹에서 강등할 수 없어요.',
+  ADMIN_LAST_ADMIN: '마지막 운영진은 강등할 수 없어요.',
+  SEASON_NOT_EDITABLE: '이미 시작했거나 끝난 시즌이라 이 값은 바꿀 수 없어요.',
+  SEASON_OVERLAP: '다른 시즌과 기간이 겹쳐요.',
+  DISCORD_ALREADY_NOTIFIED: '디스코드 알림이 이미 나가서 알림 설정을 바꿀 수 없어요.',
   NETWORK_ERROR: '서버에 연결하지 못했어요. 네트워크를 확인하고 다시 시도해 주세요.',
   INVALID_RESPONSE: '서버 응답 형식이 예상과 달라요. 운영진에게 알려 주세요.',
 };

@@ -110,3 +110,18 @@ export function isNoShowMarkWindowOpen(scheduledAt: Date, now: Date, windowDays:
   assertValidDate(now, 'now');
   return now.getTime() <= scheduledAt.getTime() + windowDays * DAY_MS;
 }
+
+/**
+ * S6 노쇼 후보(계약 S6 12-6): 지금(now 시각) 노쇼 하나를 더 표시하면 어떻게 되는지.
+ * after = computeScrimRestriction([...marks, now], now, policy).
+ * newlyRestricted = 지금 제한 중이 아니고 표시 후 제한 중. until = after.until(제한 아니면 null, 이미 제한 중이면 연장된 해제 시각).
+ */
+export function previewNoShowRestriction(
+  marks: readonly Date[],
+  now: Date,
+  policy: NoShowPolicy,
+): { newlyRestricted: boolean; until: Date | null } {
+  const before = computeScrimRestriction(marks, now, policy);
+  const after = computeScrimRestriction([...marks, now], now, policy);
+  return { newlyRestricted: !before.restricted && after.restricted, until: after.until };
+}

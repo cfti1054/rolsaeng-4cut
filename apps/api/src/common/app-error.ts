@@ -50,6 +50,14 @@ export const DEFAULT_ERROR_MESSAGE: Record<ErrorCode, string> = {
   SCRIM_DELETE_NOT_ALLOWED: '승인된 결과가 있어 이 내전을 지울 수 없습니다.',
   API_KEY_INVALID: 'API 키가 없거나 올바르지 않습니다.',
   API_KEY_SCOPE_MISSING: '이 API 키에는 해당 요청 권한(scope)이 없습니다.',
+  SCRIM_RESULT_NOT_APPROVED: '되돌릴 승인 결과가 아닙니다.',
+  SCRIM_RESULT_REVERT_NOT_ALLOWED: '이 결과는 되돌릴 수 없습니다.',
+  ADMIN_SELF_ROLE_CHANGE: '자기 역할은 바꿀 수 없습니다.',
+  ADMIN_ROLE_LOCKED: '환경 변수(ADMIN_DISCORD_IDS)로 지정된 운영진은 웹에서 강등할 수 없습니다.',
+  ADMIN_LAST_ADMIN: '마지막 운영진은 강등할 수 없습니다.',
+  SEASON_NOT_EDITABLE: '이 시즌에서는 바꿀 수 없는 값입니다.',
+  SEASON_OVERLAP: '다른 시즌과 기간이 겹칩니다.',
+  DISCORD_ALREADY_NOTIFIED: '디스코드 알림이 이미 전송되어 알림 설정을 바꿀 수 없습니다.',
 };
 
 /**

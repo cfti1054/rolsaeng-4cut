@@ -1,6 +1,9 @@
 'use client';
 
 import {
+  RevertReason,
+  SCRIM_REVERT_REASON_MAX_LENGTH,
+  SCRIM_REVERT_REASON_MIN_LENGTH,
   RejectReason,
   SCRIM_REJECT_REASON_MAX_LENGTH,
   SCRIM_REJECT_REASON_MIN_LENGTH,
@@ -11,13 +14,16 @@ import {
 import Link from 'next/link';
 import { useId, useState } from 'react';
 import { Badge, Button, ConfirmDialog, InlineError, Notice } from '@/components/ui/controls';
+import { ReasonDialog, apiErrorText } from '@/components/ui/form';
 import { Avatar } from '@/components/ui/primitives';
+import { REVERT_BLOCK_TEXT, REVERT_CONFIRM_TEXT, revertErrorText } from '@/lib/admin';
 import { cn } from '@/lib/cn';
 import { formatFull } from '@/lib/format';
 import { useMe } from '@/lib/hooks/auth';
 import {
   useApproveScrimResult,
   useRejectScrimResult,
+  useRevertScrimResult,
   useSubmitScrimResult,
   useWithdrawScrimResult,
 } from '@/lib/hooks/scrims';
@@ -47,6 +53,8 @@ export function ResultPanel({ s, onToast }: { s: ScrimDetail; onToast: ToastFn }
   const me = useMe();
   const st = resultPanelState(s, { isAdmin: me.data?.role === 'admin' });
   const rejected = 'rejected' in st ? st.rejected : null;
+  // S6: 승인을 되돌린 결과(재입력 전). 결과 입력 영역은 viewer.can_submit_result로 다시 열린다
+  const reverted = s.result?.status === 'reverted' ? s.result : null;
   return (
     <section
       aria-labelledby="result-title"
@@ -57,9 +65,20 @@ export function ResultPanel({ s, onToast }: { s: ScrimDetail; onToast: ToastFn }
         title={st.kind === 'approved' ? '경기 결과' : st.kind === 'recruitment' ? '모집' : '결과 입력'}
         id="result-title"
         right={
-          st.kind === 'recruitment' ? undefined : <span className="text-xs text-faint">{resultFlowText(s.options.rated)}</span>
+          st.kind === 'recruitment' ? undefined : (
+<span className="text-xs text-faint">{resultFlowText(s.options.rated)}</span>
+          )
         }
       />
+      {reverted && (
+        <Notice title={`승인 되돌림${reverted.reverted_by ? ` · ${reverted.reverted_by.nickname}` : ''} · ${reverted.revert_reason ?? ''}`}>
+          {reverted.reverted_at && (
+            <>
+              <time dateTime={reverted.reverted_at}>{formatFull(reverted.reverted_at)}</time> · 결과를 다시 입력하면 운영진 승인 후 반영돼요
+            </>
+          )}
+        </Notice>
+      )}
       {rejected && (
         <Notice title={`운영진이 결과를 반려했어요: ${rejected.reject_reason ?? ''}`}>
           {rejected.rejected_by && rejected.rejected_at && `${rejected.rejected_by.nickname} · ${formatFull(rejected.rejected_at)}`}
@@ -75,6 +94,7 @@ export function ResultPanel({ s, onToast }: { s: ScrimDetail; onToast: ToastFn }
       {st.kind === 'input' && (s.game.has_teams ? <TeamResultForm s={s} onToast={onToast} /> : <PlacementForm s={s} onToast={onToast} />)}
       {st.kind === 'pending' && <PendingResult s={s} r={st.result} onToast={onToast} />}
       {st.kind === 'approved' && <ApprovedResult s={s} r={st.result} />}
+      {st.kind === 'approved' && <RevertBar s={s} r={st.result} onToast={onToast} />}
     </section>
   );
 }
@@ -425,3 +445,65 @@ function ApprovedResult({ s, r }: { s: ScrimDetail; r: ScrimResultView }) {
     </div>
   );
 }
+
+// -----------------------------------------------------------------------------
+// S6 승인 되돌리기(운영진). 버튼 노출은 viewer 플래그만 따른다(계약 S6 13절)
+// -----------------------------------------------------------------------------
+
+function RevertBar({ s, r, onToast }: { s: ScrimDetail; r: ScrimResultView; onToast: ToastFn }) {
+  const v = s.viewer;
+  const revert = useRevertScrimResult(s.id);
+  const [open, setOpen] = useState(false);
+  if (!v.can_revert_result && !v.revert_blocked_reason) return null;
+  const blocked = v.revert_blocked_reason;
+  // 네트워크 오류 등 ApiError가 아닌 실패도 문구를 보인다(apiErrorText가 NETWORK_ERROR 문구)
+  const err = !revert.isError ? null : isApiError(revert.error) ? (revertErrorText(revert.error.code, blocked) ?? apiErrorText(revert.error)) : apiErrorText(revert.error);
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line-2 px-4 py-3">
+      <span className="text-[13px] text-muted">{blocked ? REVERT_BLOCK_TEXT[blocked] : '잘못 승인된 결과라면 되돌릴 수 있어요'}</span>
+      <Button onClick={() => setOpen(true)} disabled={!v.can_revert_result || revert.isPending} aria-describedby={blocked ? `revert-blocked-${r.id}` : undefined}>
+        승인 되돌리기
+      </Button>
+      {blocked && (
+        <span id={`revert-blocked-${r.id}`} className="sr-only">
+          {REVERT_BLOCK_TEXT[blocked]}
+        </span>
+      )}
+      <ReasonDialog
+        open={open}
+        title="승인을 되돌릴까요?"
+        description={REVERT_CONFIRM_TEXT}
+        label="되돌리는 이유(감사 기록에 남아요)"
+        placeholder="예: 승리 팀이 반대로 승인됐어요"
+        min={SCRIM_REVERT_REASON_MIN_LENGTH}
+        max={SCRIM_REVERT_REASON_MAX_LENGTH}
+        schema={RevertReason}
+        confirmLabel="되돌리기"
+        pending={revert.isPending}
+        error={err}
+        onClose={() => {
+          setOpen(false);
+          revert.reset();
+        }}
+        onConfirm={(reason) =>
+          revert.mutate(
+            { result_id: r.id, reason },
+            {
+              onSuccess: () => {
+                setOpen(false);
+                onToast({ message: '승인을 되돌렸어요. 결과를 다시 입력할 수 있어요.', tone: 'success' });
+              },
+              onError: (e) => {
+                if (isStaleError(e)) {
+                  setOpen(false);
+                  staleToast(e, onToast);
+                }
+              },
+            },
+          )
+        }
+      />
+    </div>
+  );
+}
+

@@ -20,6 +20,6 @@ import { SeasonCloser } from './season-closer';
     SeasonCloser,
     JwtGuard,
   ],
-  exports: [RankingsReader, RankingRefresher, RankingCalculator, SeasonCloser],
+  exports: [RankingsReader, RankingRefresher, RankingCalculator, SeasonCloser, RANKING_CACHE_STORE],
 })
 export class RankingsModule {}

@@ -354,6 +354,9 @@ describe('S3 교차 QA 반영', () => {
       rejected_by: null,
       rejected_at: null,
       reject_reason: null,
+      reverted_by: null,
+      reverted_at: null,
+      revert_reason: null,
     });
     const p = await t.api.request(fillPath(ApiPath.userProfile, { id: me.id }), GetUserProfileResponse);
     const row = p.scrim!.recent.find((r) => r.scrim_id === scrimId)!;
@@ -416,6 +419,9 @@ describe('D136 경계: 개인 순위 반영 대상 2명 미만(skip)', () => {
       rejected_by: null,
       rejected_at: null,
       reject_reason: null,
+      reverted_by: null,
+      reverted_at: null,
+      revert_reason: null,
     });
     return scrimId;
   };

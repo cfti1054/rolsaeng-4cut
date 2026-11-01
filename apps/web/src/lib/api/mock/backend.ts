@@ -12,6 +12,7 @@ import {
   type RefreshTokenResponse,
 } from '@gcd/shared';
 import type { FetchLike } from '../client';
+import { MOCK_ADMIN_SCENARIO_KEY, MockAdminScenario } from './admin';
 import { MOCK_BOT_SCENARIO_KEY, MockBotScenario } from './community';
 import { emptyS1State, handleS1, MockS1State, type MockS1Options } from './game-accounts';
 import { isRankingPath, MOCK_RANKING_SCENARIO_KEY, MockRankingScenario } from './rankings';
@@ -67,6 +68,8 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
   const ttl = opts.accessTtlSec ?? 900;
 
   const load = (): MockDb => opts.storage.get() ?? { user: null };
+  /** S6 gcd-mock-admin=demoted: 운영진 API가 403을 한 번 돌려준 뒤부터 GET /me가 member를 돌려준다(D263 강등 흉내) */
+  let demotedSeen = false;
   const save = (db: MockDb) => opts.storage.set(db);
 
   function json(status: number, body: unknown): Response {
@@ -164,7 +167,15 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
 
     if (path === ApiPath.me && method === 'GET') {
       const r = authorize(init);
-      return r instanceof Response ? r : json(200, r);
+      if (r instanceof Response) return r;
+      return json(200, demotedSeen ? { ...r, role: 'member' } : r);
+    }
+
+    if (opts.s2?.admin?.scenario?.() === 'demoted' && (path.startsWith('/admin/') || path.endsWith('/result/revert'))) {
+      const r = authorize(init);
+      if (r instanceof Response) return r;
+      demotedSeen = true;
+      return error('FORBIDDEN', '운영진만 사용할 수 있습니다.');
     }
 
     if (path === ApiPath.me && method === 'PATCH') {
@@ -323,6 +334,8 @@ export function browserMockBackend() {
         // S5 봇 상태(gcd-mock-bot, 기본 live)
         bot: () => MockBotScenario.safeParse(window.localStorage.getItem(MOCK_BOT_SCENARIO_KEY)).data ?? null,
       },
+      // S6 관리자·정보 상태(gcd-mock-admin: empty | error | demoted)
+      admin: { scenario: () => MockAdminScenario.safeParse(window.localStorage.getItem(MOCK_ADMIN_SCENARIO_KEY)).data ?? null },
     },
     latencyMs: 250,
   });

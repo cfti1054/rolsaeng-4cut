@@ -41,7 +41,7 @@ export const TEAM_TONE: Record<ScrimTeam, { border: string; bg: string; head: st
 };
 
 /** 계약 S3 9절 오류 처리: 상태가 바뀐 경우 토스트로 알리고 상세는 훅이 다시 조회한다 */
-const STALE_CODES = new Set(['SCRIM_RESULT_NOT_PENDING', 'SCRIM_TEAMS_NOT_EDITABLE', 'SCRIM_RESULT_EXISTS']);
+const STALE_CODES = new Set(['SCRIM_RESULT_NOT_PENDING', 'SCRIM_TEAMS_NOT_EDITABLE', 'SCRIM_RESULT_EXISTS', 'SCRIM_RESULT_NOT_APPROVED']);
 export function isStaleError(err: unknown): boolean {
   return isApiError(err) && STALE_CODES.has(err.code);
 }

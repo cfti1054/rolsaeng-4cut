@@ -28,6 +28,8 @@ export interface RankingCacheStore {
   markFailed(key: string, at: Date, reason: string): Promise<void>;
   /** keep에 없는 `rankings:` 키 삭제 */
   deleteExcept(keep: readonly string[]): Promise<number>;
+  /** S6 관리자 통계(계약 S6 12-5): `rankings:` 행의 computed_at 최댓값(행 없으면 null)과 last_failed_at이 있는 행 수 */
+  summary(): Promise<{ lastComputedAt: Date | null; failingKeys: number }>;
 }
 
 export const RANKING_CACHE_STORE = Symbol('RANKING_CACHE_STORE');
@@ -82,5 +84,14 @@ export class PrismaRankingCacheStore implements RankingCacheStore {
     };
     const r = await this.prisma.rankingCache.deleteMany({ where });
     return r.count;
+  }
+
+  async summary(): Promise<{ lastComputedAt: Date | null; failingKeys: number }> {
+    const where: Prisma.RankingCacheWhereInput = { cacheKey: { startsWith: RANKING_KEY_PREFIX } };
+    const [agg, failing] = await Promise.all([
+      this.prisma.rankingCache.aggregate({ where, _max: { computedAt: true } }),
+      this.prisma.rankingCache.count({ where: { ...where, lastFailedAt: { not: null } } }),
+    ]);
+    return { lastComputedAt: agg._max.computedAt ?? null, failingKeys: failing };
   }
 }

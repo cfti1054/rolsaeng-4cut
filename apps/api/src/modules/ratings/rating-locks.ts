@@ -48,3 +48,19 @@ export async function lockSeasonForRating(tx: RawQueryExecutor, seasonId: string
     throw new AppError('INTERNAL_ERROR');
   }
 }
+
+/**
+ * S6 승인 되돌리기 4단계(계약 S6 6-3). 승인 7c와 같은 잠금(시즌 행 FOR SHARE, 커밋까지 유지)이지만 닫힌 시즌을 오류로 보지 않고
+ * `{ closed: true }`로 돌려준다(호출자가 season_closed로 409). 종료 작업(FOR NO KEY UPDATE)은 이 잠금이 풀린 뒤 되돌린 값을 읽는다.
+ * 시즌 행이 없으면(FK라 정상 흐름에서는 없음) INTERNAL_ERROR.
+ */
+export async function lockSeasonForRevert(tx: RawQueryExecutor, seasonId: string): Promise<{ closed: boolean }> {
+  const rows = await tx.$queryRaw<{ closed_at: Date | null }[]>`
+    SELECT closed_at FROM seasons WHERE id = ${seasonId}::uuid FOR SHARE`;
+  const row = rows[0];
+  if (!row) {
+    logger.error(`되돌리기 대상 시즌 없음: ${seasonId}`);
+    throw new AppError('INTERNAL_ERROR');
+  }
+  return { closed: row.closed_at !== null };
+}

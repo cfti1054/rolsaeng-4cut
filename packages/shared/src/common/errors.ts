@@ -64,6 +64,16 @@ export const ErrorCode = z.enum([
   // ---- S5 봇 API(연동 코드 오류 4개는 기능 제거로 없앴다, D237) ----
   'API_KEY_INVALID', // 401 X-API-Key 헤더 없음, 모르는 키, 폐기된 키(revoked_at)
   'API_KEY_SCOPE_MISSING', // 403 키는 맞지만 그 엔드포인트의 scope가 없음
+
+  // ---- S6 관리자 도구·승인 되돌리기·시즌 관리·공지(결과 이의 제기 코드 3개는 제거됨, D281) ----
+  'SCRIM_RESULT_NOT_APPROVED', // 409 되돌릴 승인 결과가 없음, 또는 result_id가 지금 승인된 결과가 아님
+  'SCRIM_RESULT_REVERT_NOT_ALLOWED', // 409 되돌리기 불가: 기한 경과, 참가자의 이후 경기 반영, 시즌 종료 처리됨, 레이팅 값 불일치
+  'ADMIN_SELF_ROLE_CHANGE', // 403 자기 역할은 바꿀 수 없음(다른 운영진이 바꾼다)
+  'ADMIN_ROLE_LOCKED', // 409 ADMIN_DISCORD_IDS로 지정된 운영진이라 웹에서 강등할 수 없음
+  'ADMIN_LAST_ADMIN', // 409 마지막 운영진은 강등할 수 없음
+  'SEASON_NOT_EDITABLE', // 409 이 단계의 시즌에서 바꿀 수 없는 값(시작한 시즌의 시작 시각, 끝난 시즌의 기간, 시작한 시즌 삭제)
+  'SEASON_OVERLAP', // 409 다른 시즌과 기간이 겹침
+  'DISCORD_ALREADY_NOTIFIED', // 409 디스코드 알림이 이미 나가서 알림 설정(notify_discord)을 바꿀 수 없음
 ]);
 export type ErrorCode = z.infer<typeof ErrorCode>;
 
@@ -115,6 +125,14 @@ export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
   SCRIM_DELETE_NOT_ALLOWED: 409,
   API_KEY_INVALID: 401,
   API_KEY_SCOPE_MISSING: 403,
+  SCRIM_RESULT_NOT_APPROVED: 409,
+  SCRIM_RESULT_REVERT_NOT_ALLOWED: 409,
+  ADMIN_SELF_ROLE_CHANGE: 403,
+  ADMIN_ROLE_LOCKED: 409,
+  ADMIN_LAST_ADMIN: 409,
+  SEASON_NOT_EDITABLE: 409,
+  SEASON_OVERLAP: 409,
+  DISCORD_ALREADY_NOTIFIED: 409,
 };
 
 /** VALIDATION_FAILED일 때만 채우는 필드별 상세. path는 snake_case 필드 경로(`nickname`, `events.0.type`). */

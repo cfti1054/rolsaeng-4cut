@@ -10,6 +10,7 @@ import {
   orderWaitlist,
   positionPreferenceOf,
   previewTeamElo,
+  revertBlockReason,
   roundHalfAwayFromZero,
 } from '@gcd/core';
 import {
@@ -17,9 +18,11 @@ import {
   BALANCE_PLAYERS_MIN,
   GameCode,
   type MyScrimStatus,
+  SCRIM_RESULT_REVERT_WINDOW_DAYS,
   ScrimDetail,
   type ScrimOutcome,
   type ScrimRatingChange,
+  type ScrimResultRevertBlock,
   type ScrimResultView,
   ScrimSummary,
   type ScrimTeamSide,
@@ -34,6 +37,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RatingInputsService, type SkillInput } from '../ratings/rating-inputs.service';
 import { seasonRef } from '../ratings/seasons.service';
 import { discordAvatarUrl } from '../users/me.mapper';
+import { laterGameUsersByResult } from './revert-checks';
 import { isActiveResultStatus, readPlacements } from './scrim-result-json';
 import { ScrimRestrictionService } from './scrim-restriction.service';
 
@@ -291,7 +295,9 @@ export class ScrimViews {
     const users = await this.usersById([
       scrim.hostId,
       ...players.map((p) => p.userId),
-      ...(latest ? [latest.submittedById, latest.approvedById, latest.rejectedById].filter((x): x is string => x !== null) : []),
+      ...(latest
+        ? [latest.submittedById, latest.approvedById, latest.rejectedById, latest.revertedById].filter((x): x is string => x !== null)
+        : []),
       ...(latestPlacements ?? []).map((p) => p.user_id),
       ...history.map((h) => h.userId),
     ]);
@@ -321,6 +327,23 @@ export class ScrimViews {
     const canEditTeams =
       hostOrAdmin && game.hasTeams && (scrim.status === 'full' || scrim.status === 'playing') && !hasActive;
     const pending = latest && latest.status === 'pending' ? latest : null;
+
+    // S6 되돌리기(계약 S6 6-4). 판정은 core revertBlockReason(시도 때와 같은 함수)
+    let revertBlocked: ScrimResultRevertBlock | null = null;
+    let canRevert = false;
+    if (isAdmin && latest && latest.status === 'approved' && latest.approvedAt) {
+      const later = history.length > 0 ? ((await laterGameUsersByResult(this.prisma, history)).get(latest.id) ?? []) : [];
+      revertBlocked = revertBlockReason({
+        approvedAt: latest.approvedAt,
+        now,
+        windowDays: SCRIM_RESULT_REVERT_WINDOW_DAYS,
+        submittedById: latest.submittedById,
+        actorId: viewer.id,
+        seasonClosed: historySeason !== null && historySeason.closedAt !== null,
+        laterGameUserIds: later,
+      });
+      canRevert = revertBlocked === null;
+    }
 
     const slotSkill = (userId: string): SkillInput => {
       const s = skills.get(userId);
@@ -398,6 +421,8 @@ export class ScrimViews {
           (game.hasTeams ? bothTeams : joinedCount >= BALANCE_PLAYERS_MIN),
         can_withdraw_result: pending !== null && (pending.submittedById === viewer.id || isHost),
         can_review_result: isAdmin && pending !== null && pending.submittedById !== viewer.id,
+        can_revert_result: canRevert,
+        revert_blocked_reason: revertBlocked,
       },
       balance: game.hasTeams && bothTeams ? this.teamsView(scrim, game, slots, slotSkill) : null,
       result: latest
@@ -507,6 +532,9 @@ export class ScrimViews {
       rejected_by: ref(r.rejectedById),
       rejected_at: r.rejectedAt?.toISOString() ?? null,
       reject_reason: r.rejectReason,
+      reverted_by: ref(r.revertedById),
+      reverted_at: r.revertedAt?.toISOString() ?? null,
+      revert_reason: r.revertReason,
       rating_status: ratingStatus,
       season,
       rating_changes: changes,

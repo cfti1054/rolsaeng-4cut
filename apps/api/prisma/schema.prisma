@@ -3,7 +3,8 @@
 // 명세: 게임 커뮤니티 대시보드 개발 문서.md 5장 + _workspace/00_input/slice.md 결정 사항
 // 계약: _workspace/S0/01_architect_contract.md 6절(S0 전체), _workspace/S1/01_architect_contract.md 3절(S1 변경),
 //       _workspace/S2/01_architect_contract.md 3절(S2 변경), _workspace/S3/01_architect_contract.md 3절(S3 변경),
-//       _workspace/S4/01_architect_contract.md 3절(S4 변경), _workspace/01_architect_contract.md 3절(S5 변경)
+//       _workspace/S4/01_architect_contract.md 3절(S4 변경), _workspace/S5/01_architect_contract.md 3절(S5 변경),
+//       _workspace/01_architect_contract.md 3절(S6 변경)
 //
 // 규칙
 // - 모든 테이블: id uuid(@default(uuid())), created_at.
@@ -81,6 +82,8 @@ enum ScrimResultStatus {
   pending
   approved
   rejected
+  /// S6. 운영진이 승인을 되돌림(레이팅 역반영). 종착 상태, 활성 결과 아님
+  reverted
 
   @@map("scrim_result_status")
 }
@@ -176,6 +179,11 @@ model User {
   userBadges        UserBadge[]
   notices           Notice[]
   apiKeysCreated    ApiKey[]
+  /// S6
+  revertedResults   ScrimResult[]            @relation("ResultRevertedBy")
+  patchNotesCreated PatchNote[]
+  eventsCreated     CalendarEvent[]
+  adminAuditLogs    AdminAuditLog[]
 
   @@map("users")
 }
@@ -236,6 +244,9 @@ model Game {
   ratingHistory   RatingHistory[]
   seasonStandings SeasonStanding[]
   activityLogs    ActivityLog[]
+  /// S6
+  patchNotes      PatchNote[]
+  events          CalendarEvent[]
 
   @@map("games")
 }
@@ -611,6 +622,10 @@ model ScrimResult {
   rejectReason  String?           @map("reject_reason")
   rejectedById  String?           @map("rejected_by") @db.Uuid
   rejectedAt    DateTime?         @map("rejected_at") @db.Timestamptz(3)
+  /// S6. 승인 되돌리기(approved → reverted). approved_by·approved_at은 기록으로 남긴다
+  revertedById  String?           @map("reverted_by") @db.Uuid
+  revertedAt    DateTime?         @map("reverted_at") @db.Timestamptz(3)
+  revertReason  String?           @map("revert_reason")
   createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -618,6 +633,7 @@ model ScrimResult {
   submittedBy   User                 @relation("ResultSubmittedBy", fields: [submittedById], references: [id])
   approvedBy    User?                @relation("ResultApprovedBy", fields: [approvedById], references: [id])
   rejectedBy    User?                @relation("ResultRejectedBy", fields: [rejectedById], references: [id])
+  revertedBy    User?                @relation("ResultRevertedBy", fields: [revertedById], references: [id])
   disputes      ScrimResultDispute[]
   ratingHistory RatingHistory[]
 
@@ -627,6 +643,8 @@ model ScrimResult {
 }
 
 /// 결과 이의 제기(slice.md 결정, 목업 Admin)
+/// S6 D281(사용자 결정 2026-11-01): 이의 제기 기능 제거. 표·enum은 S0 마이그레이션으로 운영 DB에 있을 수 있어 DROP하지 않고 남긴다.
+///     앱 코드는 이 표를 읽거나 쓰지 않는다(결과 제출 취소·내전 삭제 때 cascade로 지워지는 것만 남는다).
 model ScrimResultDispute {
   id            String        @id @default(uuid()) @db.Uuid
   scrimResultId String        @map("scrim_result_id") @db.Uuid
@@ -755,6 +773,7 @@ model BotPresence {
 }
 
 /// 공지(slice.md 결정, 목업 Admin 「공지 작성」)
+/// S6: 운영진 작성·수정·영구 삭제(감사 로그). notify_discord && discord_notified_at null → 봇 GET /bot/notices/pending
 model Notice {
   id                String    @id @default(uuid()) @db.Uuid
   title             String
@@ -771,4 +790,82 @@ model Notice {
 
   @@index([createdAt(sort: Desc)])
   @@map("notices")
+}
+
+/// S6. 패치노트 요약(문서 2장 정보, 6장 GET /patch-notes). 운영진 수기 입력(외부 수집 없음). 영구 삭제 + 감사 로그
+/// notify_discord && discord_notified_at null → 봇 GET /bot/patch-notes/pending(notify_patch 회원 DM)
+model PatchNote {
+  id                String    @id @default(uuid()) @db.Uuid
+  gameId            String    @map("game_id") @db.Uuid
+  /// 게임 패치 버전 표기(예 26.21). 선택
+  version           String?
+  title             String
+  summary           String
+  /// 공식 원문 외부 링크(http·https). 서버는 열지 않는다
+  url               String?
+  /// KST 달력 날짜
+  publishedOn       DateTime  @map("published_on") @db.Date
+  notifyDiscord     Boolean   @default(false) @map("notify_discord")
+  discordNotifiedAt DateTime? @map("discord_notified_at") @db.Timestamptz(3)
+  createdById       String?   @map("created_by") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  game      Game  @relation(fields: [gameId], references: [id])
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([publishedOn(sort: Desc)])
+  @@index([gameId, publishedOn(sort: Desc)])
+  @@map("patch_notes")
+}
+
+/// S6. 이벤트 캘린더(문서 2장 「게임 출시·업데이트 캘린더」, 6장 GET /events). 기간은 양 끝 포함 KST 날짜, 하루짜리는 starts_on = ends_on
+/// game_id null = 게임 무관 행사. 모델 이름은 DOM Event와 헷갈리지 않게 CalendarEvent
+/// S6 후속(계약 S6 8-1·23-8, D298–D301): 선택 시각 start_time(starts_on 날)·end_time(ends_on 날). KST 벽시계 시각을 time(0)에 그대로 저장
+/// (시간대 변환 없음 — 날짜 컬럼과 같은 원칙). 둘 다 null = 종일. end_time은 start_time이 있을 때만(shared eventScheduleIssues)
+/// 마이그레이션 20261101120000_s6_event_times(ADD COLUMN nullable 2개, 기존 행 = 종일)
+model CalendarEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  gameId      String?   @map("game_id") @db.Uuid
+  title       String
+  description String?
+  url         String?
+  startsOn    DateTime  @map("starts_on") @db.Date
+  endsOn      DateTime  @map("ends_on") @db.Date
+  /// 시작 시각(KST HH:mm:00). 쓸 때 new Date('1970-01-01THH:mm:00.000Z'), 읽을 때 toISOString().slice(11, 16)
+  startTime   DateTime? @map("start_time") @db.Time(0)
+  /// 종료 시각(KST HH:mm:00). start_time이 없으면 null
+  endTime     DateTime? @map("end_time") @db.Time(0)
+  createdById String?   @map("created_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  game      Game? @relation(fields: [gameId], references: [id])
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([startsOn, endsOn])
+  @@index([endsOn])
+  @@map("events")
+}
+
+/// S6. 운영진 행위 감사 기록(계약 S6 10절). 행위와 같은 트랜잭션에서 쓴다. 수정·삭제 경로 없음
+/// action·target_type = shared AdminAuditAction·AdminAuditTargetType(text, 값이 늘어도 마이그레이션 없음)
+model AdminAuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  action     String
+  targetType String   @map("target_type")
+  /// 대상 행 id. 대상이 지워져도 남는다(FK 없음)
+  targetId   String?  @map("target_id") @db.Uuid
+  summary    String
+  /// 행위별 전후 값(계약 S6 10-2)
+  details    Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@index([targetType, targetId])
+  @@map("admin_audit_logs")
 }

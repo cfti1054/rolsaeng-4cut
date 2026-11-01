@@ -5,6 +5,7 @@ import { RankingsModule } from '../rankings/rankings.module';
 import { RatingsModule } from '../ratings/ratings.module';
 import { ScrimsModule } from '../scrims/scrims.module';
 import { BotActivityService } from './bot-activity.service';
+import { BotAnnouncementsService } from './bot-announcements.service';
 import { BotMembersService } from './bot-members.service';
 import { BotPresenceService } from './bot-presence.service';
 import { BotQueryService } from './bot-query.service';
@@ -17,6 +18,6 @@ import { BotController } from './bot.controller';
 @Module({
   imports: [RankingsModule, RatingsModule, GameAccountsModule, ScrimsModule.forRoot()],
   controllers: [BotController],
-  providers: [ApiKeyGuard, BotActivityService, BotMembersService, BotPresenceService, BotQueryService],
+  providers: [ApiKeyGuard, BotActivityService, BotAnnouncementsService, BotMembersService, BotPresenceService, BotQueryService],
 })
 export class BotModule {}

@@ -1,9 +1,10 @@
 import { z } from 'zod';
-import { IsoDateTime, Uuid } from './common/primitives';
+import { IsoDate, IsoDateTime, Uuid } from './common/primitives';
 import { GameCode } from './constants/games';
 import { EloRankingEntry } from './rankings';
 import { ScrimGameRef, ScrimOutcome, ScrimRatingStatus, ScrimSummary, ScrimUserRef } from './scrims';
 import { SeasonRef } from './seasons';
+import { DASHBOARD_NEWS_EVENTS_MAX, DASHBOARD_NEWS_PATCH_NOTES_MAX, EventTime } from './news';
 
 // =============================================================================
 // S4 GET /dashboard/summary — 홈 요약(문서 6장, 8장 /, 목업 Main·MobileHome)과 사이드바 시즌 카드·내 ELO·순위.
@@ -18,6 +19,8 @@ import { SeasonRef } from './seasons';
 //
 // S5(계약 S5 8절): 봇 데이터는 stats가 아니라 별도 블록 community에 둔다(D218). stats는 내전 집계 그대로다.
 // community는 요청마다 읽는다(접속 현황 1행 + 이번 주 활동 멤버 수 1쿼리). 봇 자료가 없으면 state로 알리고 숫자를 null로 둔다.
+//
+// S6(계약 S6 8-3): 홈 「패치 · 이벤트」 카드와 최신 공지는 필수 블록 news. 요청마다 읽는다(쿼리 3개, 캐시 없음).
 // =============================================================================
 
 /** 모집 중 내전 최대 개수(목업 3행). next_scrim과 같은 내전은 뺀다 */
@@ -198,6 +201,62 @@ export const DashboardCommunity = z.object({
 });
 export type DashboardCommunity = z.infer<typeof DashboardCommunity>;
 
+// -----------------------------------------------------------------------------
+// S6 news 블록(목업 Main 「패치 · 이벤트」, 문서 8장 홈 「패치 소식」)
+// -----------------------------------------------------------------------------
+
+/**
+ * 「패치 · 이벤트」 1행. date = 패치노트 published_on, 이벤트 starts_on(ends_on은 이벤트만).
+ * subtitle = 패치노트 summary·이벤트 description의 첫 줄을 DASHBOARD_NEWS_SUBTITLE_MAX자로 자른 값(넘으면 끝에 「…」), 없으면 null.
+ * url = 외부 링크(있으면). 화면은 행을 누르면 /news로 간다.
+ * S6 후속(D298·D303): 이벤트 행 start_time·end_time = EventView와 같음(KST `HH:mm`, null = 종일).
+ *   두 키는 항상 있다(값은 null 가능). D305 2단계 완료: 필수.
+ */
+export const DashboardNewsItem = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('patch_note'),
+    id: Uuid,
+    game: ScrimGameRef,
+    title: z.string(),
+    subtitle: z.string().nullable(),
+    date: IsoDate,
+    url: z.string().url().nullable(),
+  }),
+  z.object({
+    kind: z.literal('event'),
+    id: Uuid,
+    game: ScrimGameRef.nullable(),
+    title: z.string(),
+    subtitle: z.string().nullable(),
+    date: IsoDate,
+    ends_on: IsoDate,
+    start_time: EventTime.nullable(),
+    end_time: EventTime.nullable(),
+    url: z.string().url().nullable(),
+  }),
+]);
+export type DashboardNewsItem = z.infer<typeof DashboardNewsItem>;
+
+/**
+ * 홈 정보 블록. 항상 객체.
+ * - notice: 가장 최근 공지(created_at DESC, id DESC) 1개, 없으면 null
+ * - items: 최근 패치노트(published_on ≥ 오늘 − DASHBOARD_NEWS_PATCH_RECENT_DAYS, published_on DESC·created_at DESC·id DESC) 최대
+ *   DASHBOARD_NEWS_PATCH_NOTES_MAX개, 그 뒤에 진행 중·다가오는 이벤트(ends_on ≥ 오늘 && starts_on ≤ 오늘 + DASHBOARD_NEWS_EVENT_AHEAD_DAYS,
+ *   starts_on ASC·start_time ASC NULLS FIRST·ends_on ASC·id ASC — D302) 최대 DASHBOARD_NEWS_EVENTS_MAX개. 「오늘」 = KST 날짜. 이 순서 그대로 그린다
+ * 둘 다 비면 화면은 「등록된 소식이 없어요」 + (운영진만) 관리자 화면 링크.
+ */
+export const DashboardNews = z.object({
+  notice: z
+    .object({
+      id: Uuid,
+      title: z.string(),
+      created_at: IsoDateTime,
+    })
+    .nullable(),
+  items: z.array(DashboardNewsItem).max(DASHBOARD_NEWS_PATCH_NOTES_MAX + DASHBOARD_NEWS_EVENTS_MAX),
+});
+export type DashboardNews = z.infer<typeof DashboardNews>;
+
 /**
  * 요약 응답의 필드 모양만. top_rankers와 top_rankers_state의 조합은 검사하지 않는다.
  * `.shape`·`.strict()`가 필요한 곳(테스트)용이다. 응답 parse는 GetDashboardSummaryResponse를 쓴다.
@@ -211,6 +270,8 @@ export const GetDashboardSummaryBody = z.object({
   stats: DashboardStats,
   /** S5. 필수 필드다 → api와 web을 같은 커밋으로 배포한다(D200과 같은 이유, 계약 S5 15절) */
   community: DashboardCommunity,
+  /** S6. 필수 필드다 → api와 web을 같은 커밋으로 배포한다(계약 S6 15절) */
+  news: DashboardNews,
   top_rankers: DashboardTopRankers.nullable(),
   top_rankers_state: DashboardTopRankersState,
   recent_results: z.array(DashboardRecentResult).max(DASHBOARD_RECENT_RESULTS_LIMIT),

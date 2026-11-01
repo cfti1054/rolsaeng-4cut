@@ -91,6 +91,8 @@ describe('GET /dashboard/summary 빈 상태', () => {
         active_members: { state: 'not_connected', count: null },
         now_playing: null,
       },
+      // S6: 공지·패치노트·이벤트가 없는 DB(계약 S6 8-3). 구현 후에도 같은 값이다
+      news: { notice: null, items: [] },
       top_rankers: null,
       top_rankers_state: 'no_season',
       recent_results: [],
@@ -407,5 +409,40 @@ describe('사용자별 값 분리(D156)', () => {
     const a = await login(t, 'alice');
     seedAccount(t, a.userId, { tier: 'GOLD', division: 'I' });
     await summary(t, a);
+  });
+});
+
+describe('news 이벤트 시각(S6 23-8, D298·D302·D303)', () => {
+  const uid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  function seedEvent(app: TestApp, id: number, from: string, to: string, start: string | null, end: string | null = null) {
+    return app.prisma.calendarEvent.insert({
+      id: uid(id),
+      title: `일정 ${id}`,
+      startsOn: new Date(`${from}T00:00:00.000Z`),
+      endsOn: new Date(`${to}T00:00:00.000Z`),
+      startTime: start === null ? null : new Date(`1970-01-01T${start}:00.000Z`),
+      endTime: end === null ? null : new Date(`1970-01-01T${end}:00.000Z`),
+    });
+  }
+
+  it('이벤트 행에 start_time·end_time, DB 정렬(종일 먼저 → 시각 순)로 앞 DASHBOARD_NEWS_EVENTS_MAX(2)개', async () => {
+    t = await createTestApp({ fixedClock: NOW });
+    const a = await login(t, 'alice');
+    // 오늘(KST 10-28) 시작 3개: 21:00–23:00, 종일, 08:00. 2개 한도라 21:00이 빠진다
+    seedEvent(t, 1, '2026-10-28', '2026-10-28', '21:00', '23:00');
+    seedEvent(t, 3, '2026-10-28', '2026-10-28', null);
+    seedEvent(t, 2, '2026-10-28', '2026-10-28', '08:00');
+    const s = await summary(t, a);
+    const events = s.news.items.filter((i) => i.kind === 'event');
+    expect(events.map((e) => e.id)).toEqual([uid(3), uid(2)]);
+    expect(events[0]).toMatchObject({ date: '2026-10-28', ends_on: '2026-10-28', start_time: null, end_time: null });
+    expect(events[1]).toMatchObject({ start_time: '08:00', end_time: null });
+
+    // 종일·08:00을 지우면 21:00–23:00이 나온다(시각 둘 다)
+    t.prisma.calendarEvent.rows = t.prisma.calendarEvent.rows.filter((r) => r.id === uid(1));
+    const s2 = await summary(t, a);
+    expect(s2.news.items.filter((i) => i.kind === 'event')).toEqual([
+      expect.objectContaining({ id: uid(1), start_time: '21:00', end_time: '23:00' }),
+    ]);
   });
 });

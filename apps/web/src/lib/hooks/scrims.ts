@@ -1,6 +1,7 @@
 'use client';
 
 import type {
+  RevertScrimResultRequestInput,
   CreateScrimRequestInput,
   GameCode,
   RejectScrimResultRequestInput,
@@ -21,6 +22,7 @@ import {
 import { isApiError } from '@/lib/api/client';
 import {
   approveScrimResult,
+  revertScrimResult,
   balanceScrim,
   rejectScrimResult,
   saveScrimTeams,
@@ -43,6 +45,9 @@ import {
   updateScrim,
 } from '@/lib/api/scrims';
 import { isOpenStatus } from '@/lib/scrims';
+import { invalidateAfterResultChange } from './admin';
+import { queryKeys } from './auth';
+import { ADMIN_OVERVIEW_KEY, calendarKeys } from './calendar';
 import { gameAccountKeys } from './game-accounts';
 import { dashboardKeys, rankingKeys } from './rankings';
 import { ratingKeys } from './ratings';
@@ -151,6 +156,10 @@ export function applyScrimDetail(qc: QueryClient, detail: ScrimDetail): void {
   void qc.invalidateQueries({ queryKey: scrimKeys.lists });
   // 홈 다음 내전·모집 목록(인원, my_status)은 내전 값이라 바로 다시 받는다
   void qc.invalidateQueries({ queryKey: dashboardKeys.summary });
+  // S6 후속(D295): 캘린더 내전 항목(상태·인원·my_status·제목·시각)
+  void qc.invalidateQueries({ queryKey: calendarKeys.all });
+  // S6 후속(23-8-4): 관리자 「다가오는 일정」의 내전 항목
+  void qc.invalidateQueries({ queryKey: ADMIN_OVERVIEW_KEY });
 }
 
 /** S3 결과 승인 등으로 레이팅·최근 내전이 바뀔 때: 상세 교체 + 목록·프로필·레이팅 그래프(['users', …]) 무효화 */
@@ -173,6 +182,9 @@ export function handleScrimMutationError(qc: QueryClient, id: string | null, err
     void qc.invalidateQueries({ queryKey: scrimKeys.detail(id) });
     void qc.invalidateQueries({ queryKey: scrimKeys.lists });
     void qc.invalidateQueries({ queryKey: dashboardKeys.summary });
+    void qc.invalidateQueries({ queryKey: calendarKeys.all });
+    // S6 후속(23-8-4): 관리자 「다가오는 일정」의 내전 항목
+    void qc.invalidateQueries({ queryKey: ADMIN_OVERVIEW_KEY });
   }
 }
 
@@ -263,6 +275,9 @@ export function useDeleteScrim(id: string) {
       qc.removeQueries({ queryKey: scrimKeys.detail(id) });
       void qc.invalidateQueries({ queryKey: scrimKeys.lists });
       void qc.invalidateQueries({ queryKey: dashboardKeys.summary });
+      void qc.invalidateQueries({ queryKey: calendarKeys.all });
+      // S6 후속(23-8-4): 관리자 「다가오는 일정」의 내전 항목
+      void qc.invalidateQueries({ queryKey: ADMIN_OVERVIEW_KEY });
     },
   });
 }
@@ -323,6 +338,8 @@ export function useApproveScrimResult(id: string) {
       applyScrimResultDetail(qc, d);
       // 승인이 시즌을 자동으로 만들 수 있다(D116) → 그래프 시즌 선택 목록도 새로 받는다
       void qc.invalidateQueries({ queryKey: ratingKeys.seasons });
+      // S6: 관리자 큐·통계도 바뀐다
+      invalidateAfterResultChange(qc);
     },
     onError: (err) => handleScrimMutationError(qc, id, err),
   });
@@ -333,7 +350,32 @@ export function useRejectScrimResult(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: RejectScrimResultRequestInput) => rejectScrimResult(id, body),
-    onSuccess: (d) => applyScrimDetail(qc, d),
+    onSuccess: (d) => {
+      applyScrimDetail(qc, d);
+      invalidateAfterResultChange(qc);
+    },
     onError: (err) => handleScrimMutationError(qc, id, err),
   });
 }
+
+// -----------------------------------------------------------------------------
+// S6 승인 되돌리기(계약 S6 13절)
+// -----------------------------------------------------------------------------
+
+/** POST /scrims/:id/result/revert — 운영진. 레이팅이 역반영되고 내전은 결과 재입력 상태(playing) */
+export function useRevertScrimResult(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RevertScrimResultRequestInput) => revertScrimResult(id, body),
+    onSuccess: (d) => {
+      applyScrimResultDetail(qc, d);
+      invalidateAfterResultChange(qc);
+    },
+    onError: (err) => {
+      handleScrimMutationError(qc, id, err);
+      // 운영진 API 403 = 강등됐을 수 있다(D263) → 역할을 다시 읽는다
+      if (isApiError(err) && err.status === 403) void qc.invalidateQueries({ queryKey: queryKeys.me, exact: true });
+    },
+  });
+}
+

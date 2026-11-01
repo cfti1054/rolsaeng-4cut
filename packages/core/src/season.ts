@@ -1,4 +1,4 @@
-import { SEASON_BADGE_PLACES, autoSeasonName, type SeasonBadgePlace } from '@gcd/shared';
+import { SEASON_BADGE_PLACES, autoSeasonName, type AdminSeasonPhase, type SeasonBadgePlace } from '@gcd/shared';
 import { DAY_MS, KST_OFFSET_MS } from './config';
 import { buildEloRanking } from './ranking';
 
@@ -177,4 +177,122 @@ export function seasonProgress(season: { startsAt: Date; endsAt: Date }, now: Da
   if (t <= start) return 0;
   if (t >= end) return 1;
   return Math.round(((t - start) / (end - start)) * 1000) / 1000;
+}
+
+// =============================================================================
+// S6 시즌 관리(계약 S6 11절, D268–D271). 단계는 저장 컬럼이 아니라 now 기준 파생값.
+// =============================================================================
+
+/** shared AdminSeasonPhase와 같은 값 */
+export type SeasonPhase = AdminSeasonPhase;
+type SeasonWithClose = SeasonLike & { closedAt: Date | null };
+
+/** closedAt 있음 → closed(시각 무관) / now < startsAt → upcoming / now < endsAt → current / 그 외 ended */
+export function seasonPhase(season: SeasonWithClose, now: Date): SeasonPhase {
+  assertValidDate(season.startsAt, 'startsAt');
+  assertValidDate(season.endsAt, 'endsAt');
+  assertValidDate(now, 'now');
+  if (season.closedAt != null) return 'closed';
+  const t = now.getTime();
+  if (t < season.startsAt.getTime()) return 'upcoming';
+  if (t < season.endsAt.getTime()) return 'current';
+  return 'ended';
+}
+
+/** 11-1 표: name 항상 / startsAt upcoming / endsAt upcoming·current / delete upcoming */
+export function seasonEditable(phase: SeasonPhase): { name: boolean; startsAt: boolean; endsAt: boolean; delete: boolean } {
+  switch (phase) {
+    case 'upcoming':
+      return { name: true, startsAt: true, endsAt: true, delete: true };
+    case 'current':
+      return { name: true, startsAt: false, endsAt: true, delete: false };
+    case 'ended':
+    case 'closed':
+      return { name: true, startsAt: false, endsAt: false, delete: false };
+    default:
+      throw new RangeError(`phase: 알 수 없는 값 (${String(phase)})`);
+  }
+}
+
+export type SeasonWriteIssue =
+  | { kind: 'not_editable'; field: 'starts_at' | 'ends_at' | 'delete' }
+  | { kind: 'invalid'; path: 'starts_at' | 'ends_at'; message: string }
+  | { kind: 'overlap'; seasonId: string };
+
+function assertNonNegativeMs(v: number, name: string): void {
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) {
+    throw new RangeError(`${name}: 0 이상의 유한한 숫자여야 함 (${v})`);
+  }
+}
+
+/**
+ * 시즌 생성·수정 검사(11-1·11-2). target null = 생성. next = 수정 후 값(안 바꾼 필드는 현재 값).
+ * changed = 요청에 있고 값이 다른 필드(생성이면 무시하고 둘 다 바뀐 것으로 본다).
+ * - not_editable: 단계상 허용하지 않는 필드 변경(starts_at → ends_at 순)
+ * - invalid: (생성 또는 upcoming의 starts_at 변경) starts_at ≥ now + minLeadMs /
+ *   (기간 변경 시) ends_at > starts_at, 길이 minLengthMs–maxLengthMs(양끝 포함) / (current의 ends_at 변경) ends_at ≥ now + minLeadMs
+ * - overlap: 기간 변경 시 target을 뺀 시즌과 [start, end) 반열림 교집합이 있음. startsAt ASC, id ASC
+ * 반환 순서: not_editable 전부 → invalid 전부 → overlap. 이름만 바꾸면 []
+ */
+export function validateSeasonWrite(input: {
+  seasons: readonly SeasonWithClose[];
+  target: SeasonWithClose | null;
+  next: { startsAt: Date; endsAt: Date };
+  changed: { startsAt: boolean; endsAt: boolean };
+  now: Date;
+  policy: { minLeadMs: number; minLengthMs: number; maxLengthMs: number };
+}): SeasonWriteIssue[] {
+  const { seasons, target, next, now, policy } = input;
+  assertValidDate(next.startsAt, 'next.startsAt');
+  assertValidDate(next.endsAt, 'next.endsAt');
+  assertValidDate(now, 'now');
+  assertNonNegativeMs(policy.minLeadMs, 'policy.minLeadMs');
+  assertNonNegativeMs(policy.minLengthMs, 'policy.minLengthMs');
+  assertNonNegativeMs(policy.maxLengthMs, 'policy.maxLengthMs');
+  if (policy.maxLengthMs < policy.minLengthMs) {
+    throw new RangeError('policy: maxLengthMs가 minLengthMs보다 작음');
+  }
+
+  const creating = target === null;
+  const changed = creating ? { startsAt: true, endsAt: true } : input.changed;
+  const phase: SeasonPhase = creating ? 'upcoming' : seasonPhase(target, now);
+  const editable = seasonEditable(phase);
+  const nowMs = now.getTime();
+  const start = next.startsAt.getTime();
+  const end = next.endsAt.getTime();
+
+  const notEditable: SeasonWriteIssue[] = [];
+  if (changed.startsAt && !editable.startsAt) notEditable.push({ kind: 'not_editable', field: 'starts_at' });
+  if (changed.endsAt && !editable.endsAt) notEditable.push({ kind: 'not_editable', field: 'ends_at' });
+
+  const invalid: SeasonWriteIssue[] = [];
+  if (phase === 'upcoming' && changed.startsAt && start < nowMs + policy.minLeadMs) {
+    invalid.push({ kind: 'invalid', path: 'starts_at', message: '시작 시각은 지금부터 일정 시간 뒤여야 해요' });
+  }
+  const periodChanged = changed.startsAt || changed.endsAt;
+  if (periodChanged) {
+    if (end <= start) {
+      invalid.push({ kind: 'invalid', path: 'ends_at', message: '끝 시각은 시작 시각보다 뒤여야 해요' });
+    } else if (end - start < policy.minLengthMs || end - start > policy.maxLengthMs) {
+      invalid.push({ kind: 'invalid', path: 'ends_at', message: '시즌 길이가 허용 범위를 벗어났어요' });
+    }
+  }
+  if (phase === 'current' && changed.endsAt && end < nowMs + policy.minLeadMs) {
+    invalid.push({ kind: 'invalid', path: 'ends_at', message: '진행 중 시즌의 새 끝 시각은 지금부터 일정 시간 뒤여야 해요' });
+  }
+
+  const overlap: SeasonWriteIssue[] = [];
+  if (periodChanged) {
+    seasons
+      .filter((s) => (creating || s.id !== target.id) && s.startsAt.getTime() < end && start < s.endsAt.getTime())
+      .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      .forEach((s) => overlap.push({ kind: 'overlap', seasonId: s.id }));
+  }
+
+  return [...notEditable, ...invalid, ...overlap];
+}
+
+/** 삭제 검사(D271): upcoming만 [], 그 외 [{ not_editable, delete }] */
+export function validateSeasonDelete(season: SeasonWithClose, now: Date): SeasonWriteIssue[] {
+  return seasonEditable(seasonPhase(season, now)).delete ? [] : [{ kind: 'not_editable', field: 'delete' }];
 }

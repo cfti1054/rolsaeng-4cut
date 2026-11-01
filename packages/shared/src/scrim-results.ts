@@ -252,6 +252,44 @@ export const RejectScrimResultResponse = ScrimDetail;
 export type RejectScrimResultResponse = z.infer<typeof RejectScrimResultResponse>;
 
 // =============================================================================
+// S6 승인 되돌리기(계약 S6 6절). 결과 이의 제기는 제거됨(D281, 사용자 결정 2026-11-01)
+// =============================================================================
+
+/** 승인 후 되돌리기 기한(일, 24시간 단위). approved_at + 이 값 전까지. 설정값 아님(D244) */
+export const SCRIM_RESULT_REVERT_WINDOW_DAYS = 7;
+export const SCRIM_REVERT_REASON_MIN_LENGTH = 2;
+export const SCRIM_REVERT_REASON_MAX_LENGTH = 200;
+
+/** 앞뒤 공백 제거·연속 공백 1개로 정규화한 뒤 길이 검사(RejectReason과 같은 규칙) */
+function normalizedText(min: number, max: number) {
+  return z
+    .string()
+    .transform((v) => v.trim().replace(/\s+/g, ' '))
+    .pipe(z.string().min(min).max(max));
+}
+
+// -----------------------------------------------------------------------------
+// POST /scrims/{id}/result/revert — 승인 되돌리기(운영진, 제출자 본인 제외). 200 ScrimDetail
+// 성공: 결과 approved → reverted, rating_history 행 삭제 + ratings 역반영, 내전 finished → playing,
+//       감사 로그 result.revert. 이후 방장이 결과를 다시 제출한다.
+// result_id가 지금 승인된 결과가 아니면 SCRIM_RESULT_NOT_APPROVED, 막는 이유가 있으면 SCRIM_RESULT_REVERT_NOT_ALLOWED
+// -----------------------------------------------------------------------------
+
+export const RevertReason = normalizedText(SCRIM_REVERT_REASON_MIN_LENGTH, SCRIM_REVERT_REASON_MAX_LENGTH);
+
+export const RevertScrimResultRequest = z
+  .object({
+    result_id: Uuid,
+    reason: RevertReason,
+  })
+  .strict();
+export type RevertScrimResultRequest = z.infer<typeof RevertScrimResultRequest>;
+export type RevertScrimResultRequestInput = z.input<typeof RevertScrimResultRequest>;
+
+export const RevertScrimResultResponse = ScrimDetail;
+export type RevertScrimResultResponse = z.infer<typeof RevertScrimResultResponse>;
+
+// =============================================================================
 // 서버 내부 저장 형식(와이어 아님): scrim_results.placements JSON
 // backend가 쓰고 읽을 때 이 스키마로 parse한다. 팀 게임 행은 null.
 // =============================================================================

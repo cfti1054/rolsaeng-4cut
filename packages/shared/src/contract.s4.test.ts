@@ -151,6 +151,8 @@ describe('GET /dashboard/summary', () => {
       active_members: { state: 'not_connected', count: null },
       now_playing: null,
     },
+    // S6 필수 블록(계약 S6 8-3)
+    news: { notice: null, items: [] },
     top_rankers: { game: 'lol', season, is_final: false, items: [eloRow], synced_at: T, stale: false },
     top_rankers_state: 'ready',
     recent_results: [

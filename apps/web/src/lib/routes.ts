@@ -28,6 +28,19 @@ export interface RankingsPageQuery {
   app_id?: number;
 }
 
+/** /admin 탭(계약 S6 13절, D273). 기본 results는 주소에 쓰지 않는다 */
+export const ADMIN_TABS = ['results', 'members', 'news', 'seasons', 'api-keys', 'audit'] as const;
+export type AdminTab = (typeof ADMIN_TABS)[number];
+
+/** /news 쿼리(계약 S6 13절). tab = 보이는 섹션(없으면 셋 다), month = 캘린더 달(YYYY-MM, KST) */
+export const NEWS_TABS = ['notices', 'patch-notes', 'events'] as const;
+export type NewsTab = (typeof NEWS_TABS)[number];
+export interface NewsPageQuery {
+  tab?: NewsTab;
+  game?: GameCode;
+  month?: string;
+}
+
 /**
  * 웹 라우트. 링크는 반드시 이 함수들로 만든다(nextjs-dashboard-ui 1절).
  */
@@ -51,7 +64,9 @@ export const routes = {
   member: (id: string) => `/members/${encodeURIComponent(id)}`,
   /** 스팀 콜백 결과는 API가 302로 붙여 준다(steam=linked / steam_error). 웹이 직접 만들 일은 목뿐 */
   settings: (q: SettingsPageQuery = {}) => withQuery('/settings', q),
-  admin: () => '/admin',
+  admin: (tab?: AdminTab) => withQuery('/admin', { tab: tab === 'results' ? undefined : tab }),
+  /** S6 정보(공지·패치노트·이벤트 캘린더) */
+  news: (q: NewsPageQuery = {}) => withQuery('/news', { tab: q.tab, game: q.game, month: q.month }),
   login: (q: { redirect?: string; error?: OAuthLoginErrorCode } = {}) => withQuery('/login', q),
   welcome: (redirect?: string) => withQuery('/welcome', { redirect }),
 } as const;

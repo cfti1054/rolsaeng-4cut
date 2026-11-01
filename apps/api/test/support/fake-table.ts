@@ -8,7 +8,7 @@ import { Prisma } from '@prisma/client';
  * 지원하는 where: 필드 = 값/null/Date, { equals, in, notIn, not, gt, gte, lt, lte, startsWith }, AND/OR/NOT.
  * 관계 필터는 hooks.relations에 등록한 것만 지원한다(S5: `user: rankableUserWhere` = `{ leftAt: null }` → 그 행의 사용자에
  * where를 적용, 사용자가 없으면 거짓). 등록이 없는 관계는 예외. 단 조건이 빈 객체인 `user: {}`는 통과시킨다.
- * data의 { increment } 지원. select·include는 무시.
+ * data의 { increment } 지원. select·include는 무시. @updatedAt: data에 updatedAt이 있으면 그 값(Prisma와 같게), 없으면 지금 시각.
  * 고유 제약은 문이 끝날 때 검사하고(PostgreSQL 비지연 제약과 같게 문 단위), 위반 시 그 문을 되돌리고 P2002를 던진다.
  */
 export type Row = Record<string, unknown>;
@@ -97,22 +97,31 @@ export function matchWhere(row: Row, where: Where | undefined, relations?: Relat
   });
 }
 
-type OrderBy = Record<string, 'asc' | 'desc'> | Record<string, 'asc' | 'desc'>[];
+type SortDir = 'asc' | 'desc';
+/** Prisma orderBy 값: 'asc' | 'desc' 또는 { sort, nulls }(S6 후속 D302 `startTime: { sort: 'asc', nulls: 'first' }`) */
+type SortSpec = SortDir | { sort: SortDir; nulls?: 'first' | 'last' };
+type OrderBy = Record<string, SortSpec> | readonly Record<string, SortSpec>[];
 
 function sortRows(rows: Row[], orderBy: OrderBy | undefined): Row[] {
   if (!orderBy) return rows;
-  const keys = (Array.isArray(orderBy) ? orderBy : [orderBy]).flatMap((o) => Object.entries(o));
+  const list: readonly Record<string, SortSpec>[] = Array.isArray(orderBy) ? orderBy : [orderBy as Record<string, SortSpec>];
+  const keys = list.flatMap((o) =>
+    Object.entries(o).map(([k, spec]: [string, SortSpec]) => {
+      const dir: SortDir = typeof spec === 'string' ? spec : spec.sort;
+      // PostgreSQL 기본: asc는 NULL 마지막, desc는 NULL 처음. nulls를 주면 방향과 무관하게 그 자리
+      const nullsFirst = typeof spec === 'string' || spec.nulls === undefined ? dir === 'desc' : spec.nulls === 'first';
+      return { k, dir, nullsFirst };
+    }),
+  );
   return [...rows].sort((a, b) => {
-    for (const [k, dir] of keys) {
+    for (const { k, dir, nullsFirst } of keys) {
       const av = a[k];
       const bv = b[k];
       let c: number;
-      // PostgreSQL 기본: asc는 NULL 마지막, desc는 NULL 처음
       if (av === null && bv === null) c = 0;
-      else if (av === null) c = 1;
-      else if (bv === null) c = -1;
-      else c = cmp(av, bv);
-      if (dir === 'desc') c = -c;
+      else if (av === null) c = nullsFirst ? -1 : 1;
+      else if (bv === null) c = nullsFirst ? 1 : -1;
+      else c = dir === 'desc' ? -cmp(av, bv) : cmp(av, bv);
       if (c !== 0) return c;
     }
     return 0;
@@ -316,7 +325,7 @@ export class FakeTable<T extends Row = Row> {
       for (const r of this.rows) {
         if (!this.match(r, args.where)) continue;
         applyData(r, args.data);
-        if ('updatedAt' in r) (r as Row).updatedAt = new Date();
+        if ('updatedAt' in r && args.data.updatedAt === undefined) (r as Row).updatedAt = new Date();
         count++;
       }
       return { count };
@@ -331,9 +340,21 @@ export class FakeTable<T extends Row = Row> {
         throw new Prisma.PrismaClientKnownRequestError('Record not found', { code: 'P2025', clientVersion: 'fake' });
       }
       applyData(r, args.data);
-      if ('updatedAt' in r) (r as Row).updatedAt = new Date();
+      if ('updatedAt' in r && args.data.updatedAt === undefined) (r as Row).updatedAt = new Date();
       return { ...r } as T;
     });
+  };
+
+  /** delete: 한 행 삭제 후 삭제 전 행 반환(DELETE … RETURNING). 없으면 P2025 */
+  delete = async (args: { where: Where }): Promise<T> => {
+    await this.tick();
+    const r = this.rows.find((x) => this.match(x, args.where));
+    if (!r) {
+      throw new Prisma.PrismaClientKnownRequestError('Record to delete does not exist.', { code: 'P2025', clientVersion: 'fake' });
+    }
+    this.rows = this.rows.filter((x) => x !== r);
+    this.hooks.onDelete?.([r]);
+    return { ...r } as T;
   };
 
   deleteMany = async (args: { where?: Where } = {}): Promise<{ count: number }> => {

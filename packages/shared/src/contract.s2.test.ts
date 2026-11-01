@@ -104,6 +104,9 @@ const detail = {
     can_submit_result: false,
     can_withdraw_result: false,
     can_review_result: false,
+    // S6 추가 필드
+    can_revert_result: false,
+    revert_blocked_reason: null,
   },
   balance: null,
   result: null,

@@ -45,4 +45,15 @@ export class MemoryRankingCache implements RankingCacheStore {
     }
     return n;
   }
+
+  async summary(): Promise<{ lastComputedAt: Date | null; failingKeys: number }> {
+    let last: Date | null = null;
+    let failing = 0;
+    for (const [key, r] of this.rows) {
+      if (!key.startsWith(RANKING_KEY_PREFIX)) continue;
+      if (last === null || r.computedAt.getTime() > last.getTime()) last = r.computedAt;
+      if (r.lastFailedAt !== null) failing++;
+    }
+    return { lastComputedAt: last, failingKeys: failing };
+  }
 }

@@ -46,11 +46,18 @@ export const TFT_MODE_CAPACITY: Record<TftMode, { min: number; max: number; step
   ranked: { min: 2, max: 3, step: 1, default: 3 },
 };
 
-/** scrim_results.status — 명세 공백 보완(slice.md 결정) */
-export const ScrimResultStatus = z.enum(['pending', 'approved', 'rejected']);
+/**
+ * scrim_results.status — 명세 공백 보완(slice.md 결정).
+ * S6: reverted = 운영진이 승인을 되돌린 결과(레이팅 역반영, 계약 S6 6절). 활성 결과가 아니다(부분 고유 인덱스는 pending·approved만).
+ */
+export const ScrimResultStatus = z.enum(['pending', 'approved', 'rejected', 'reverted']);
 export type ScrimResultStatus = z.infer<typeof ScrimResultStatus>;
 
-/** scrim_result_disputes.status — 명세 공백 보완(slice.md 결정) */
+/**
+ * scrim_result_disputes.status — 명세 공백 보완(slice.md 결정).
+ * S6 D281: 결과 이의 제기 기능은 제거됐다. DB enum·표는 S0 마이그레이션으로 운영 DB에 있을 수 있어 그대로 두고(DROP 안 함),
+ * 앱 코드는 이 값을 읽거나 쓰지 않는다. 값 목록은 DB와 맞추는 기록용이다.
+ */
 export const DisputeStatus = z.enum(['open', 'resolved']);
 export type DisputeStatus = z.infer<typeof DisputeStatus>;
 
@@ -61,7 +68,8 @@ export type ActivityType = z.infer<typeof ActivityType>;
 /**
  * api_keys.scopes 값 — 봇 API(S5)에서 엔드포인트별로 검사(BOT_ENDPOINT_SCOPE, bot.ts).
  * S5에서 bot:members(서버 입장·퇴장), bot:presence(음성 접속·지금 플레이 중)를 추가했다. 컬럼이 text[]라 마이그레이션은 없다.
- * bot:link는 연동 코드 기능 제거로 없앴다(D237, 봇 엔드포인트 6개 = scope 6개).
+ * bot:link는 연동 코드 기능 제거로 없앴다(D237).
+ * S6: bot:notices(공지 디스코드 전송 2개 엔드포인트), bot:patch-notes(패치노트 DM 2개 엔드포인트). scope는 리소스 단위(D255).
  */
 export const ApiKeyScope = z.enum([
   'bot:activity',
@@ -70,6 +78,8 @@ export const ApiKeyScope = z.enum([
   'bot:rankings:read',
   'bot:members',
   'bot:presence',
+  'bot:notices',
+  'bot:patch-notes',
 ]);
 export type ApiKeyScope = z.infer<typeof ApiKeyScope>;
 
@@ -114,3 +124,61 @@ export type GameAccountSyncError = z.infer<typeof GameAccountSyncError>;
  */
 export const RiotLinkVerificationStatus = z.enum(['pending', 'verified', 'expired', 'cancelled']);
 export type RiotLinkVerificationStatus = z.infer<typeof RiotLinkVerificationStatus>;
+
+// ---- S6 운영 ----
+
+/**
+ * admin_audit_logs.action — 운영진 쓰기 행위(계약 S6 10절). DB 컬럼은 text(값이 늘어도 마이그레이션 없음).
+ * 결과 승인·반려·노쇼 표시는 각 표의 *_by·*_at 컬럼에 이미 남으므로 감사 로그에 넣지 않는다(D262).
+ */
+export const AdminAuditAction = z.enum([
+  'member.role_change',
+  'notice.create',
+  'notice.update',
+  'notice.delete',
+  'patch_note.create',
+  'patch_note.update',
+  'patch_note.delete',
+  'event.create',
+  'event.update',
+  'event.delete',
+  'api_key.create',
+  'api_key.revoke',
+  'season.create',
+  'season.update',
+  'season.delete',
+  'result.revert',
+]);
+export type AdminAuditAction = z.infer<typeof AdminAuditAction>;
+
+/** admin_audit_logs.target_type. action 앞부분과 1:1(result.* → scrim_result, member.* → user) */
+export const AdminAuditTargetType = z.enum([
+  'user',
+  'notice',
+  'patch_note',
+  'event',
+  'api_key',
+  'season',
+  'scrim_result',
+]);
+export type AdminAuditTargetType = z.infer<typeof AdminAuditTargetType>;
+
+/** action → target_type. 서버는 감사 행을 쓸 때 이 표로 target_type을 정한다 */
+export const ADMIN_AUDIT_TARGET_BY_ACTION: Record<AdminAuditAction, AdminAuditTargetType> = {
+  'member.role_change': 'user',
+  'notice.create': 'notice',
+  'notice.update': 'notice',
+  'notice.delete': 'notice',
+  'patch_note.create': 'patch_note',
+  'patch_note.update': 'patch_note',
+  'patch_note.delete': 'patch_note',
+  'event.create': 'event',
+  'event.update': 'event',
+  'event.delete': 'event',
+  'api_key.create': 'api_key',
+  'api_key.revoke': 'api_key',
+  'season.create': 'season',
+  'season.update': 'season',
+  'season.delete': 'season',
+  'result.revert': 'scrim_result',
+};

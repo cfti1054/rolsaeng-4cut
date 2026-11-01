@@ -1,8 +1,10 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
+  dashboardNewsWindow,
   formatKstMidnight,
   kstWeekWindow,
   latestStartedSeason,
+  newsSubtitle,
   nowPlayingItems,
   presenceState,
   resolveSeasonAt,
@@ -18,7 +20,13 @@ import {
   DASHBOARD_RECRUITING_LIMIT,
   DASHBOARD_TOP_RANKERS_LIMIT,
   BotPresencePlayingStored,
+  DASHBOARD_NEWS_EVENT_AHEAD_DAYS,
+  DASHBOARD_NEWS_EVENTS_MAX,
+  DASHBOARD_NEWS_PATCH_NOTES_MAX,
+  DASHBOARD_NEWS_PATCH_RECENT_DAYS,
+  DASHBOARD_NEWS_SUBTITLE_MAX,
   type DashboardCommunity,
+  type DashboardNews,
   type DashboardMe,
   type DashboardNextScrim,
   type DashboardRecentResult,
@@ -30,11 +38,13 @@ import {
 } from '@gcd/shared';
 import { Prisma, type Game, type Scrim, type ScrimResult, type Season } from '@prisma/client';
 import { AppError } from '../../common/app-error';
+import { fromDbDate, fromDbTime, toDbDate } from '../../common/db-date';
 import { APP_CLOCK, type Clock } from '../../common/clock';
 import type { AuthUser } from '../../common/decorators/current-user';
 import { APP_CONFIG, type AppConfig } from '../../config/env';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BOT_PRESENCE_SOURCE } from '../bot/bot-presence.service';
+import { EVENT_ORDER_BY } from '../news/news.service';
 import { rankableUserSql } from '../rankings/rankable-users';
 import { RankingsReader } from '../rankings/rankings-reader.service';
 import { SeasonsService, seasonRef } from '../ratings/seasons.service';
@@ -100,6 +110,7 @@ export class DashboardService {
       recruiting: next ? summaries.slice(1) : summaries,
       stats: await this.stats(now),
       community: await this.community(now),
+      news: await this.news(now),
       ...(await this.topRankers(games, current ?? latestStartedSeason(seasons, now), now)),
       recent_results: await this.recentResults(),
       me: current ? await this.me(viewer.id, games, current) : null,
@@ -183,6 +194,59 @@ export class DashboardService {
       }
     }
     return { voice, active_members: activeMembers, now_playing: nowPlaying };
+  }
+
+  /**
+   * S6 8-3 홈 「패치 · 이벤트」 + 최신 공지(D258). 요청마다 쿼리 3개(공지 1, 패치노트 1, 이벤트 1) + 게임 참조. 캐시 없음.
+   * 실패는 요약 전체 500(부분 실패 규칙은 top_rankers에만 있다, D196).
+   */
+  private async news(now: Date): Promise<DashboardNews> {
+    const w = dashboardNewsWindow(now, DASHBOARD_NEWS_PATCH_RECENT_DAYS, DASHBOARD_NEWS_EVENT_AHEAD_DAYS);
+    const [notice, patches, events] = await Promise.all([
+      this.prisma.notice.findFirst({ orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] }),
+      this.prisma.patchNote.findMany({
+        where: { publishedOn: { gte: toDbDate(w.patchSince) } },
+        orderBy: [{ publishedOn: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+        take: DASHBOARD_NEWS_PATCH_NOTES_MAX,
+      }),
+      this.prisma.calendarEvent.findMany({
+        where: { endsOn: { gte: toDbDate(w.today) }, startsOn: { lte: toDbDate(w.eventUntil) } },
+        orderBy: EVENT_ORDER_BY,
+        take: DASHBOARD_NEWS_EVENTS_MAX,
+      }),
+    ]);
+    const games = patches.length + events.length > 0 ? await this.views.gamesById() : new Map<string, Game>();
+    const gameRef = (id: string) => {
+      const g = games.get(id);
+      if (!g) throw new AppError('INTERNAL_ERROR', undefined, { message: '소식 게임 없음' });
+      return this.views.gameRef(g);
+    };
+    return {
+      notice: notice ? { id: notice.id, title: notice.title, created_at: notice.createdAt.toISOString() } : null,
+      items: [
+        ...patches.map((p) => ({
+          kind: 'patch_note' as const,
+          id: p.id,
+          game: gameRef(p.gameId),
+          title: p.title,
+          subtitle: newsSubtitle(p.summary, DASHBOARD_NEWS_SUBTITLE_MAX),
+          date: fromDbDate(p.publishedOn),
+          url: p.url,
+        })),
+        ...events.map((e) => ({
+          kind: 'event' as const,
+          id: e.id,
+          game: e.gameId === null ? null : gameRef(e.gameId),
+          title: e.title,
+          subtitle: newsSubtitle(e.description, DASHBOARD_NEWS_SUBTITLE_MAX),
+          date: fromDbDate(e.startsOn),
+          ends_on: fromDbDate(e.endsOn),
+          start_time: fromDbTime(e.startTime),
+          end_time: fromDbTime(e.endTime),
+          url: e.url,
+        })),
+      ],
+    };
   }
 
   /**

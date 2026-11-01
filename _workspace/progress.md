@@ -319,3 +319,60 @@
 **구현:** 홈·목록·프로필·랭킹·ELO 설명의 기능 이름을 「내전/모집」으로 바꿈. 시드 제목, 활동 「내전 N회」, 「내전 시작」 버튼은 그대로. 공유 문구는 롤 ⚔️, 롤체 ♟️, 스팀 🕹️ 제목, 모집글 제목, 날짜, 시작 시각, 인원, 상태, 「내전 참여하기」, 주소.
 
 **리더 직접 실행:** web typecheck 통과. web 305 passed. 브라우저에서 홈 통계, 프로필 레이팅, 랭킹 탭, 롤·롤체 더블업·스팀 링크 복사를 확인.
+
+## S6 관리자 도구, 패치노트·이벤트 — 2026-11-01 — 판정: pass (DB e2e·실서버·실제 디스코드 미확인)
+
+**구현(계약 D241–D280, `_workspace/01_architect_contract.md`):** 
+- 엔드포인트 35개(멤버 6·운영진 25·봇 4), 오류 코드 11개 추가(전체 57), 봇 scope `bot:notices`·`bot:patch-notes`. 마이그레이션 `20261031230000_s6`: `scrim_results.reverted_by·reverted_at·revert_reason`, 결과 상태 `reverted`, 새 표 `patch_notes`·`events`(모델 `CalendarEvent`)·`admin_audit_logs`. 
+- 승인 되돌리기(D242–D248): 승인 후 7일 안, 제출자 아님(승인자 본인은 가능), 시즌 `closed_at` 비어 있음, 참가자 전원에게 이 결과가 같은 게임의 마지막 이력, 현재 ratings가 이력과 일치할 때만. 잠금 순서는 승인과 같다(내전→사용자→시즌 FOR SHARE). 이후 경기 재계산(replay)과 종료 처리된 시즌은 제외 확정. 결과 `approved→reverted`, 내전 `finished→playing`, 열린 이의 제기 자동 처리, 감사 로그에 삭제 이력 스냅샷. 
+- 이의 제기: 참가자(방장·확정·노쇼), 승인 대기 중 언제든·승인 뒤 3일. 
+- 시즌 관리: 시작 전 시즌은 기간 변경·삭제, 진행 중은 끝 시각만 now+1시간 이후, 끝난 시즌 불가, 겹침 금지. lead 검사는 생성·upcoming의 `starts_at` 변경 때만. 
+- 운영진: JwtGuard가 role을 DB에서 읽음(D263, 강등 즉시 반영), `ADMIN_DISCORD_IDS` 회원 강등 불가, 자기 역할 변경 불가. 
+- 공지·패치노트·이벤트 CRUD와 공개 조회, 봇 알림 전송 4개(멱등), API 키 웹 발급·폐기, 멤버 관리, 감사 로그, 통계, 홈 `news` 블록. 
+- core 함수 14개(`result-review.ts`, `season.ts`, `admin.ts`, `no-show.ts`, `news.ts`). 
+- web: `/admin` 탭 6개(결과·노쇼/멤버/공지·소식/시즌/API 키/감사 로그), `/news`(공지·패치노트·이벤트 캘린더), 홈 「패치·이벤트」 카드·상단 공지 줄, 설정 알림 토글 2개, 내전 상세의 되돌림·이의 제기, 사이드바 「정보」, 모바일 머리 아이콘(정보·운영진 관리자), 공용 Button에 `size="sm"|"custom"`·`variant="plain"` 추가, 목 시나리오 `gcd-mock-admin`.
+
+**리더 직접 실행(Node 24, 저장소 vitest 설정 그대로):** `-r typecheck` 4개 Done / shared 160·core 509·web 344·api 644 passed / 52 skipped(DB e2e) / `-r build` 4개 Done / `pnpm audit` 취약점 0.
+
+**QA:** core pass(0) → backend pass(minor 3) → web pass(minor 8). 보고서 `_workspace/03_qa-verifier_s6_{core,backend,web}.md`. core 검증은 독립 프로브 32개(되돌리기 왕복: 팀·개인·노쇼·동순위·K 판정 경계, KST 경계).
+
+**결함 처리:** backend minor 3건(시즌 쓰기 트랜잭션 timeout 명시, 이의 제기 전이 검사, PATCH `updated_at` APP_CLOCK), web minor 8건(되돌리기 오류 문구 B안, 상세 되돌리기 403 시 `['me']` 재조회와 네트워크 오류 문구, 관리 탭 이벤트 구간 이동, 조사 오류, 홈 이벤트 링크 month, API 키 원문 reset, 안 쓰는 훅 정리와 이벤트 페이지 이어 받기)을 구현자가 수정. 수정 뒤 QA 재검증은 하지 않고 리더가 테스트·빌드로 확인. 계약 11-2(시즌 lead)와 13절(`/news?tab=`) 문구를 구현에 맞춤.
+
+**남은 결함(수정 안 함):** 멤버 표 NO-SHOW 열의 기간은 `/me/scrim-restriction` 정책을 빌려 쓴다(목록 응답에 `policy`를 넣는 안은 낮은 우선순위로 보류). 목업의 큐 행 「블루 +15 ~ +19」 ELO 범위는 필드가 없어 그리지 않음. 되돌리기 막힘 이유는 오류 `details`가 아니라 다시 읽은 `revert_blocked_reason`으로 표시(B안). 이벤트 이어 받기(다음 페이지) 경로는 목 데이터가 100건 안이라 코드로만 확인. 「멤버로 변경」 방향 문구는 브라우저 미확인.
+
+**미실행·미확인:** DB e2e 52건(S6 신규 `test/db/admin.db.e2e.spec.ts` 5건 포함), `migrate deploy`(특히 `ALTER TYPE ADD VALUE`), 새 원시 SQL 2개·`groupBy`·`aggregate`의 실제 PostgreSQL 실행, 되돌리기와 다른 내전 승인의 동시 경합, 시즌 FOR NO KEY UPDATE 대 승인 FOR SHARE, 실제 디스코드 봇의 공지 전송, 실서버 브라우저 연결. web 클릭 흐름은 목 모드 데스크톱 다크 위주.
+
+**명세 문서 갱신 필요:** `POST /scrims/:id/result/revert`·이의 제기, `/notices`·`/patch-notes`·`/events` 관리 API, `/bot/notices`·`/bot/patch-notes`, `/admin/*` API, 새 표 3개, `reverted` 상태가 문서에 없다. 계약 21절 끝 목록 참고.
+
+**배포:** api·web 같은 커밋(홈 요약 `news`와 내전 상세 새 필드가 필수). 마이그레이션 있음(`migrate deploy`, enum 값 추가 포함). 새 환경 변수 없음. 운영진은 `ADMIN_DISCORD_IDS` 또는 웹의 역할 변경.
+
+**확인 필요(사용자):** Q1 되돌리기 범위(이후 경기 반영되면 불가), Q2·Q3 기한(되돌리기 7일, 이의 제기 3일), Q7 진행 중 시즌 끝 시각 변경 허용, Q10 봇이 72시간 넘게 꺼져 있으면 그사이 공지·패치 알림은 보내지 않음, Q17 목업 「7일간 참가 제한」과 서버 기본 1일 불일치(화면은 서버 정책값). 나머지 Q4–Q6·Q8–Q9·Q11–Q16·Q18은 추천안.
+
+**다음:** Docker 환경에서 DB e2e와 `migrate deploy` 검증. 이후 스팀 할인·공통 보유 게임(데이터 출처 결정 필요), 업적·토너먼트(P2), 회원 차단·삭제(필요 시).
+
+## S6 후속: 이의 제기 제거, 커뮤니티 캘린더, 일정 시각, 다가오는 일정 — 2026-11-01 — 판정: pass (DB e2e·실서버 미확인)
+
+**사용자 결정:** (1) 결과 「이의 제기」 기능 제거(D281). (2) 관리자 통계 4번째 칸 자리에 「다가오는 일정」 목록, 아래에 편집용 전체 폭 캘린더(운영진만 일정 추가), 홈은 읽기 전용 캘린더(D282–D297, D306–D310). (3) 운영진 일정에 시작·종료 시각(종일은 비움)(D298–D305). (4) Q17 노쇼 참가 제한은 서버 기본 1일이라 변경 없음. Q23·Q24·Q25 확인(변경 없음).
+
+**구현:** 
+- 이의 제기 제거: 제출·운영진 처리 API, 오류 코드 3개, 승인 큐 「이의 제기」 보기, viewer 필드, 되돌리기·반려의 자동 처리, core `disputeBlock`, web UI·훅·목을 코드에서 삭제. DB의 `scrim_result_disputes` 표와 `dispute_status` enum은 S0부터 있던 것이라 남김(DROP 없음, 사용 안 함). 엔드포인트 35 → 32 → 33(`GET /calendar` 추가).
+- 캘린더: `GET /calendar?month=&game=`(로그인 회원, 내전+운영진 일정을 KST 월요일 시작 격자로 합쳐 줌, 취소 내전 제외, 내전 300·일정 100건 한도와 `truncated`, 방장·참가자 명단 비노출). 일정 쓰기는 기존 `/admin/events` 재사용. core `calendarMonthRange`·`resolveCalendarMonth`(`/news` 격자와 2000–2099 1200개 달에서 일치). web `CommunityCalendar`(read/admin 모드, 모바일 목록형), 홈 전체 폭 읽기 전용, `/admin`은 통계 카드 아래 편집용.
+- 일정 시각: 마이그레이션 `20261101120000_s6_event_times`(`events.start_time`·`end_time` time(0) nullable, DROP 없음). KST 벽시계 값을 변환 없이 저장. 검증: 기간 → 종료 시각만 불가 → 같은 날 종료<시작 불가(같은 시각 허용), PATCH는 저장값과 합쳐 같은 함수로 재검사, `start_time:null`이면 `end_time:null`도 함께. 정렬 `starts_on, start_time NULLS FIRST, ends_on, id`가 `/events`·`/calendar`·홈 news·upcoming에 같은 `EVENT_ORDER_BY`. `/events` 커서는 `events2` 접두사(4값, null 포함), 구 커서는 400. 
+- 다가오는 일정: `AdminOverview.upcoming`(오늘 KST부터 30일, 최대 5건, `has_more`, 취소·이미 시작한 내전 제외, 진행 중 여러 날 일정 포함, 같은 순간이면 일정 먼저). core `compareEventSchedule`·`eventStartsAt`·`upcomingWindow`·`mergeUpcomingItems`.
+- 응답 시각 필드를 1단계 optional에서 필수(nullable)로 전환(D305 2단계 완료).
+
+**리더 직접 실행(Node 24, 저장소 vitest 설정 그대로):** `-r typecheck` 4개 Done / shared 195·core 542·web 383·api 664 passed / 52 skipped(DB e2e) / `-r build` 4개 Done / `pnpm audit` 취약점 0.
+
+**QA:** backend pass(minor 2), web pass(minor 4). 보고서 `_workspace/03_qa-verifier_s6_calendar_{backend,web}.md`. 독립 프로브: events2 커서 무작위 60행 누락·중복 없음, 다른 목록 커서 null 거부, 목 응답의 shared 스키마 parse 8개.
+
+**결함 처리:** backend minor 2건(이벤트 PATCH 동시 수정: 조건부 `updateMany`+재검사, 3회 실패 시 500; 커서 날짜를 `IsoDate`로 검증), web minor 4건(내전 링크 이름 반복, 시각 오류 문구 해요체 매핑, 이의 제기 주석, 노쇼 저장 뒤 캘린더 무효화)을 구현자가 수정. 2단계 필수 전환과 계약 정리(D311–D315)는 architect. 수정 뒤 QA 재검증은 하지 않고 리더가 테스트·빌드로 확인.
+
+**남은 결함(수정 안 함):** 홈 캘린더가 홈 요약 응답이 실패하면 같이 안 그려짐(Q30, 변경 없음으로 남김). 이벤트 PATCH가 같은 일정을 세 번 연속 동시에 고치면 409가 아니라 500(계약에 코드 없음). 구현자 브라우저 확인은 있으나 web QA는 브라우저 확인을 하지 않음.
+
+**미실행·미확인:** DB e2e 52건, `migrate deploy`(특히 새 마이그레이션 2개: `ALTER TYPE ADD VALUE`와 time 컬럼 추가), 실제 PostgreSQL에서 `NULLS FIRST`·`time(0)` 비교·왕복·조건부 UPDATE의 잠금 대기 후 0행 동작, 실제 디스코드 봇, 실서버 브라우저 연결.
+
+**명세 문서 갱신 필요:** `GET /calendar`, `AdminOverview.upcoming`, `events` 시각 컬럼, `/admin` 4칸·캘린더 화면 등(계약 21절 끝 목록).
+
+**배포:** api·web 같은 커밋. 마이그레이션 2개(`20261031230000_s6`, `20261101120000_s6_event_times`). 새 환경 변수 없음. Railway는 `RAILWAY_DOCKERFILE_PATH`(서비스별)로 Dockerfile 빌드를 쓰는지 확인(Node 22.23.4 고정은 Dockerfile 빌드에서만 적용).
+
+**확인 필요(사용자):** Q26 「4번째 칸=목록, 아래 전체 폭=편집 캘린더」 두 개를 두는 해석, Q27 30일·5건 기준, Q28 날짜 상세는 「일정 → 내전」 순서, Q29 오늘 끝난 시각 일정도 오늘 자정까지 표시. 이전 Q1·Q2·Q3·Q7·Q10 추천안은 그대로.

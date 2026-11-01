@@ -21,3 +21,6 @@ export * from './rankings';
 export * from './dashboard';
 export * from './discord-link';
 export * from './bot';
+export * from './news';
+export * from './admin';
+export * from './calendar';

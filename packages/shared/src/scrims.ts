@@ -280,7 +280,7 @@ export type ScrimRatingChange = z.infer<typeof ScrimRatingChange>;
 
 /**
  * 결과 레이팅 상태.
- * - waiting: rated 내전이고 결과가 아직 승인되지 않음(pending·rejected)
+ * - waiting: rated 내전이고 결과가 아직 승인되지 않음(pending·rejected), 또는 승인을 되돌림(reverted, S6 — 역반영 끝, rating_changes [])
  * - applied: 승인되어 1명 이상 반영됨(rating_changes 채움)
  * - skipped: 승인됐지만 반영 대상이 2명 미만이거나 한 팀이 비어(노쇼 등) 반영하지 않음
  * - not_rated: rated=false 내전(결과 흐름은 같고 레이팅만 바뀌지 않음, 메인 기본값 6)
@@ -304,6 +304,10 @@ export const ScrimResultView = z.object({
   rejected_by: ScrimUserRef.nullable(),
   rejected_at: IsoDateTime.nullable(),
   reject_reason: z.string().nullable(),
+  /** S6. 승인을 되돌린 운영진·시각·사유(status reverted일 때만), 그 외 null */
+  reverted_by: ScrimUserRef.nullable(),
+  reverted_at: IsoDateTime.nullable(),
+  revert_reason: z.string().nullable(),
   rating_status: ScrimRatingStatus,
   /** 레이팅을 반영한 시즌(applied일 때만), 그 외 null */
   season: SeasonRef.nullable(),
@@ -370,7 +374,8 @@ export const ScrimSummary = z.object({
   my_status: MyScrimStatus.nullable(),
   created_at: IsoDateTime,
   /**
-   * S3. 가장 최근 결과 행의 상태(pending = 「승인 대기」, rejected = 반려 후 재입력 전, approved), 결과가 없으면 null
+   * S3. 가장 최근 결과 행의 상태(pending = 「승인 대기」, rejected = 반려 후 재입력 전, approved,
+   * S6 reverted = 승인을 되돌려 재입력 전), 결과가 없으면 null
    */
   result_status: ScrimResultStatus.nullable(),
   /** S3. 승인된 결과 요약(status finished일 때만), 그 외 null */
@@ -429,6 +434,23 @@ export const ScrimWaitlistEntry = z.object({
 export type ScrimWaitlistEntry = z.infer<typeof ScrimWaitlistEntry>;
 
 /**
+ * S6. 승인 되돌리기를 막는 이유(계약 S6 6-2). 우선순위 = 나열 순서(core revertBlockReason).
+ * - self_submitted: 내가 제출한 결과(승인·반려와 같은 자기 검토 금지. 승인자 본인은 되돌릴 수 있다)
+ * - window_passed: approved_at + SCRIM_RESULT_REVERT_WINDOW_DAYS 지남
+ * - season_closed: 반영한 시즌의 종료 처리(최종 순위·뱃지)가 끝남
+ * - later_games: 반영된 참가자 중 누군가 같은 게임의 이후 내전이 이미 반영됨(그 경기의 시작 점수·K가 이 결과에 기대고 있다)
+ * - rating_mismatch: 현재 ratings 값이 이 결과의 elo_after·승패와 맞지 않음(데이터 불일치, 서버 로그). 되돌리기 시도 때만 판정
+ */
+export const ScrimResultRevertBlock = z.enum([
+  'self_submitted',
+  'window_passed',
+  'season_closed',
+  'later_games',
+  'rating_mismatch',
+]);
+export type ScrimResultRevertBlock = z.infer<typeof ScrimResultRevertBlock>;
+
+/**
  * 요청자 기준 상태와 버튼 노출(서버 판단). 서버는 같은 조건을 요청 처리 때 다시 검사한다 — 이 값은 표시용.
  * - can_join: 모집 중 && !join_closed && 내 상태가 joined·waitlist 아님 && 노쇼 제한 아님
  *   (정원이 찼으면 「대기열 등록」으로 표시. 내 상태가 joined·waitlist면 같은 POST로 희망 포지션만 바꿀 수 있다)
@@ -444,6 +466,9 @@ export type ScrimWaitlistEntry = z.infer<typeof ScrimWaitlistEntry>;
  *   && (has_teams면 두 팀 모두 joined 참가자 1명 이상 배정 / 아니면 joined 참가자 2명 이상)
  * - can_withdraw_result: 결과 pending && (내가 제출자 || 방장)
  * - can_review_result: 운영진 && 결과 pending && 제출자가 내가 아님(자기 제출 승인·반려 금지, 메인 기본값 8)
+ * S6(계약 S6 6절. 판정은 core revertBlockReason과 같아야 한다. 결과 이의 제기 필드는 제거됨, D281):
+ * - can_revert_result: 운영진 && 결과 approved && revert_blocked_reason null
+ * - revert_blocked_reason: 운영진이고 결과 approved일 때 되돌릴 수 없는 이유(없으면 null). 그 외(멤버, 승인 아님) 항상 null
  */
 export const ScrimViewer = z.object({
   status: MyScrimStatus.nullable(),
@@ -468,8 +493,11 @@ export const ScrimViewer = z.object({
   can_submit_result: z.boolean(),
   can_withdraw_result: z.boolean(),
   can_review_result: z.boolean(),
+  can_revert_result: z.boolean(),
+  revert_blocked_reason: ScrimResultRevertBlock.nullable(),
 });
 export type ScrimViewer = z.infer<typeof ScrimViewer>;
+
 
 export const ScrimDetail = ScrimSummary.extend({
   rules: z.string().nullable(),

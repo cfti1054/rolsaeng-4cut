@@ -4,31 +4,43 @@ import { useEffect, useId, useRef, type ButtonHTMLAttributes, type ReactNode } f
 import { cn } from '@/lib/cn';
 import { AlertIcon, CheckIcon, XIcon } from './icons';
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'plain';
 
 const VARIANT: Record<Variant, string> = {
   primary: 'border-0 bg-accent text-on-accent font-bold',
   secondary: 'border border-line-3 bg-surface-2 text-text font-semibold',
   ghost: 'border border-transparent bg-transparent text-muted font-semibold hover:text-text',
   danger: 'border border-orange/40 bg-orange/10 text-orange-text font-semibold',
+  // 색·테두리를 호출한 쪽이 모두 정한다(토글 행·필터 칩·스위치)
+  plain: '',
 };
 
-/** 목업 버튼: 높이 40(보조) / 46(주요), 둥근 12–14px */
+const SIZE = {
+  md: 'h-10 rounded-xl px-3.5 text-[13px]',
+  lg: 'h-[46px] rounded-[14px] px-5 text-sm',
+  sm: 'h-8 rounded-[10px] px-3 text-xs',
+} as const;
+
+/**
+ * 목업 버튼: 높이 40(보조) / 46(주요) / 32(작은 칩), 둥근 10–14px.
+ * size="custom"이면 크기·배치 클래스를 붙이지 않는다(스위치·체크 행처럼 모양을 호출한 쪽이 정할 때). 버튼 요소는 모두 이 컴포넌트를 쓴다.
+ */
 export function Button({
   variant = 'secondary',
   size = 'md',
   className,
   children,
   ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: 'md' | 'lg' }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: keyof typeof SIZE | 'custom' }) {
   return (
     <button
       type="button"
       {...rest}
       className={cn(
-        'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50',
+        'disabled:cursor-not-allowed disabled:opacity-50',
         // 글자 크기는 size에서만 정한다(cn은 병합하지 않아 기본 text-[13px]과 text-sm을 함께 두면 13px이 이겼다)
-        size === 'lg' ? 'h-[46px] rounded-[14px] px-5 text-sm' : 'h-10 rounded-xl px-3.5 text-[13px]',
+        size !== 'custom' && 'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap',
+        size !== 'custom' && SIZE[size],
         VARIANT[variant],
         className,
       )}

@@ -5,12 +5,16 @@ import { GAME_SEED } from '@gcd/shared';
 import {
   Prisma,
   type ActivityLog,
+  type AdminAuditLog,
   type ApiKey,
+  type CalendarEvent,
   type Badge,
   type BotPresence,
   type Game,
   type GameAccount,
   type GameAccountSyncRequest,
+  type Notice,
+  type PatchNote,
   type RankSnapshot,
   type Rating,
   type RatingHistory,
@@ -20,6 +24,7 @@ import {
   type Scrim,
   type ScrimPlayer,
   type ScrimResult,
+  type ScrimResultDispute,
   type Season,
   type SeasonStanding,
   type SteamPlaytime,
@@ -56,6 +61,10 @@ import { FakeTable, type Row, matchWhere } from './fake-table';
  * 원시 SQL의 순위 대상 조건은 `u.left_at IS NULL` 조각이 쿼리에 들어 있을 때만 적용한다(빠뜨리면 테스트가 잡는다).
  * 플레이타임 보유자 조건(D234)도 SQL에 그 문구(`ga.is_primary AND ga.verified`, `g.code = `, `sp.minutes_total > 0`)가 있을 때만 적용한다.
  * rawHooks[태그]: 그 원시 SQL을 실행하기 직전에 부른다(경합 흉내).
+ *
+ * S6: notices, patch_notes, events(calendarEvent), admin_audit_logs, scrim_result_disputes(D281 이후 앱 코드는 쓰지 않음 — DB 표·cascade와 같게 남겨 「건드리지 않음」 회귀 테스트에 쓴다). FakeTable.delete(삭제 전 행 반환, 없으면 P2025).
+ * FK Cascade 흉내: scrims 삭제 → scrim_players·scrim_results, scrim_results 삭제 → scrim_result_disputes.
+ * user.count·findFirst. $queryRaw 추가: 멤버 검색 ILIKE(gcd:admin-member-search, `\` 이스케이프 해석), 멤버 scrim_count(gcd:member-scrim-counts).
  *
  * 한계(실제 DB e2e로 보완해야 함):
  * - 트랜잭션은 직렬화(뮤텍스) + 실패 시 스냅샷 복원. 격리 수준·행 잠금은 흉내 내지 않는다.
@@ -173,7 +182,16 @@ export class FakePrisma {
     cancelledAt: null,
     cancelReason: null,
     updatedAt: undefined,
-  }));
+  }), [], {
+    // S6: scrims 삭제 → scrim_players·scrim_results(→ 이의 제기) ON DELETE CASCADE. rating_history는 RESTRICT(흉내 내지 않음)
+    onDelete: (deleted) => {
+      const ids = new Set(deleted.map((d) => d.id));
+      this.scrimPlayer.rows = this.scrimPlayer.rows.filter((r) => !ids.has(r.scrimId));
+      const results = this.scrimResult.rows.filter((r) => ids.has(r.scrimId));
+      this.scrimResult.rows = this.scrimResult.rows.filter((r) => !ids.has(r.scrimId));
+      this.scrimResult.hooks.onDelete?.(results);
+    },
+  });
 
   scrimPlayer = new FakeTable<ScrimPlayer & Row>(
     () => ({
@@ -192,6 +210,61 @@ export class FakePrisma {
     [{ target: ['scrim_id', 'user_id'], fields: ['scrimId', 'userId'] }],
   );
 
+  // ---- S6 테이블 ----
+  scrimResultDispute = new FakeTable<ScrimResultDispute & Row>(() => ({
+    scrimResultId: undefined,
+    userId: undefined,
+    reason: undefined,
+    status: 'open',
+    resolvedById: null,
+    resolvedAt: null,
+    resolution: null,
+  }));
+
+  notice = new FakeTable<Notice & Row>(() => ({
+    title: undefined,
+    body: undefined,
+    authorId: undefined,
+    notifyDiscord: false,
+    discordNotifiedAt: null,
+    updatedAt: undefined,
+  }));
+
+  patchNote = new FakeTable<PatchNote & Row>(() => ({
+    gameId: undefined,
+    version: null,
+    title: undefined,
+    summary: undefined,
+    url: null,
+    publishedOn: undefined,
+    notifyDiscord: false,
+    discordNotifiedAt: null,
+    createdById: null,
+    updatedAt: undefined,
+  }));
+
+  calendarEvent = new FakeTable<CalendarEvent & Row>(() => ({
+    gameId: null,
+    title: undefined,
+    description: null,
+    url: null,
+    startsOn: undefined,
+    endsOn: undefined,
+    startTime: null,
+    endTime: null,
+    createdById: null,
+    updatedAt: undefined,
+  }));
+
+  adminAuditLog = new FakeTable<AdminAuditLog & Row>(() => ({
+    actorId: null,
+    action: undefined,
+    targetType: undefined,
+    targetId: null,
+    summary: undefined,
+    details: {},
+  }));
+
   // ---- S3 테이블 ----
   scrimResult = new FakeTable<ScrimResult & Row>(
     () => ({
@@ -205,6 +278,10 @@ export class FakePrisma {
       rejectReason: null,
       rejectedById: null,
       rejectedAt: null,
+      // S6 승인 되돌리기(architect 추가)
+      revertedById: null,
+      revertedAt: null,
+      revertReason: null,
       updatedAt: undefined,
     }),
     [
@@ -214,6 +291,13 @@ export class FakePrisma {
         where: (r) => r.status === 'pending' || r.status === 'approved',
       },
     ],
+    {
+      // S6: scrim_result_disputes.scrim_result_id ON DELETE CASCADE(제출 취소·내전 삭제)
+      onDelete: (deleted) => {
+        const ids = new Set(deleted.map((d) => d.id));
+        this.scrimResultDispute.rows = this.scrimResultDispute.rows.filter((d) => !ids.has(d.scrimResultId));
+      },
+    },
   );
 
   season = new FakeTable<Season & Row>(() => ({ name: undefined, startsAt: undefined, endsAt: undefined, closedAt: null }));
@@ -371,6 +455,11 @@ export class FakePrisma {
       this.apiKey,
       this.botPresence,
       this.activityLog,
+      this.scrimResultDispute,
+      this.notice,
+      this.patchNote,
+      this.calendarEvent,
+      this.adminAuditLog,
     ] as unknown as FakeTable[];
   }
 
@@ -572,6 +661,33 @@ export class FakePrisma {
           return { user_id: userId, game_id: gameId, sec };
         });
       }
+      case 'gcd:admin-member-search': {
+        // 값 순서: 패턴(닉네임), 패턴(디스코드 username). ESCAPE '\\'
+        const re = likeToRegExp(v[0] as string);
+        const re2 = likeToRegExp(v[1] as string);
+        return this.users
+          .filter((u) => re.test(u.nickname) || (u.discordUsername !== null && re2.test(u.discordUsername)))
+          .map((u) => ({ id: u.id }));
+      }
+      case 'gcd:member-scrim-counts': {
+        // 값 순서: user id…(기간 없음, D267). 조건은 SQL 문구가 있을 때만 적용(활동 집계와 같은 방식)
+        const want = new Set(v as string[]);
+        const notCancelled = sql.includes("s.status <> 'cancelled'");
+        const joinedOnly = sql.includes("sp.status = 'joined'");
+        const approvedOnly = sql.includes("r.status = 'approved'");
+        const by = new Map<string, Set<string>>();
+        for (const p of this.scrimPlayer.rows) {
+          if (!want.has(p.userId)) continue;
+          if (joinedOnly && p.status !== 'joined') continue;
+          const s = this.scrim.rows.find((x) => x.id === p.scrimId);
+          if (!s || (notCancelled && s.status === 'cancelled')) continue;
+          if (approvedOnly && !this.scrimResult.rows.some((r) => r.scrimId === s.id && r.status === 'approved')) continue;
+          const set = by.get(p.userId) ?? new Set<string>();
+          set.add(s.id);
+          by.set(p.userId, set);
+        }
+        return [...by].map(([userId, set]) => ({ user_id: userId, scrim_count: set.size }));
+      }
       case 'gcd:active-members': {
         // 값 순서: start → end → 집계 type 목록(ACTIVITY_COUNTED_TYPES, D240)
         const [start, end, ...counted] = v;
@@ -635,6 +751,15 @@ export class FakePrisma {
   }
 
   user = {
+    count: async (args: { where?: Where } = {}): Promise<number> => {
+      await this.tick();
+      return this.users.filter((u) => matchWhere(u as unknown as Row, args.where)).length;
+    },
+    findFirst: async (args: { where?: Where } = {}): Promise<User | null> => {
+      await this.tick();
+      const row = this.users.find((u) => matchWhere(u as unknown as Row, args.where));
+      return row ? { ...row } : null;
+    },
     updateMany: async (args: { where?: Where; data: Partial<User> }): Promise<{ count: number }> => {
       await this.tick();
       let count = 0;

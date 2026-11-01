@@ -64,6 +64,38 @@ export const ApiPath = {
   botRanking: '/bot/rankings/:type',
   botMemberEvents: '/bot/member-events',
   botPresence: '/bot/presence',
+  // S6 결과 되돌리기(scrims 리소스 아래, 승인·반려와 같은 자리). 결과 이의 제기 경로는 제거됨(D281)
+  scrimResultRevert: '/scrims/:id/result/revert',
+  // S6 내 알림 설정
+  myNotificationSettings: '/me/notification-settings',
+  // S6 정보(멤버 전원 읽기, 문서 6장 /patch-notes·/events)
+  notices: '/notices',
+  patchNotes: '/patch-notes',
+  events: '/events',
+  // S6 후속 커뮤니티 캘린더(멤버 전원 읽기, 내전 + 운영진 일정 한 달 묶음, D284). 쓰기는 adminEvents·adminEvent
+  calendar: '/calendar',
+  // S6 관리자(JWT + admin). 비운영진 403
+  adminOverview: '/admin/overview',
+  adminResults: '/admin/results',
+  adminNoShowScrims: '/admin/no-show/scrims',
+  adminMembers: '/admin/members',
+  adminMemberRole: '/admin/members/:id/role',
+  adminNotices: '/admin/notices',
+  adminNotice: '/admin/notices/:id',
+  adminPatchNotes: '/admin/patch-notes',
+  adminPatchNote: '/admin/patch-notes/:id',
+  adminEvents: '/admin/events',
+  adminEvent: '/admin/events/:id',
+  adminApiKeys: '/admin/api-keys',
+  adminApiKeyRevoke: '/admin/api-keys/:id/revoke',
+  adminSeasons: '/admin/seasons',
+  adminSeason: '/admin/seasons/:id',
+  adminAuditLogs: '/admin/audit-logs',
+  // S6 봇 공지·패치노트 전송(X-API-Key)
+  botPendingNotices: '/bot/notices/pending',
+  botNoticeDelivered: '/bot/notices/:id/delivered',
+  botPendingPatchNotes: '/bot/patch-notes/pending',
+  botPatchNoteDelivered: '/bot/patch-notes/:id/delivered',
 } as const;
 export type ApiPath = (typeof ApiPath)[keyof typeof ApiPath];
 

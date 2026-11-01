@@ -65,8 +65,18 @@ import {
 } from '@gcd/shared';
 import { z } from 'zod';
 import { MOCK_OTHER_MEMBER_ID } from './game-accounts';
-import { handleRankings, isRankingPath, mockProfileBadges as rankingProfileBadges, scenarioState, type MockRankingOptions } from './rankings';
+import { cacheMeta, handleRankings, isRankingPath, mockProfileBadges as rankingProfileBadges, scenarioState, type MockRankingOptions } from './rankings';
 import { mockScrimJoins } from './community';
+import {
+  MockS6Fields,
+  emptyS6,
+  handleS6,
+  isS6Path,
+  mockDashboardNews,
+  mockS6Viewer,
+  seedS6,
+  type MockAdminScenario,
+} from './admin';
 import {
   MockS3Fields,
   activeResult,
@@ -178,7 +188,7 @@ const MockPlayer = z.object({
 type MockPlayer = z.infer<typeof MockPlayer>;
 
 /** 시드 형식 버전. 바뀌면 저장된 목 DB를 버리고 다시 만든다(S3 필드·시나리오 추가) */
-const SEED_VERSION = 11;
+const SEED_VERSION = 12;
 
 export const MockS2State = z.object({
   /** 시드를 만든 사용자 id. 다른 사용자로 로그인하면 다시 만든다 */
@@ -187,6 +197,8 @@ export const MockS2State = z.object({
   scrims: z.array(MockScrim),
   players: z.array(MockPlayer),
   ...MockS3Fields,
+  // S6 공지·패치노트·이벤트·감사·API 키·멤버 운영 정보(mock/admin.ts)
+  ...MockS6Fields,
 });
 export type MockS2State = z.infer<typeof MockS2State>;
 
@@ -199,6 +211,7 @@ export const emptyS2State = (): MockS2State => ({
   seasons: [],
   ratings: [],
   history: [],
+  ...emptyS6(),
 });
 
 export interface MockS2Options {
@@ -207,6 +220,8 @@ export interface MockS2Options {
   ratings?: MockRatingOptions;
   /** S4 랭킹·요약 화면 상태 확인용 */
   rankings?: MockRankingOptions;
+  /** S6 관리자·정보 화면 상태 확인용(localStorage gcd-mock-admin) */
+  admin?: { scenario?: () => MockAdminScenario | null };
 }
 
 export interface MockS2Context {
@@ -513,6 +528,9 @@ function seed(me: Me, now: number, opts?: MockS2Options): MockS2State {
       rejected_by: null,
       rejected_at: null,
       reject_reason: null,
+      reverted_by: null,
+      reverted_at: null,
+      revert_reason: null,
       ...r,
     };
     state.results.push(row);
@@ -643,6 +661,50 @@ function seed(me: Me, now: number, opts?: MockS2Options): MockS2State {
     reject_reason: '순위가 실제와 달라요. 6명 모두 다시 입력해 주세요.',
   });
 
+  // ---------------------------------------------------------------------------
+  // S6: 관리자 화면 시나리오
+  // ---------------------------------------------------------------------------
+  // 내가 제출한 승인 대기(롤체) → 큐에서 「내가 제출한 결과」로 승인 버튼 비활성
+  const selfPending = add(
+    { game: 'tft', title: '내가 제출한 롤체 로비', scheduled_at: iso(now - 130 * MIN_MS), capacity: 8, host_id: me.id, status: 'playing', started_at: iso(now - 125 * MIN_MS) },
+    [
+      [me.id, []],
+      [U['체스왕']!, []],
+      [U['별빛미드']!, []],
+      [U['용용이']!, []],
+    ],
+  );
+  selfPending.status = 'playing';
+  pushResult({
+    scrim_id: selfPending.id,
+    submitted_by: me.id,
+    created_at: iso(now - 15 * MIN_MS),
+    placements: [
+      { user_id: U['체스왕']!, placement: 1 },
+      { user_id: me.id, placement: 2 },
+      { user_id: U['별빛미드']!, placement: 3 },
+      { user_id: U['용용이']!, placement: 4 },
+    ],
+  });
+  // 노쇼 누적: 칼바람러 30일 안 3회(마지막 6시간 전 → 지금 제한 중), 원딜장인 2회(한 번 더 표시하면 제한)
+  const noShowLobby = (title: string, hoursAgo: number, userId: string) => {
+    const s = add(
+      { game: 'tft', title, scheduled_at: iso(now - hoursAgo * 3_600_000), capacity: 8, host_id: U['체스왕']!, status: 'finished', started_at: iso(now - hoursAgo * 3_600_000), rated: false },
+      [
+        [U['체스왕']!, []],
+        [userId, []],
+      ],
+    );
+    s.status = 'finished';
+    const row = state.players.find((p) => p.scrim_id === s.id && p.user_id === userId)!;
+    Object.assign(row, { status: 'no_show', no_show_marked_at: iso(now - (hoursAgo - 1) * 3_600_000), no_show_marked_by: U['미드고정']! });
+  };
+  noShowLobby('평일 롤체 연습 A', 20 * 24, U['칼바람러']!);
+  noShowLobby('평일 롤체 연습 B', 9 * 24, U['칼바람러']!);
+  noShowLobby('평일 롤체 연습 C', 7, U['칼바람러']!);
+  noShowLobby('주말 롤체 연습 A', 18 * 24, U['원딜장인']!);
+  noShowLobby('주말 롤체 연습 B', 11 * 24, U['원딜장인']!);
+
   // 노쇼 제한 흉내: 최근 30일 안에 노쇼 3회. 마지막 표시는 6시간 전이라 1일 제한이 아직 남아 있다.
   if (me.nickname.toLowerCase().startsWith('noshow')) {
     for (const hoursAgo of [20 * 24, 9 * 24, 6]) {
@@ -660,6 +722,7 @@ function seed(me: Me, now: number, opts?: MockS2Options): MockS2State {
       row.no_show_marked_by = U['미드고정']!;
     }
   }
+  seedS6(state, { me, now, newId: id, users: MOCK_SCRIM_USERS, U });
   return state;
 }
 
@@ -724,6 +787,7 @@ export function isS2Path(path: string): boolean {
     path === ApiPath.scrims ||
     path === ApiPath.seasons ||
     path.startsWith('/scrims/') ||
+    isS6Path(path) ||
     matchTemplate(ApiPath.userRatingHistory, path) !== null
   );
 }
@@ -780,6 +844,11 @@ export function handleS2(ctx: MockS2Context): Response | null {
   };
   const isAdmin = me.role === 'admin';
   const persist = () => ctx.save(state);
+  const adminScenario = ctx.opts?.admin?.scenario?.() ?? null;
+  const gameRef = (code: GameCode) => {
+    const g = gameOf(code);
+    return { code: g.code, name: g.name, has_positions: g.has_positions, has_teams: g.has_teams, has_results: g.has_results, positions: [...g.positions] };
+  };
 
   const rowsOf = (scrimId: string) => state.players.filter((p) => p.scrim_id === scrimId);
   const joinedRows = (scrimId: string) => rowsOf(scrimId).filter((p) => p.status === 'joined');
@@ -983,6 +1052,13 @@ export function handleS2(ctx: MockS2Context): Response | null {
           (g.has_teams ? teamsReady : eligible >= BALANCE_PLAYERS_MIN),
         can_withdraw_result: !!pendingRow && (pendingRow.submitted_by === me.id || isHost),
         can_review_result: isAdmin && !!pendingRow && pendingRow.submitted_by !== me.id,
+        // S6 되돌리기(계약 S6 6-4, core revertBlockReason)
+        ...mockS6Viewer(state, {
+          scrim: s,
+          latest,
+          me,
+          now,
+        }),
       },
       balance: g.has_teams
         ? teamsView({ joined: joinedPlayers, usePositions: s.use_positions, rated: s.rated, policy: eloPolicy })
@@ -1043,6 +1119,37 @@ export function handleS2(ctx: MockS2Context): Response | null {
       bot: ctx.opts?.rankings?.bot?.() ?? 'live',
       steamApps: ownedSteamApps(),
       scrimJoins: mockScrimJoins(state),
+      news: mockDashboardNews(state, now, { scenario: adminScenario, userRef: (uid2) => userRef(uid2, me), gameRef }),
+    });
+  }
+
+  // S6 공지·패치노트·이벤트·알림 설정·되돌리기·운영진(mock/admin.ts)
+  if (isS6Path(path)) {
+    return handleS6({
+      method,
+      path,
+      search: ctx.search,
+      body: ctx.body,
+      me,
+      now,
+      state,
+      persist,
+      json,
+      error,
+      scenario: adminScenario,
+      rankingStale: ctx.opts?.rankings?.scenario?.() === 'stale',
+      noShowPolicy: policy,
+      markWindowDays: NO_SHOW_MARK_WINDOW_DAYS_DEFAULT,
+      users: MOCK_SCRIM_USERS,
+      userRef: (uid2) => userRef(uid2, me),
+      gameRef,
+      slotRows: (scrimId) => {
+        const s = state.scrims.find((x) => x.id === scrimId);
+        return s ? slotRows(s) : [];
+      },
+      detail: (scrimId) => detail(state.scrims.find((x) => x.id === scrimId)!),
+      summary: (scrimId) => summary(state.scrims.find((x) => x.id === scrimId)!),
+      rankingSyncedAt: () => cacheMeta(now, ctx.opts?.rankings?.scenario?.() ?? null).synced_at,
     });
   }
 
@@ -1365,6 +1472,9 @@ export function handleS2(ctx: MockS2Context): Response | null {
         rejected_by: null,
         rejected_at: null,
         reject_reason: null,
+        reverted_by: null,
+        reverted_at: null,
+        revert_reason: null,
       });
       s.updated_at = iso(now);
       persist();

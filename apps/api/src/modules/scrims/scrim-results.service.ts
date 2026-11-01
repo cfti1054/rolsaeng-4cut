@@ -4,6 +4,9 @@ import {
   type RatedPlayer,
   computePlacementEloUpdates,
   computeTeamEloUpdates,
+  inferRevertOutcomes,
+  planRatingRevert,
+  revertBlockReason,
   selectRatedParticipants,
   validatePlacementUsers,
 } from '@gcd/core';
@@ -11,22 +14,28 @@ import {
   type ApproveScrimResultRequest,
   RATING_START_ELO,
   type RejectScrimResultRequest,
+  type RevertScrimResultRequest,
+  SCRIM_RESULT_REVERT_WINDOW_DAYS,
   SCRIM_RESULT_STATUS_TRANSITIONS,
   type ScrimDetail,
+  type ScrimResultRevertBlock,
+  type ScrimResultStatus,
   type ScrimResultPlacementsJson,
   type SubmitScrimResultRequest,
   canTransition,
 } from '@gcd/shared';
 import { Prisma } from '@prisma/client';
 import { AppError } from '../../common/app-error';
+import { auditQuote, writeAudit } from '../../common/audit';
 import { SCRIM_TX_TIMEOUT_MS, scrimWriteTx } from '../../common/scrim-tx';
 import { APP_CLOCK, type Clock } from '../../common/clock';
 import type { AuthUser } from '../../common/decorators/current-user';
 import { APP_CONFIG, type AppConfig } from '../../config/env';
 import { PrismaService } from '../../prisma/prisma.service';
 import { countRatedGames } from '../ratings/rating-inputs.service';
-import { lockSeasonForRating, lockUserRatings } from '../ratings/rating-locks';
+import { lockSeasonForRating, lockSeasonForRevert, lockUserRatings } from '../ratings/rating-locks';
 import { SeasonsService } from '../ratings/seasons.service';
+import { laterGameUsersByResult } from './revert-checks';
 import { readPlacements } from './scrim-result-json';
 import { hasActiveResult } from './scrim-teams.service';
 import { ScrimViews } from './scrim-views.service';
@@ -40,11 +49,23 @@ function isP2002(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
 }
 
-function assertResultTransition(from: 'pending', to: 'approved' | 'rejected'): void {
+function assertResultTransition(from: ScrimResultStatus, to: ScrimResultStatus): void {
   if (!canTransition(SCRIM_RESULT_STATUS_TRANSITIONS, from, to)) {
     logger.error(`허용되지 않은 결과 상태 전이 ${from} → ${to}`);
     throw new AppError('INTERNAL_ERROR');
   }
+}
+
+/** 되돌리기를 막는 이유 → 응답 message(SCRIM_RESULT_REVERT_NOT_ALLOWED, 계약 S6 2절) */
+export const REVERT_BLOCK_MESSAGE: Record<Exclude<ScrimResultRevertBlock, 'self_submitted'>, string> = {
+  window_passed: `승인 후 ${SCRIM_RESULT_REVERT_WINDOW_DAYS}일이 지나 되돌릴 수 없습니다.`,
+  season_closed: '시즌 종료 처리가 끝나 되돌릴 수 없습니다.',
+  later_games: '참가자의 다음 경기가 이미 반영돼 되돌릴 수 없습니다.',
+  rating_mismatch: '레이팅 기록이 맞지 않아 되돌릴 수 없습니다. 개발자에게 알려 주세요.',
+};
+
+function revertNotAllowed(reason: Exclude<ScrimResultRevertBlock, 'self_submitted'>): AppError {
+  return new AppError('SCRIM_RESULT_REVERT_NOT_ALLOWED', undefined, { message: REVERT_BLOCK_MESSAGE[reason] });
 }
 
 /**
@@ -300,7 +321,9 @@ export class ScrimResultsService {
     return this.views.detail(id, admin, now);
   }
 
-  /** POST /scrims/:id/result/reject — 운영진. 내전은 playing 유지 */
+  /**
+   * POST /scrims/:id/result/reject — 운영진. 내전은 playing 유지.
+   */
   async reject(admin: AuthUser, id: string, body: RejectScrimResultRequest): Promise<ScrimDetail> {
     const now = this.clock.now();
     await scrimWriteTx(this.prisma, async (tx) => {
@@ -313,6 +336,140 @@ export class ScrimResultsService {
       });
       if (r.count !== 1) throw new AppError('SCRIM_RESULT_NOT_PENDING');
     });
+    return this.views.detail(id, admin, now);
+  }
+
+  /**
+   * S6 POST /scrims/:id/result/revert — 승인 되돌리기(계약 S6 6-3, D242–D248). 운영진(@Roles는 컨트롤러).
+   * scrimWriteTx READ COMMITTED. 잠금 순서는 승인과 같다: 내전 행 FOR UPDATE → 사용자 advisory(user_id 오름차순) → 시즌 FOR SHARE.
+   * now는 모든 잠금 직후(이력이 없으면 내전 잠금 직후). 쓰기: ratings 역반영(plan 값 그대로) → 이력 삭제 → 결과 reverted →
+   * 내전 finished → playing → 감사 result.revert(지운 이력 스냅샷). 응답은 커밋 후 ScrimDetail.
+   */
+  async revert(admin: AuthUser, id: string, body: RevertScrimResultRequest): Promise<ScrimDetail> {
+    const now = await scrimWriteTx(
+      this.prisma,
+      async (tx) => {
+        // 1–3
+        const s = await lockOrNotFound(tx, id);
+        const approved = await tx.scrimResult.findFirst({ where: { scrimId: s.id, status: 'approved' } });
+        if (!approved || approved.id !== body.result_id) throw new AppError('SCRIM_RESULT_NOT_APPROVED');
+        const history = await tx.ratingHistory.findMany({ where: { scrimResultId: approved.id } });
+
+        // 4. 사용자 잠금 → now → 시즌 FOR SHARE
+        let now: Date;
+        let seasonId: string | null = null;
+        let seasonClosed = false;
+        if (history.length > 0) {
+          await lockUserRatings(tx, s.gameId, history.map((h) => h.userId));
+          now = this.clock.now();
+          const seasonIds = [...new Set(history.map((h) => h.seasonId))];
+          if (seasonIds.length !== 1) {
+            logger.error(`되돌리기: 이력 시즌이 여럿 result=${approved.id} seasons=${seasonIds.join(',')}`);
+            throw revertNotAllowed('rating_mismatch');
+          }
+          seasonId = seasonIds[0] as string;
+          seasonClosed = (await lockSeasonForRevert(tx, seasonId)).closed;
+        } else {
+          now = this.clock.now();
+        }
+        if (!approved.approvedAt) {
+          logger.error(`되돌리기: approved 결과에 approved_at 없음 result=${approved.id}`);
+          throw new AppError('INTERNAL_ERROR');
+        }
+
+        // 5–6
+        const later = history.length > 0 ? ((await laterGameUsersByResult(tx, history)).get(approved.id) ?? []) : [];
+        const block = revertBlockReason({
+          approvedAt: approved.approvedAt,
+          now,
+          windowDays: SCRIM_RESULT_REVERT_WINDOW_DAYS,
+          submittedById: approved.submittedById,
+          actorId: admin.id,
+          seasonClosed,
+          laterGameUserIds: later,
+        });
+        if (block === 'self_submitted') throw new AppError('SCRIM_RESULT_SELF_REVIEW');
+        if (block !== null) throw revertNotAllowed(block);
+
+        // 7–8a. ratings 역반영 + 이력 삭제
+        const snapshot: { user_id: string; elo_before: number; elo_after: number; k_factor: number; outcome: string }[] = [];
+        if (history.length > 0 && seasonId !== null) {
+          const players = await tx.scrimPlayer.findMany({ where: { scrimId: s.id } });
+          const placements = readPlacements(approved.placements);
+          const outcomes = inferRevertOutcomes({
+            ratedUserIds: history.map((h) => h.userId),
+            winnerTeam: approved.winnerTeam,
+            teamByUser: new Map(players.map((p) => [p.userId, p.team] as const)),
+            placements: placements === null ? null : placements.map((p) => ({ userId: p.user_id, placement: p.placement })),
+          });
+          if (!outcomes) {
+            logger.error(`되돌리기: 승패를 다시 구할 수 없음 result=${approved.id}`);
+            throw revertNotAllowed('rating_mismatch');
+          }
+          const ratings = await tx.rating.findMany({
+            where: { userId: { in: history.map((h) => h.userId) }, gameId: s.gameId, seasonId },
+          });
+          const plan = planRatingRevert({
+            history: history.map((h) => ({
+              id: h.id,
+              userId: h.userId,
+              eloBefore: h.eloBefore,
+              eloAfter: h.eloAfter,
+              createdAt: h.createdAt,
+            })),
+            ratings: ratings.map((r) => ({ userId: r.userId, elo: r.elo, wins: r.wins, losses: r.losses })),
+            outcomes,
+          });
+          if (!plan.ok) {
+            logger.error(`되돌리기: 레이팅 불일치 result=${approved.id} users=${plan.userIds.join(',')}`);
+            throw revertNotAllowed('rating_mismatch');
+          }
+          for (const u of plan.updates) {
+            const row = ratings.find((r) => r.userId === u.userId);
+            if (!row) throw new AppError('INTERNAL_ERROR', undefined, { message: 'ratings 행 없음' });
+            await tx.rating.update({ where: { id: row.id }, data: { elo: u.elo, wins: u.wins, losses: u.losses } });
+          }
+          const del = await tx.ratingHistory.deleteMany({ where: { scrimResultId: approved.id } });
+          if (del.count !== history.length) {
+            logger.error(`되돌리기: 이력 삭제 수 불일치 result=${approved.id} ${del.count}/${history.length}`);
+            throw new AppError('INTERNAL_ERROR');
+          }
+          for (const h of history) {
+            snapshot.push({
+              user_id: h.userId,
+              elo_before: h.eloBefore,
+              elo_after: h.eloAfter,
+              k_factor: h.kFactor,
+              outcome: outcomes.get(h.userId) ?? 'loss',
+            });
+          }
+        }
+
+        // 8b. 결과 approved → reverted(조건부 1행)
+        assertResultTransition('approved', 'reverted');
+        const r = await tx.scrimResult.updateMany({
+          where: { id: approved.id, status: 'approved' },
+          data: { status: 'reverted', revertedById: admin.id, revertedAt: now, revertReason: body.reason },
+        });
+        if (r.count !== 1) throw new AppError('SCRIM_RESULT_NOT_APPROVED');
+
+        // 8c. 내전 finished → playing(started_at 그대로)
+        assertScrimTransition(s.status, 'playing');
+        const scrim = await tx.scrim.update({ where: { id: s.id }, data: { status: 'playing' } });
+
+        // 8d. 감사(D281: 이의 제기 기능 없음)
+        await writeAudit(tx, {
+          actorId: admin.id,
+          action: 'result.revert',
+          targetId: approved.id,
+          summary: `내전 ${auditQuote(scrim.title)} 결과 승인 되돌리기`,
+          details: { scrim_id: s.id, reason: body.reason, season_id: seasonId, history: snapshot },
+          at: now,
+        });
+        return now;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
+    );
     return this.views.detail(id, admin, now);
   }
 }

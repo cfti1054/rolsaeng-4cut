@@ -5,11 +5,14 @@ import { ErrorFilter } from './common/filters/error.filter';
 import { ConfigModule } from './config/config.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { JobsModule } from './jobs/jobs.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BotModule } from './modules/bot/bot.module';
+import { CalendarModule } from './modules/calendar/calendar.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { GameAccountsModule } from './modules/game-accounts/game-accounts.module';
 import { GamesModule } from './modules/games/games.module';
+import { NewsModule } from './modules/news/news.module';
 import { ProfileModule } from './modules/profile/profile.module';
 import { RankingJobsModule } from './modules/rankings/ranking-jobs.module';
 import { RankingsModule } from './modules/rankings/rankings.module';
@@ -40,6 +43,9 @@ import { PrismaModule } from './prisma/prisma.module';
     RankingsModule,
     DashboardModule,
     BotModule,
+    NewsModule,
+    CalendarModule,
+    AdminModule,
     RankingJobsModule.forRoot(),
   ],
   providers: [{ provide: APP_FILTER, useClass: ErrorFilter }],
