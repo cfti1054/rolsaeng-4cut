@@ -806,7 +806,7 @@ architect(완료)
 
 1. 14-1 `result-review.ts` 4개, 14-2 `season.ts` 4개, 14-3 `admin.ts` 2개, 14-4 `previewNoShowRestriction`, 14-5 `news.ts` 3개. `index.ts` export.
 2. 14-6 테스트 필수 전부(특히 inferRevertOutcomes 왕복 테스트).
-3. dist 재빌드. 보고서 `_workspace/02_domain-logic-dev_report.md`.
+3. dist 재빌드. 보고서 `_workspace/S6/02_domain-logic-dev_report.md`.
 
 ### backend (backend-dev) — `apps/api/src/**`, `apps/api/test/**`
 
@@ -824,14 +824,14 @@ architect(완료)
 - API 키: 발급 원문 형식·해시 저장·원문 미저장·감사에 원문 없음, 발급 키로 봇 엔드포인트 통과, 폐기 후 401, 폐기 멱등.
 - 시즌: 생성·수정·삭제 11-1 표 전부, 겹침, lead, 감사, 자동 시즌 생성과 같은 잠금(advisory 호출 기록).
 - **DB 필요(작성만)** `test/db/admin.db.e2e.spec.ts`: 되돌리기 동시 승인 경합(같은 사용자 다른 내전), 시즌 FOR NO KEY UPDATE vs 승인 FOR SHARE, `@db.Date` 왕복, ILIKE 이스케이프, `ALTER TYPE ADD VALUE` 후 reverted 저장.
-- 보고서 `_workspace/02_backend-dev_s6.md`.
+- 보고서 `_workspace/S6/02_backend-dev_s6.md`.
 
 ### frontend (frontend-dev) — `apps/web/**`
 
 1. 13절 화면: `/admin`(탭 6개), `/news`, 홈 카드·공지 줄, 설정 알림, 상세 되돌리기·되돌림 표시, 사이드바·모바일, `routes.news`·`routes.admin(tab)`.
 2. 훅·`lib/api/*`, 목 백엔드(13절 「훅·목」), architect 임시값 교체.
 3. 테스트: 목 되돌리기 규칙(이후 경기 있으면 비활성), 막는 이유 문구 5종, 노쇼 저장(바뀐 행만 호출·첫 실패 멈춤), API 키 원문 대화상자 1회, 시즌 폼 editable 잠금, 캘린더 월 격자(KST, 여러 날 이벤트), 외부 링크 rel, 비운영진 `/admin` FORBIDDEN·STAFF 미렌더.
-4. 보고서 `_workspace/02_frontend-dev_s6.md`(목업 없는 화면 목록 포함).
+4. 보고서 `_workspace/S6/02_frontend-dev_s6.md`(목업 없는 화면 목록 포함).
 
 ### qa (qa-verifier)
 
@@ -1228,7 +1228,7 @@ architect(완료: shared calendar.ts·paths·계약 테스트·dist)
 | `src/calendar.ts`(새) | `calendarMonthRange`, `resolveCalendarMonth`(14-7). 날짜 계산은 `news.ts`의 `parseIsoDate`·`addIsoDays` 방식(필요하면 news.ts에서 export하지 말고 같은 방식으로 작성), KST 오프셋은 core `config.ts`의 `KST_OFFSET_MS`(정정 2026-11-01 (4)) |
 | `src/calendar.test.ts`(새) | 14-7 테스트 필수 전부 |
 | `src/index.ts:145` 다음 | `export { calendarMonthRange, resolveCalendarMonth } from './calendar';`, 머리 주석 S6 줄에 「커뮤니티 캘린더 구간(calendar.ts)」 |
-| dist | 재빌드. 보고서 `_workspace/02_domain-logic-dev_report.md`에 절 추가 |
+| dist | 재빌드. 보고서 `_workspace/S6/02_domain-logic-dev_report.md`에 절 추가 |
 
 #### backend (backend-dev) — `apps/api/**`
 
@@ -1395,7 +1395,7 @@ architect(완료: schema·마이그레이션·shared·계약 테스트·dist, 1�
 | `src/calendar.ts` 끝(기존 2함수 불변) | `compareEventSchedule`, `eventStartsAt`, `upcomingWindow`, `mergeUpcomingItems`(14-7 추가 시그니처). KST 오프셋은 core `config.ts`의 `KST_OFFSET_MS`(정정 2026-11-01 (4): ~~`time.ts` 상수~~ — `time.ts`도 config에서 import한다), 날짜 더하기는 같은 파일의 기존 방식 |
 | `src/calendar.test.ts` | 14-7 추가 테스트 필수 전부 |
 | `src/index.ts:146` | export 4개 추가 |
-| dist | 재빌드, 보고서 `_workspace/02_domain-logic-dev_report.md`에 절 추가 |
+| dist | 재빌드, 보고서 `_workspace/S6/02_domain-logic-dev_report.md`에 절 추가 |
 
 ##### backend (backend-dev) — `apps/api/**`
 

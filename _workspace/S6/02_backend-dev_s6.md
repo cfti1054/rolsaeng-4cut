@@ -1,6 +1,6 @@
 # backend-dev S6 보고서 — 관리자 도구·되돌리기·이의 제기·시즌·공지/패치/이벤트·봇 전송·API 키·감사 로그
 
-작성 2026-11-01. 계약 `_workspace/01_architect_contract.md`(S6) 전체. 커밋하지 않았다.
+작성 2026-11-01. 계약 `_workspace/S6/01_architect_contract.md`(S6) 전체. 커밋하지 않았다.
 사용 가능 도구: Read, Bash, Write, Edit, SubagentHandback.
 
 ## 실행 결과 (Node 24.22.2, 저장소 설정 그대로)
@@ -60,7 +60,7 @@
 
 ## 수정 이력
 
-### QA 수정 (2026-11-01, `_workspace/03_qa-verifier_s6_backend.md` minor 3건)
+### QA 수정 (2026-11-01, `_workspace/S6/03_qa-verifier_s6_backend.md` minor 3건)
 
 1. **시즌 쓰기 트랜잭션 timeout·maxWait 명시** — `src/modules/admin/admin-seasons.service.ts`에 `SEASON_WRITE_TX_OPTIONS`(timeout = `SCRIM_TX_TIMEOUT_MS` × 2 = 30초, maxWait = `SCRIM_TX_MAX_WAIT_MS` 5초, READ COMMITTED)를 한 곳에 정의하고 생성·수정·삭제 3곳에서 쓴다. 대상 행 FOR NO KEY UPDATE가 승인·되돌리기의 시즌 FOR SHARE(상한 15초)를 기다려도 먼저 끝나지 않는다. 테스트: `admin-keys-seasons.e2e.spec.ts` 「쓰기 트랜잭션 3종 모두 timeout·maxWait 명시」($transaction 옵션 기록)
 2. **이의 제기 open → resolved 전이 검사** — `scrim-results.service.ts`에 `assertDisputeTransition`(shared `DISPUTE_STATUS_TRANSITIONS` + `canTransition`, 실패 시 로그 + INTERNAL_ERROR, 내전·결과 전이와 같은 방식)을 추가했다. 반려·되돌리기 자동 처리(`autoResolveDisputes`)와 운영진 처리(`admin-review.service.ts#resolve`)가 update 전에 부른다. 테스트: `scrim-disputes.e2e.spec.ts` 「이의 제기 상태 전이 검사」(허용 1, 거부 3)
@@ -162,7 +162,7 @@ shared 변경 없음(dist 재빌드 불필요). 재실행: `corepack pnpm --filt
 
 ## QA 수정(일정 시각)
 
-QA `_workspace/03_qa-verifier_s6_calendar_backend.md` minor 2건만 고쳤다.
+QA `_workspace/S6/03_qa-verifier_s6_calendar_backend.md` minor 2건만 고쳤다.
 
 1. **minor 1 — `updateEvent` 동시 PATCH 경합** (`apps/api/src/modules/news/news.service.ts` `updateEvent`)
    - 무조건 `update`하던 것을 조건부 `updateMany`로 바꿨다. where에 읽은 일정 값 4개(`startsOn`·`endsOn`·`startTime`·`endTime`)를 건다. 공지·패치노트의 조건부 `updateMany` 관례와 같은 방식이다.

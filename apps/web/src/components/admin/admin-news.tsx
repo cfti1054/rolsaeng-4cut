@@ -310,7 +310,8 @@ function PatchNotesCard({ onToast }: { onToast: ToastFn }) {
 }
 
 function PatchForm({ editing, today, onDone, onToast }: { editing: PatchNoteView | null; today: string; onDone: () => void; onToast: ToastFn }) {
-  const games = useGameOptions();
+  // 패치노트 게임은 롤·롤체만. 이미 스팀으로 올라간 글을 고칠 때만 스팀을 남긴다.
+  const games = useGameOptions().filter((g) => g.code !== 'steam' || editing?.game.code === 'steam');
   const [game, setGame] = useState<GameCode | ''>(editing?.game.code ?? '');
   const [version, setVersion] = useState(editing?.version ?? '');
   const [title, setTitle] = useState(editing?.title ?? '');

@@ -1,6 +1,6 @@
 # frontend-dev S6 보고서 — 관리자 도구·정보·되돌리기·이의 제기·알림 설정
 
-계약: `_workspace/01_architect_contract.md`(S6) 13절·18절 frontend. 목 모드에서 전부 동작합니다. 실제 API와는 연결해 보지 않았습니다(backend 진행 중).
+계약: `_workspace/S6/01_architect_contract.md`(S6) 13절·18절 frontend. 목 모드에서 전부 동작합니다. 실제 API와는 연결해 보지 않았습니다(backend 진행 중).
 
 ## 검증 (Node 24, apps/web/.next 지운 뒤)
 - `corepack pnpm --filter web typecheck`: 통과
@@ -73,7 +73,7 @@
 - `lib/api/mock/admin.ts`(새 파일)
 - `mock/scrims.ts`(시드·라우팅·viewer), `mock/ratings.ts`, `mock/rankings.ts`, `mock/backend.ts`(시나리오·demoted)
 
-## QA 수정 (`_workspace/03_qa-verifier_s6_web.md` minor 8건, 2026-11-01)
+## QA 수정 (`_workspace/S6/03_qa-verifier_s6_web.md` minor 8건, 2026-11-01)
 | # | 수정 | 위치 |
 | --- | --- | --- |
 | 1 | B안: `revertErrorText(code, blocked)` — `SCRIM_RESULT_REVERT_NOT_ALLOWED`면 오류 뒤 다시 읽은 `revert_blocked_reason` 이유 문구, 없으면 rating_mismatch 문구. 큐는 행의 `r.revert_blocked_reason`, 상세는 `viewer.revert_blocked_reason`을 넘긴다(API 변경 없음). 테스트 추가 | `lib/admin.ts`, `admin-results.tsx`, `scrim-result.tsx`, `lib/admin.test.ts` |
@@ -212,7 +212,7 @@
 7. `EventForm` 오류 문구는 shared 메시지를 그대로 보여 준다(「종료 시각은 시작 시각 이후」·「종료 시각은 시작 시각이 있을 때만」). 화면용 문장(「…이후여야 해요」)으로 바꾸려면 shared 메시지나 웹 매핑 중 어디서 할지 정해야 한다. 종료 시각 칸 힌트(「시작 시각 이후」/「종료일의 시각」/「시작 시각을 먼저 정해 주세요」)는 계약에 없어 새로 넣었다.
 8. 2단계(D305) 대비: 웹은 `upcoming`이 없으면 빈 목록으로 그린다(`upcomingRows(undefined) → []`, 해당 테스트 1개). 2단계에서 optional이 빠지면 `upcomingRows` 인자 타입, `admin.test.ts` 「1단계」 단언, `admin-results.tsx` 주석 1줄을 정리하면 된다. `lib/news.ts` `EventSchedule`의 optional 시각 필드는 홈 news 등 다른 타입과도 맞추려고 남겨도 문제없다.
 
-## QA 수정(캘린더) — `_workspace/03_qa-verifier_s6_calendar_web.md` minor 4건
+## QA 수정(캘린더) — `_workspace/S6/03_qa-verifier_s6_calendar_web.md` minor 4건
 
 1. **내전 행 링크 이름의 반복**(`lib/admin.ts` `upcomingRows`): 제목(뒤 공백 제거)이 칩 문구로 끝나면 칩을 생략한다. 예: 「화요일 저녁 5:5 내전」 → 「… 5:5 내전 상세」, 「금요 5:5」 → 「… 금요 5:5 내전 상세」. 칩과 다른 단어로 끝나면 그대로 붙인다(「스팀 내전」 + 모집 → 「스팀 내전 모집 상세」). 위 「일정 시각 — 계약 모호·충돌」 4번은 이것으로 해소됐다. 테스트 1개(5가지 경우).
 2. **시각 오류 문구 해요체**(`lib/admin.ts` `eventScheduleIssueText`, `admin-news.tsx` `EventForm`의 시작 시각·종료 시각·하단 오류 3곳): shared 이슈에는 code가 없어 `path + shared 메시지`로 구분해 매핑한다. 모르는 이슈는 shared 메시지로 폴백한다.

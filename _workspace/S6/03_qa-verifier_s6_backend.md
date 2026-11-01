@@ -1,6 +1,6 @@
 # QA: s6_backend (apps/api S6) — 판정: pass
 
-대상: `_workspace/02_backend-dev_s6.md`의 구현 전체(엔드포인트 35개, JwtGuard D263, 되돌리기, 이의 제기, 시즌, 공지·패치·이벤트, 봇 전송, API 키, 감사, 마이그레이션). 기준: 계약 `_workspace/01_architect_contract.md`(S6) 2·4·5·6·7·8·10·11·12·16절, D241–D280, core QA `_workspace/03_qa-verifier_s6_core.md`.
+대상: `_workspace/S6/02_backend-dev_s6.md`의 구현 전체(엔드포인트 35개, JwtGuard D263, 되돌리기, 이의 제기, 시즌, 공지·패치·이벤트, 봇 전송, API 키, 감사, 마이그레이션). 기준: 계약 `_workspace/S6/01_architect_contract.md`(S6) 2·4·5·6·7·8·10·11·12·16절, D241–D280, core QA `_workspace/S6/03_qa-verifier_s6_core.md`.
 사용한 도구: Read, Bash, Write(이 보고서), SubagentHandback. 코드는 수정하지 않았다. 프로브는 scratchpad에만 두었다.
 
 blocker·major는 없다. minor 3건은 운영 영향이 작다. DB가 있어야 확인되는 항목(행 잠금 경합, 실제 SQL 실행)은 아래 「미확인」에 따로 적었다. 이 항목들은 fail이 아니라 미실행이다.

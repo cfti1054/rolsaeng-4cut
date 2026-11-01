@@ -1,6 +1,6 @@
 # QA: s6_core (packages/core S6) — 판정: pass
 
-대상: `packages/core/src/{result-review,season,admin,no-show,news,index}.ts`와 테스트(`result-review.test.ts`, `season-admin.test.ts`, `admin-news.test.ts`). 기준: 계약 `_workspace/01_architect_contract.md` 14절(시그니처·규칙·14-6 테스트 필수) + 6·7·8·11·12절 규칙.
+대상: `packages/core/src/{result-review,season,admin,no-show,news,index}.ts`와 테스트(`result-review.test.ts`, `season-admin.test.ts`, `admin-news.test.ts`). 기준: 계약 `_workspace/S6/01_architect_contract.md` 14절(시그니처·규칙·14-6 테스트 필수) + 6·7·8·11·12절 규칙.
 
 사용한 도구: Read, Bash, Write(이 보고서), SubagentHandback. 코드는 수정하지 않았다. 프로브 테스트는 scratchpad에만 두었다.
 

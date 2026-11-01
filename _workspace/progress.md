@@ -322,7 +322,7 @@
 
 ## S6 관리자 도구, 패치노트·이벤트 — 2026-11-01 — 판정: pass (DB e2e·실서버·실제 디스코드 미확인)
 
-**구현(계약 D241–D280, `_workspace/01_architect_contract.md`):** 
+**구현(계약 D241–D280, `_workspace/S6/01_architect_contract.md`):** 
 - 엔드포인트 35개(멤버 6·운영진 25·봇 4), 오류 코드 11개 추가(전체 57), 봇 scope `bot:notices`·`bot:patch-notes`. 마이그레이션 `20261031230000_s6`: `scrim_results.reverted_by·reverted_at·revert_reason`, 결과 상태 `reverted`, 새 표 `patch_notes`·`events`(모델 `CalendarEvent`)·`admin_audit_logs`. 
 - 승인 되돌리기(D242–D248): 승인 후 7일 안, 제출자 아님(승인자 본인은 가능), 시즌 `closed_at` 비어 있음, 참가자 전원에게 이 결과가 같은 게임의 마지막 이력, 현재 ratings가 이력과 일치할 때만. 잠금 순서는 승인과 같다(내전→사용자→시즌 FOR SHARE). 이후 경기 재계산(replay)과 종료 처리된 시즌은 제외 확정. 결과 `approved→reverted`, 내전 `finished→playing`, 열린 이의 제기 자동 처리, 감사 로그에 삭제 이력 스냅샷. 
 - 이의 제기: 참가자(방장·확정·노쇼), 승인 대기 중 언제든·승인 뒤 3일. 
@@ -334,7 +334,7 @@
 
 **리더 직접 실행(Node 24, 저장소 vitest 설정 그대로):** `-r typecheck` 4개 Done / shared 160·core 509·web 344·api 644 passed / 52 skipped(DB e2e) / `-r build` 4개 Done / `pnpm audit` 취약점 0.
 
-**QA:** core pass(0) → backend pass(minor 3) → web pass(minor 8). 보고서 `_workspace/03_qa-verifier_s6_{core,backend,web}.md`. core 검증은 독립 프로브 32개(되돌리기 왕복: 팀·개인·노쇼·동순위·K 판정 경계, KST 경계).
+**QA:** core pass(0) → backend pass(minor 3) → web pass(minor 8). 보고서 `_workspace/S6/03_qa-verifier_s6_{core,backend,web}.md`. core 검증은 독립 프로브 32개(되돌리기 왕복: 팀·개인·노쇼·동순위·K 판정 경계, KST 경계).
 
 **결함 처리:** backend minor 3건(시즌 쓰기 트랜잭션 timeout 명시, 이의 제기 전이 검사, PATCH `updated_at` APP_CLOCK), web minor 8건(되돌리기 오류 문구 B안, 상세 되돌리기 403 시 `['me']` 재조회와 네트워크 오류 문구, 관리 탭 이벤트 구간 이동, 조사 오류, 홈 이벤트 링크 month, API 키 원문 reset, 안 쓰는 훅 정리와 이벤트 페이지 이어 받기)을 구현자가 수정. 수정 뒤 QA 재검증은 하지 않고 리더가 테스트·빌드로 확인. 계약 11-2(시즌 lead)와 13절(`/news?tab=`) 문구를 구현에 맞춤.
 
@@ -363,7 +363,7 @@
 
 **리더 직접 실행(Node 24, 저장소 vitest 설정 그대로):** `-r typecheck` 4개 Done / shared 195·core 542·web 383·api 664 passed / 52 skipped(DB e2e) / `-r build` 4개 Done / `pnpm audit` 취약점 0.
 
-**QA:** backend pass(minor 2), web pass(minor 4). 보고서 `_workspace/03_qa-verifier_s6_calendar_{backend,web}.md`. 독립 프로브: events2 커서 무작위 60행 누락·중복 없음, 다른 목록 커서 null 거부, 목 응답의 shared 스키마 parse 8개.
+**QA:** backend pass(minor 2), web pass(minor 4). 보고서 `_workspace/S6/03_qa-verifier_s6_calendar_{backend,web}.md`. 독립 프로브: events2 커서 무작위 60행 누락·중복 없음, 다른 목록 커서 null 거부, 목 응답의 shared 스키마 parse 8개.
 
 **결함 처리:** backend minor 2건(이벤트 PATCH 동시 수정: 조건부 `updateMany`+재검사, 3회 실패 시 500; 커서 날짜를 `IsoDate`로 검증), web minor 4건(내전 링크 이름 반복, 시각 오류 문구 해요체 매핑, 이의 제기 주석, 노쇼 저장 뒤 캘린더 무효화)을 구현자가 수정. 2단계 필수 전환과 계약 정리(D311–D315)는 architect. 수정 뒤 QA 재검증은 하지 않고 리더가 테스트·빌드로 확인.
 

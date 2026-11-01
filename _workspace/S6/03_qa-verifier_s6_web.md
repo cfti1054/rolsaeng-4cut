@@ -1,6 +1,6 @@
 # QA: S6 web (관리자·정보·되돌리기·이의 제기·알림 설정) — 판정: pass
 
-작성 2026-11-01. 대상: `_workspace/02_frontend-dev_s6.md`. 대조: 계약 `_workspace/01_architect_contract.md` 4·5·13절·D241–D280, `_workspace/02_backend-dev_s6.md`, 목업 `Admin.dc.html`. 코드 수정 없음(프로브는 scratchpad).
+작성 2026-11-01. 대상: `_workspace/S6/02_frontend-dev_s6.md`. 대조: 계약 `_workspace/S6/01_architect_contract.md` 4·5·13절·D241–D280, `_workspace/S6/02_backend-dev_s6.md`, 목업 `Admin.dc.html`. 코드 수정 없음(프로브는 scratchpad).
 사용한 도구: Read, Bash, Write(이 보고서), SubagentHandback.
 
 blocker 0, major 0, minor 8. 계약 변경 제안 2건(아래 「결정이 필요한 것」 1·3).
