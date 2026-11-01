@@ -3,13 +3,13 @@ import { IsoDateTime, Uuid } from './common/primitives';
 import { UserRole } from './constants/enums';
 
 /**
- * 닉네임 규칙(사용자 결정 2026-10-28, 목업 Login 「닉네임 2–12자」):
+ * 닉네임 규칙(사용자 결정 2026-11-02, 로그인 닉네임 2–50자):
  * 1. 정규화: 앞뒤 공백 제거, 연속 공백(탭·줄바꿈 포함)은 공백 1개로 바꾼다(거부하지 않음).
- * 2. 정규화한 값이 2–12자, 한글(완성형)·영문·숫자·밑줄·공백만.
+ * 2. 정규화한 값이 2–50자, 한글(완성형)·영문·숫자·밑줄·공백만.
  * 3. 중복 검사는 정규화한 값으로 한다. DB에는 정규화한 값만 저장하므로 nickname UNIQUE가 곧 중복 검사다.
  */
 export const NICKNAME_MIN_LENGTH = 2;
-export const NICKNAME_MAX_LENGTH = 12;
+export const NICKNAME_MAX_LENGTH = 50;
 export const NICKNAME_PATTERN = /^[0-9A-Za-z가-힣_ ]+$/;
 
 /** 닉네임 정규화(앞뒤 공백 제거 + 연속 공백을 1개로). 서버의 기본 닉네임 생성도 이 함수를 쓴다. */

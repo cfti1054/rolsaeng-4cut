@@ -43,17 +43,17 @@ describe('pagination', () => {
 });
 
 describe('nickname', () => {
-  it('2–12자 한글·영문·숫자·밑줄·공백, 앞뒤 공백 제거·연속 공백 1개로 정규화', () => {
+  it('2–50자 한글·영문·숫자·밑줄·공백, 앞뒤 공백 제거·연속 공백 1개로 정규화', () => {
     expect(Nickname.parse('  새벽감자 ')).toBe('새벽감자');
     expect(Nickname.parse('mid_01')).toBe('mid_01');
     expect(Nickname.parse('새벽 감자')).toBe('새벽 감자');
     expect(Nickname.parse('새벽   감자')).toBe('새벽 감자');
     expect(Nickname.parse('새벽\t감자')).toBe('새벽 감자');
     expect(normalizeNickname('  a   b  ')).toBe('a b');
-    expect(Nickname.parse('열두글자열두글자열두글자')).toHaveLength(12);
+    expect(Nickname.parse('가'.repeat(50))).toHaveLength(50);
     expect(() => Nickname.parse('a')).toThrow();
     expect(() => Nickname.parse(' a   ')).toThrow();
-    expect(() => Nickname.parse('열세글자열세글자열세글자열')).toThrow();
+    expect(() => Nickname.parse('가'.repeat(51))).toThrow();
     expect(() => Nickname.parse('ㅋㅋ')).toThrow();
     expect(() => Nickname.parse('감자!')).toThrow();
   });

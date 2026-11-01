@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { checkNickname } from './nickname';
 
 describe('checkNickname (계약 5-7, D6)', () => {
-  it('한글·영문·숫자·밑줄 2–12자 통과', () => {
+  it('한글·영문·숫자·밑줄 2–50자 통과', () => {
     expect(checkNickname('새벽감자')).toEqual({ ok: true, value: '새벽감자', normalized: false });
     expect(checkNickname('Mid_King99')).toMatchObject({ ok: true, value: 'Mid_King99' });
     expect(checkNickname('가나')).toMatchObject({ ok: true });
-    expect(checkNickname('가'.repeat(12))).toMatchObject({ ok: true });
+    expect(checkNickname('가'.repeat(50))).toMatchObject({ ok: true });
   });
 
   it('공백 허용: 앞뒤 공백 제거, 연속 공백(탭·줄바꿈 포함)은 1개로 정규화', () => {
@@ -25,9 +25,9 @@ describe('checkNickname (계약 5-7, D6)', () => {
     expect(checkNickname('')).toMatchObject({ ok: false, message: '닉네임을 입력해 주세요.' });
     expect(checkNickname('   ')).toMatchObject({ ok: false, message: '닉네임을 입력해 주세요.' });
     expect(checkNickname('a')).toMatchObject({ ok: false, length: 1 });
-    expect(checkNickname('가'.repeat(13))).toMatchObject({ ok: false, length: 13 });
-    const long = checkNickname('가'.repeat(13));
-    expect(!long.ok && long.message).toContain('12자 이하');
+    expect(checkNickname('가'.repeat(51))).toMatchObject({ ok: false, length: 51 });
+    const long = checkNickname('가'.repeat(51));
+    expect(!long.ok && long.message).toContain('50자 이하');
   });
 
   it('허용하지 않는 문자', () => {

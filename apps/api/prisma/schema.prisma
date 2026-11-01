@@ -131,7 +131,7 @@ model User {
   id                     String    @id @default(uuid()) @db.Uuid
   /// 디스코드가 준 이메일(인증된 경우만). 선택 정보
   email                  String?
-  /// 커뮤니티 닉네임. 정규화(앞뒤 공백 제거·연속 공백 1개) 후 2–12자, 전역 유일(대소문자 구분)
+  /// 커뮤니티 닉네임. 정규화(앞뒤 공백 제거·연속 공백 1개) 후 2–50자, 전역 유일(대소문자 구분)
   nickname               String    @unique
   role                   UserRole  @default(member)
   /// 로그인 식별자. 디스코드 snowflake, 개발 전용 로그인은 'dev-{username}'
