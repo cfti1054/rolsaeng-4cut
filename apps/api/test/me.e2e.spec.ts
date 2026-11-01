@@ -143,7 +143,7 @@ describe('PATCH /me', () => {
 
   it.each([
     [{ nickname: 'a' }],
-    [{ nickname: 'abcdefghijklm' }],
+    [{ nickname: 'a'.repeat(51) }],
     [{ nickname: '닉네임!' }],
     [{ nickname: '   ' }],
     [{ nickname: 'ok_name', role: 'admin' }],

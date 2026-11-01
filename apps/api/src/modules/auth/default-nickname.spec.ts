@@ -17,15 +17,15 @@ function assertValid(n: string) {
 describe('sanitizeNicknameCandidate', () => {
   it.each([
     ['서버닉', '서버닉'],
-    ['  Kim  the   Gamer  ', 'Kim the Gamer'.slice(0, 12).trim()],
+    ['  Kim  the   Gamer  ', 'Kim the Gamer'],
     ['★별★빛★', '별빛'],
     ['a', null],
     ['!!', null],
     ['', null],
     [null, null],
-    ['abcdefghijklmnopq', 'abcdefghijkl'],
-    // 12자에서 잘린 끝 공백은 제거
-    ['abcdefghijk lmn', 'abcdefghijk'],
+    ['a'.repeat(60), 'a'.repeat(50)],
+    // 50자에서 잘린 끝 공백은 제거
+    ['a'.repeat(49) + ' ' + 'b'.repeat(10), 'a'.repeat(49)],
     ['탭\t\n줄바꿈', '탭 줄바꿈'],
     ['ㄱㄴㄷ자모', '자모'], // 완성형만
   ])('%j → %j', (input, expected) => {
@@ -54,9 +54,9 @@ describe('deriveDefaultNickname', () => {
     expect(await deriveDefaultNickname({ candidates: ['서버닉'], fallback: 'x', isTaken: takenSet(taken) })).toBe('서버닉3');
   });
 
-  it('긴 이름은 앞 10자를 trimEnd 하고 숫자를 붙여 12자 이하', async () => {
-    const base = 'abcdefghi jkl'; // 정규화 후 12자로 자르면 'abcdefghi jk'
-    const taken = new Set(['abcdefghi jk']);
+  it('긴 이름이 겹치면 앞 10자를 trimEnd 하고 숫자를 붙인다', async () => {
+    const base = 'abcdefghi jkl';
+    const taken = new Set(['abcdefghi jkl']);
     const out = await deriveDefaultNickname({ candidates: [base], fallback: 'x', isTaken: takenSet(taken) });
     expect(out).toBe('abcdefghi2'); // 앞 10자 'abcdefghi ' → trimEnd → 'abcdefghi' + '2'
     assertValid(out);

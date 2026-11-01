@@ -2,7 +2,7 @@ import { NICKNAME_MAX_LENGTH, NICKNAME_MIN_LENGTH, Nickname, normalizeNickname }
 
 /**
  * 닉네임 입력 검증(계약 5-7, D6). 서버와 같은 shared `Nickname` 스키마를 쓴다.
- * 규칙: 앞뒤 공백 제거·연속 공백 1개로 정규화(거부하지 않음) → 2–12자 → 한글 완성형·영문·숫자·밑줄·공백만.
+ * 규칙: 앞뒤 공백 제거·연속 공백 1개로 정규화(거부하지 않음) → 2–50자 → 한글 완성형·영문·숫자·밑줄·공백만.
  */
 export type NicknameCheck =
   | { ok: true; value: string; normalized: boolean }

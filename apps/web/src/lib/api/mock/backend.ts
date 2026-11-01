@@ -5,6 +5,7 @@ import {
   DevLoginRequest,
   ERROR_HTTP_STATUS,
   Me,
+  NICKNAME_MAX_LENGTH,
   UpdateMeRequest,
   normalizeNickname,
   type ErrorBody,
@@ -156,7 +157,7 @@ export function createMockBackend(opts: MockBackendOptions): { fetch: FetchLike;
       const discordId = `dev-${parsed.data.username}`;
       let user = db.user?.discord_id === discordId ? db.user : null;
       if (!user) {
-        user = newUser({ username: parsed.data.username, nickname: parsed.data.username.slice(0, 12), discordId });
+        user = newUser({ username: parsed.data.username, nickname: parsed.data.username.slice(0, NICKNAME_MAX_LENGTH), discordId });
       }
       if (parsed.data.role) user = { ...user, role: parsed.data.role };
       // 같은 사용자면 S1 상태(연동 계정)를 유지, 다른 사용자면 비운다
