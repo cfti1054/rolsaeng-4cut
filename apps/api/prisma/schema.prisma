@@ -794,6 +794,56 @@ model BotPresence {
   @@map("bot_presence")
 }
 
+/// 봇 음성 세션. 재시작·재배포 후에도 열린 세션을 잇는다. 봇만 읽고 쓴다(API는 이 표를 보지 않는다).
+/// 열린 세션은 서버·회원당 하나 — 부분 고유 인덱스 bot_voice_sessions_one_open_per_member (closed_at IS NULL).
+/// game은 games.code. 세션 중 마지막으로 알아낸 게임. 모르면 null.
+model BotVoiceSession {
+  id          String    @id @default(uuid()) @db.Uuid
+  guildId     String    @map("guild_id")
+  discordId   String    @map("discord_id")
+  channelId   String    @map("channel_id")
+  startedAt   DateTime  @map("started_at") @db.Timestamptz(3)
+  /// 이 시각까지 음성 채널에 있는 것을 확인했다. 봇이 죽은 뒤 퇴장을 못 보면 세션을 여기까지로 닫는다
+  lastSeenAt  DateTime  @map("last_seen_at") @db.Timestamptz(3)
+  game        String?
+  /// null이면 아직 음성 채널에 있음
+  closedAt    DateTime? @map("closed_at") @db.Timestamptz(3)
+  /// API 전송을 끝낸 시각. 너무 짧아 보낼 이벤트가 없어도 채운다
+  deliveredAt DateTime? @map("delivered_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([guildId, closedAt])
+  @@map("bot_voice_sessions")
+}
+
+/// 개인 DM을 보낸 기록. kind = scrim | patch.
+/// scrim은 scheduled_at이 내전 시작 시각이다. 시작 시각이 바뀌면 다시 알린다(S5 D222).
+/// patch는 시작 시각이 없으므로 scheduled_at을 1970-01-01T00:00:00Z로 둔다(유일 키에 시각이 필요해서).
+model BotDirectMessage {
+  id          String   @id @default(uuid()) @db.Uuid
+  kind        String
+  resourceId  String   @map("resource_id") @db.Uuid
+  scheduledAt DateTime @map("scheduled_at") @db.Timestamptz(3)
+  discordId   String   @map("discord_id")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([kind, resourceId, scheduledAt, discordId], map: "bot_dms_recipient_key")
+  @@map("bot_direct_messages")
+}
+
+/// 공지·패치노트를 디스코드에 올린 기록. API delivered 호출이 실패해도 같은 글을 다시 올리지 않기 위한 표.
+/// kind = notice | patch. resource_id = 공지 또는 패치노트 id.
+model BotOutboundDelivery {
+  id         String   @id @default(uuid()) @db.Uuid
+  kind       String
+  resourceId String   @map("resource_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([kind, resourceId])
+  @@map("bot_outbound_deliveries")
+}
+
 /// 공지(slice.md 결정, 목업 Admin 「공지 작성」)
 /// S6: 운영진 작성·수정·영구 삭제(감사 로그). notify_discord && discord_notified_at null → 봇 GET /bot/notices/pending
 model Notice {

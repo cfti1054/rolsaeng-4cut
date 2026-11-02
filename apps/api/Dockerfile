@@ -25,6 +25,8 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc tsconfig.base.json ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
+# 잠금 파일이 워크스페이스 전체 매니페스트를 보므로, 이 이미지에 안 넣는 패키지도 package.json은 복사한다.
+COPY apps/bot/package.json apps/bot/
 COPY packages/shared/package.json packages/shared/
 COPY packages/core/package.json packages/core/
 # NODE_ENV=production을 이 단계 뒤에 설정한다(앞에 두면 빌드에 필요한 devDependencies가 빠진다)
