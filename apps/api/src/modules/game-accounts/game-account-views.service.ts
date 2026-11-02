@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { buildSyncQuota, kstDayWindow } from '@gcd/core';
 import {
-  GAME_PROVIDER_BY_CODE,
+  gameProvider,
   GameAccountSyncError,
   GameAccountView,
   RANKED_QUEUE_BY_GAME,
@@ -12,6 +12,7 @@ import {
   type SyncQuota,
 } from '@gcd/shared';
 import type { GameAccount, Prisma, RiotLinkVerification } from '@prisma/client';
+import { AppError } from '../../common/app-error';
 import { APP_CONFIG, type AppConfig } from '../../config/env';
 import { DATA_DRAGON, type DataDragon } from '../../integrations/contracts';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -26,8 +27,8 @@ export type AccountRow = GameAccount & { code: GameCode };
  * 계정 목록 정렬(계약 S1 4절): 대표 라이엇(lol, tft) → 부계정(verified_at 오름차순, 같으면 lol 행 id 순, 각 lol, tft) → 스팀.
  */
 export function sortAccountRows(rows: readonly AccountRow[]): AccountRow[] {
-  const riot = rows.filter((r) => GAME_PROVIDER_BY_CODE[r.code] === 'riot');
-  const steam = rows.filter((r) => GAME_PROVIDER_BY_CODE[r.code] === 'steam');
+  const riot = rows.filter((r) => gameProvider(r.code) === 'riot');
+  const steam = rows.filter((r) => gameProvider(r.code) === 'steam');
   const groups = new Map<string, AccountRow[]>();
   for (const r of riot) {
     const g = groups.get(r.externalId) ?? [];
@@ -78,7 +79,7 @@ export class GameAccountViews {
 
   /** 행의 최신 티어 스냅샷(lol 솔로 / tft). 스팀·스냅샷 없음은 null. 형식이 깨진 값도 null */
   async latestRank(row: AccountRow, db: Db = this.prisma): Promise<RankValue | null> {
-    if (row.code === 'steam') return null;
+    if (row.code !== 'lol' && row.code !== 'tft') return null;
     const snap = await db.rankSnapshot.findFirst({
       where: { gameAccountId: row.id, queue: RANKED_QUEUE_BY_GAME[row.code] },
       orderBy: [{ capturedAt: 'desc' }, { createdAt: 'desc' }],
@@ -100,11 +101,13 @@ export class GameAccountViews {
       const count = await db.steamPlaytime.count({ where: { gameAccountId: row.id } });
       ownedCount = count > 0 || row.lastSyncedAt !== null ? count : null;
     }
+    const provider = gameProvider(row.code);
+    if (!provider) throw new AppError('INTERNAL_ERROR', undefined, { message: `연동 계정이 없는 게임: ${row.code}` });
     const errCode = row.lastSyncError === null ? null : GameAccountSyncError.safeParse(row.lastSyncError);
     return GameAccountView.parse({
       id: row.id,
       game: row.code,
-      provider: GAME_PROVIDER_BY_CODE[row.code],
+      provider,
       display_name: row.displayName,
       verified_at: (row.verifiedAt ?? row.createdAt).toISOString(),
       is_primary: row.isPrimary,

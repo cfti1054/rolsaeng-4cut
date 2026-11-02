@@ -249,7 +249,11 @@ export type GetBotRankingParams = z.infer<typeof GetBotRankingParams>;
  */
 export const GetBotRankingQueryByType = {
   tier: z.object({ game: TierRankingGame, limit: BotRankingLimit }),
-  elo: z.object({ game: GameCode, limit: BotRankingLimit }),
+  elo: z
+    .object({ game: GameCode, limit: BotRankingLimit })
+    .superRefine((v, ctx) => {
+      if (v.game === 'other') ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['game'], message: '이 게임은 ELO 랭킹이 없습니다.' });
+    }),
   activity: z.object({ period: ActivityPeriod.default('week'), limit: BotRankingLimit }),
   playtime: z.object({ app_id: z.coerce.number().pipe(SteamAppId), limit: BotRankingLimit }),
 } as const satisfies Record<BotRankingType, z.ZodTypeAny>;

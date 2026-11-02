@@ -78,7 +78,7 @@ describe('S5 활동 표시', () => {
     expect(activityMobileSubText(7, { active_days: 6, scrim_count: 3 })).toBe('7일 중 6일 활동 · 내전 3회');
     expect(activityMobileSubText(7, { active_days: 6, scrim_count: 0 })).toBe('7일 중 6일 활동');
     expect(mainGamesLine({ main_games: [] })).toBe('');
-    expect(mainGamesLine({ main_games: [{ code: 'lol', name: '리그 오브 레전드' }] })).toBe('롤 협곡');
+    expect(mainGamesLine({ main_games: [{ code: 'lol', name: '리그 오브 레전드' }] })).toBe('롤');
   });
   it('시간 「31h 20m」: 분 내림, 두 자리', () => {
     expect(activityTimeText(31 * 3600 + 20 * 60 + 59)).toBe('31h 20m');
@@ -96,7 +96,7 @@ describe('S5 활동 표시', () => {
           { code: 'tft', name: '전략적 팀 전투' },
         ],
       }),
-    ).toBe('롤 협곡 · 롤체');
+    ).toBe('롤 · 롤체');
   });
 });
 

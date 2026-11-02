@@ -1,9 +1,9 @@
-import { GAME_PROVIDER_BY_CODE, GameCode } from '@gcd/shared';
+import { GAME_PROVIDER_BY_CODE, type GameCode, type LinkableGameCode } from '@gcd/shared';
 import { Prisma } from '@prisma/client';
 import { rankableUserSql } from './rankable-users';
 
 /** 스팀 제공자의 games.code(코드 문자열을 SQL에 박지 않는다, 계약 S5 7-2) */
-export const STEAM_GAME_CODE: GameCode = (Object.keys(GAME_PROVIDER_BY_CODE) as GameCode[]).find(
+export const STEAM_GAME_CODE: GameCode = (Object.keys(GAME_PROVIDER_BY_CODE) as LinkableGameCode[]).find(
   (c) => GAME_PROVIDER_BY_CODE[c] === 'steam',
 ) as GameCode;
 

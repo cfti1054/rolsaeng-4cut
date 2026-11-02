@@ -72,6 +72,21 @@ describe('KST 시각', () => {
         'https://example.com/scrims/abc',
       ].join('\n'),
     );
+    expect(
+      scrimShareText(
+        {
+          title: '목요일 칼바람',
+          game: { code: 'lol' },
+          lol_map: 'aram',
+          scheduled_at: '2026-10-29T12:00:00.000Z',
+          capacity: 10,
+          joined_count: 4,
+          status: 'recruiting',
+          join_closed: false,
+        },
+        'https://example.com/scrims/abc',
+      ).split('\n')[0],
+    ).toBe('⚔️ LOL 칼바람 내전');
     const steam = scrimShareText(
       {
         title: '금요일 밤',
@@ -86,6 +101,20 @@ describe('KST 시각', () => {
       'https://example.com/scrims/s',
     );
     expect(steam.split('\n')[0]).toBe('🕹️ 스팀 내전 · Lethal Company');
+    const other = scrimShareText(
+      {
+        title: '저녁에 같이',
+        game: { code: 'other' },
+        custom_game_name: '마인크래프트',
+        scheduled_at: '2026-10-30T13:00:00.000Z',
+        capacity: 8,
+        joined_count: 2,
+        status: 'recruiting',
+        join_closed: false,
+      },
+      'https://example.com/scrims/o',
+    );
+    expect(other.split('\n')[0]).toBe('🎮 기타 모집 · 마인크래프트');
     expect(steam).toContain('📌 정원 마감');
     const tft = scrimShareText(
       {

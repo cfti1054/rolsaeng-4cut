@@ -81,8 +81,14 @@ describe('S2 목: 게임·목록', () => {
     const t = setup();
     await t.ready;
     const res = await t.api.request(ApiPath.games, ListGamesResponse);
-    expect(res.items.map((g) => g.code)).toEqual(['lol', 'tft', 'steam']);
+    expect(res.items.map((g) => g.code)).toEqual(['lol', 'tft', 'steam', 'other']);
     expect(res.items[0]!.capacity).toEqual({ min: 2, max: 10, default: 10, step: 2, start_requires_full: true });
+    expect(res.items[3]).toMatchObject({
+      name: '기타',
+      has_teams: false,
+      has_results: false,
+      capacity: { min: 2, max: 16, default: 8, step: 1, start_requires_full: false },
+    });
     expect(res.next_cursor).toBeNull();
   });
 
@@ -368,6 +374,47 @@ describe('스팀 게임 선택 목(D98)', () => {
     expect(u.steam_app).toEqual({ app_id: 730, name: 'Counter-Strike 2' });
     const seeded = (await t.list('open', { game: 'steam', limit: '100' })).items;
     expect(seeded.every((s) => s.steam_app !== null)).toBe(true);
+  });
+
+  it('기타는 게임 이름이 필수이고 팀 밸런스·ELO는 저장되지 않는다', async () => {
+    const t = setup();
+    await t.ready;
+    const base = { game: 'other' as const, title: '같이 하기', scheduled_at: t.kst(3), capacity: 8 };
+    await expect(t.create(base)).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: [{ path: 'custom_game_name' }] });
+    await expect(t.create({ ...base, game: 'lol', capacity: 10, host_preferred_positions: ['mid'], custom_game_name: '오버워치' })).rejects.toMatchObject({
+      details: [{ path: 'custom_game_name' }],
+    });
+    const d = await t.create({ ...base, custom_game_name: ' 마인크래프트 ' });
+    expect(d.custom_game_name).toBe('마인크래프트');
+    expect(d.options).toMatchObject({ rated: false, auto_balance: false, use_positions: false });
+    const u = await t.api.request(fillPath(ApiPath.scrim, { id: d.id }), UpdateScrimResponse, {
+      method: 'PATCH',
+      body: { custom_game_name: '오버워치' },
+    });
+    expect(u.custom_game_name).toBe('오버워치');
+  });
+
+  it('롤은 협곡이 기본이고 칼바람은 포지션을 저장하지 않는다', async () => {
+    const t = setup();
+    await t.ready;
+    const rift = await t.create({ game: 'lol', title: '협곡 한 판', scheduled_at: t.kst(3), capacity: 10, host_preferred_positions: ['mid'] });
+    expect(rift.lol_map).toBe('rift');
+    expect(rift.options.use_positions).toBe(true);
+    const aram = await t.create({
+      game: 'lol',
+      title: '칼바람 한 판',
+      scheduled_at: t.kst(3),
+      capacity: 10,
+      lol_map: 'aram',
+      use_positions: true,
+      host_preferred_positions: ['mid'],
+    });
+    expect(aram.lol_map).toBe('aram');
+    expect(aram.options.use_positions).toBe(false);
+    expect(aram.players[0]?.preferred_positions).toEqual([]);
+    await expect(t.create({ game: 'tft', title: '롤체', scheduled_at: t.kst(3), capacity: 4, tft_mode: 'normal', lol_map: 'rift' })).rejects.toMatchObject({
+      details: [{ path: 'lol_map' }],
+    });
   });
 });
 

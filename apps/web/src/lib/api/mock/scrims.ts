@@ -24,6 +24,7 @@ import {
   SaveScrimTeamsRequest,
   scrimCapacityRange,
   ScrimTeam,
+  LolMap,
   TftMode,
   SubmitScrimResultRequest,
   type ProfileScrim,
@@ -128,7 +129,11 @@ const MockScrim = z.object({
   use_positions: z.boolean(),
   /** 이 필드 전에 저장된 목 DB도 읽히도록 기본 null */
   steam_app: SteamAppRef.nullable().default(null),
+  /** 이 필드 전에 저장된 목 DB도 읽히도록 기본 null */
+  custom_game_name: z.string().nullable().default(null),
   tft_mode: TftMode.nullable().default(null),
+  /** 이 필드 전에 저장된 목 DB도 읽히도록 기본 null. 롤 시드는 협곡 */
+  lol_map: LolMap.nullable().default(null),
   started_at: IsoDateTime.nullable(),
   cancelled_at: IsoDateTime.nullable(),
   cancel_reason: ScrimCancelReason.nullable(),
@@ -348,11 +353,13 @@ function seed(me: Me, now: number, opts?: MockS2Options): MockS2State {
       id: scrimId,
       status: 'recruiting',
       rules: null,
-      rated: s.game === 'steam' ? false : true,
-      auto_balance: s.game === 'steam' ? false : game.has_teams,
+      rated: s.game === 'steam' || s.game === 'other' ? false : true,
+      auto_balance: s.game === 'steam' || s.game === 'other' ? false : game.has_teams,
       tft_mode: s.game === 'tft' ? 'normal' : null,
-      use_positions: game.has_positions,
+      lol_map: s.game === 'lol' ? (s.lol_map ?? 'rift') : null,
+      use_positions: game.has_positions && (s.game !== 'lol' || (s.lol_map ?? 'rift') !== 'aram'),
       steam_app: game.requires_steam_app ? steamApp(steamPicks[steamPick++ % steamPicks.length]!) : null,
+      custom_game_name: null,
       started_at: null,
       cancelled_at: null,
       cancel_reason: null,
@@ -955,6 +962,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
       waitlist_count: rows.filter((p) => p.status === 'waitlist').length,
       options: { rated: s.rated, auto_balance: s.auto_balance, use_positions: s.use_positions },
       steam_app: s.steam_app,
+      custom_game_name: s.custom_game_name,
       open_positions:
         isOpen(s) && s.use_positions
           ? computeOpenPositions(g.positions, s.capacity, joined.map((p) => p.preferred_positions[0] ?? null))
@@ -965,6 +973,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
       result_status: latestResult(state, s.id)?.status ?? null,
       outcome: outcomeOf(s),
       tft_mode: s.tft_mode,
+      lol_map: s.lol_map,
       can_delete: isAdmin && latestResult(state, s.id)?.status !== 'approved',
     });
   };
@@ -1238,18 +1247,24 @@ export function handleS2(ctx: MockS2Context): Response | null {
     if (!parsed.success) return error('VALIDATION_FAILED', '요청 형식이 올바르지 않습니다.', { details: issues(parsed.error) });
     const b = parsed.data;
     const game = gameOf(b.game);
-    const usePositions = b.use_positions && game.has_positions;
+    const lolMap = b.game === 'lol' ? (b.lol_map ?? 'rift') : null;
+    const usePositions = b.use_positions && game.has_positions && lolMap !== 'aram';
+    const hostPositions = usePositions ? b.host_preferred_positions : [];
     const details: { path: string; message: string }[] = [];
     const si = scheduleIssue(b.scheduled_at);
     if (si) details.push({ path: 'scheduled_at', message: si });
     const tftMode = b.game === 'tft' ? (b.tft_mode ?? null) : null;
     const ci = capacityIssue(game, b.capacity, tftMode);
     if (ci) details.push({ path: 'capacity', message: ci });
-    const pi = validatePositions(b.host_preferred_positions, game.positions, usePositions);
+    if (b.game !== 'lol' && b.lol_map != null) details.push({ path: 'lol_map', message: '이 게임은 맵을 고를 수 없습니다.' });
+    const pi = validatePositions(hostPositions, game.positions, usePositions);
     if (pi) details.push({ path: 'host_preferred_positions', message: pi });
     const appId = b.steam_app_id ?? null;
     if (game.requires_steam_app && appId === null) details.push({ path: 'steam_app_id', message: '스팀 게임을 골라 주세요.' });
     if (!game.requires_steam_app && appId !== null) details.push({ path: 'steam_app_id', message: '이 게임은 스팀 게임을 고를 수 없습니다.' });
+    const customName = b.custom_game_name ?? null;
+    if (b.game === 'other' && !customName) details.push({ path: 'custom_game_name', message: '게임 이름을 입력해 주세요.' });
+    if (b.game !== 'other' && customName) details.push({ path: 'custom_game_name', message: '이 게임은 게임 이름을 따로 적지 않습니다.' });
     if (details.length) return error('VALIDATION_FAILED', '입력값을 확인해 주세요.', { details });
     const r = restrictionOf(me.id);
     if (r.restricted) return banned(r);
@@ -1268,7 +1283,9 @@ export function handleS2(ctx: MockS2Context): Response | null {
       auto_balance: appliedAutoBalance({ game: b.game, hasTeams: game.has_teams, tftMode, requested: b.auto_balance }),
       use_positions: usePositions,
       tft_mode: tftMode,
+      lol_map: lolMap,
       steam_app: app,
+      custom_game_name: b.game === 'other' ? customName : null,
       started_at: null,
       cancelled_at: null,
       cancel_reason: null,
@@ -1281,7 +1298,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
       scrim_id: s.id,
       user_id: me.id,
       status: 'joined',
-      preferred_positions: usePositions ? b.host_preferred_positions : [],
+      preferred_positions: hostPositions,
       joined_at: iso(now),
       no_show_marked_at: null,
       no_show_marked_by: null,
@@ -1686,6 +1703,9 @@ export function handleS2(ctx: MockS2Context): Response | null {
     if (b.steam_app_id !== undefined && !game.requires_steam_app) {
       details.push({ path: 'steam_app_id', message: '이 게임은 스팀 게임을 고를 수 없습니다.' });
     } else if (app === null) details.push(notInStore);
+    if (b.custom_game_name !== undefined && s.game !== 'other') {
+      details.push({ path: 'custom_game_name', message: '이 게임은 게임 이름을 따로 적지 않습니다.' });
+    }
     if (details.length) return error('VALIDATION_FAILED', '입력값을 확인해 주세요.', { details });
     if (b.capacity !== undefined && b.capacity < joinedRows(s.id).length) {
       return error('SCRIM_CAPACITY_BELOW_JOINED', '정원 < 참가 인원');
@@ -1698,6 +1718,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
       s.auto_balance = appliedAutoBalance({ game: s.game, hasTeams: game.has_teams, tftMode: s.tft_mode, requested: b.auto_balance });
     }
     if (app) s.steam_app = app;
+    if (b.custom_game_name !== undefined) s.custom_game_name = b.custom_game_name;
     if (b.capacity !== undefined) {
       const before = joinedSet(s.id);
       s.capacity = b.capacity;

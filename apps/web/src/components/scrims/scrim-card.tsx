@@ -1,6 +1,6 @@
 'use client';
 
-import { steamAppHeaderImageUrl, TFT_MODE_LABEL, type ScrimSummary } from '@gcd/shared';
+import { LOL_MAP_LABEL, steamAppHeaderImageUrl, TFT_MODE_LABEL, type ScrimSummary } from '@gcd/shared';
 import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -27,6 +27,7 @@ const BANNER_WASH = {
   lol: 'from-banner-lol/80',
   tft: 'from-banner-tft/80',
   steam: 'from-banner-steam/80',
+  other: 'from-hero/80',
 } as const;
 
 const ACTION_CLASS = {
@@ -102,12 +103,16 @@ export function ScrimCard({ s, now, preview = false }: { s: ScrimSummary; now: n
             </Link>
           )}
           {s.steam_app && <span className="truncate text-[13px] font-semibold text-orange-ink">{s.steam_app.name}</span>}
+          {s.custom_game_name && <span className="truncate text-[13px] font-semibold text-gold-ink">{s.custom_game_name}</span>}
           <span className="text-[13px] text-muted">
             {day && `${day} · `}방장 {s.host.nickname}
           </span>
         </div>
 
         <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0" aria-label="진행 방식">
+          {s.game.code === 'lol' && (
+            <li className="rounded-lg border border-line-2 bg-surface-2 px-[9px] py-[3px] text-xs text-text-2">{LOL_MAP_LABEL[s.lol_map ?? 'rift']}</li>
+          )}
           {s.tft_mode && (
             <li className="rounded-lg border border-line-2 bg-surface-2 px-[9px] py-[3px] text-xs text-text-2">{TFT_MODE_LABEL[s.tft_mode]}</li>
           )}

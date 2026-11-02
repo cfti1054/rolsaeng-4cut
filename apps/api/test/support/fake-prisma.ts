@@ -178,6 +178,7 @@ export class FakePrisma {
     steamAppId: null,
     steamAppName: null,
     tftMode: null,
+    lolMap: null,
     startedAt: null,
     cancelledAt: null,
     cancelReason: null,

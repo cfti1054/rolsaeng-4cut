@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  LOL_MAP_LABEL,
   Uuid,
   type GameView,
   type ScrimDetail,
@@ -234,6 +235,7 @@ function Hero({ s }: { s: ScrimDetail }) {
         <div className="flex min-w-0 flex-col gap-2.5">
           <div className="flex flex-wrap gap-2">
             <GameTag game={s.game.code} capacity={s.capacity} boxed />
+            {s.game.code === 'lol' && <StatusPill label={LOL_MAP_LABEL[s.lol_map ?? 'rift']} tone="neutral" className="rounded-lg" />}
             <StatusPill label={badge.label} tone={badge.tone} className="rounded-lg" />
             {s.viewer.status === 'joined' && open && <StatusPill label="참가 중" tone="cyan" className="rounded-lg" />}
             {s.viewer.status === 'waitlist' && open && (
@@ -243,6 +245,11 @@ function Hero({ s }: { s: ScrimDetail }) {
           <h1 id="scrim-title" className="m-0 break-words text-[26px] font-bold tracking-[-0.03em] md:text-[30px]">
             {s.title}
           </h1>
+          {s.custom_game_name && (
+            <span className="inline-flex w-fit items-center rounded-2xl border border-line-2 bg-surface px-4 py-2 text-[15px] font-bold text-gold-ink">
+              {s.custom_game_name}
+            </span>
+          )}
           {s.steam_app && (
             <a
               href={steamStoreUrl(s.steam_app.app_id)}

@@ -235,6 +235,7 @@ describe('S3 requests', () => {
   it('GetUserRatingHistoryQuery: game 필수, season은 UUID', () => {
     expect(GetUserRatingHistoryQuery.safeParse({}).success).toBe(false);
     expect(GetUserRatingHistoryQuery.parse({ game: 'lol' })).toEqual({ game: 'lol' });
+    expect(GetUserRatingHistoryQuery.safeParse({ game: 'other' }).success).toBe(false);
     expect(GetUserRatingHistoryQuery.safeParse({ game: 'lol', season: 'current' }).success).toBe(false);
   });
 });

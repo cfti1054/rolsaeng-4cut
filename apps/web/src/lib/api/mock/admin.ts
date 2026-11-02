@@ -651,6 +651,7 @@ export function handleS6(ctx: MockS6Context): Response | null {
       title: c.title,
       game: c.game,
       steam_app: c.steam_app,
+      custom_game_name: c.custom_game_name,
       date: kstDateKey(new Date(c.scheduled_at)),
       scheduled_at: c.scheduled_at,
       status: c.status as CalendarScrimStatus,

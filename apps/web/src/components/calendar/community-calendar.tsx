@@ -457,6 +457,7 @@ function ScrimRow({ s }: { s: CalendarScrimItem }) {
       <span className={cn('min-w-0 flex-[1_1_160px] break-words text-sm', s.my_status ? 'font-bold' : 'font-semibold')}>
         {s.title}
         {s.steam_app && <span className="font-normal text-muted"> · {s.steam_app.name}</span>}
+        {s.custom_game_name && <span className="font-normal text-muted"> · {s.custom_game_name}</span>}
       </span>
       <StatusPill label={badge.label} tone={badge.tone} />
       <span className="font-display text-xs text-muted tabular-nums" aria-label={`참가 ${s.joined_count}명, 정원 ${s.capacity}명`}>

@@ -179,8 +179,13 @@ export class ScrimsService {
     const game = await this.prisma.game.findUnique({ where: { code: body.game } });
     if (!game) throw new AppError('INTERNAL_ERROR', undefined, { message: `games 시드 없음: ${body.game}` });
     // 진행 방식 적용값(D77)
-    const usePositions = body.use_positions && game.hasPositions;
     const tftMode = game.code === 'tft' ? (body.tft_mode ?? null) : null;
+    const lolMap = game.code === 'lol' ? (body.lol_map ?? 'rift') : null;
+    if (game.code !== 'lol' && body.lol_map != null) {
+      throw new AppError('VALIDATION_FAILED', undefined, { details: [{ path: 'lol_map', message: '이 게임은 맵을 고를 수 없습니다.' }] });
+    }
+    const usePositions = body.use_positions && game.hasPositions && lolMap !== 'aram';
+    const hostPositions = usePositions ? body.host_preferred_positions : [];
     if (game.code === 'tft' && tftMode === null) {
       throw new AppError('VALIDATION_FAILED', undefined, { details: [{ path: 'tft_mode', message: '롤체 모드를 골라 주세요.' }] });
     }
@@ -200,13 +205,19 @@ export class ScrimsService {
     if (sd) details.push(sd);
     const cd = this.capacityDetail(body.capacity, game, tftMode);
     if (cd) details.push(cd);
-    const pv = validatePreferredPositions(body.host_preferred_positions, game.positions, usePositions);
+    const pv = validatePreferredPositions(hostPositions, game.positions, usePositions);
     if (!pv.ok) details.push({ path: 'host_preferred_positions', message: pv.message });
     const steamAppId = body.steam_app_id ?? null;
     if (game.requiresSteamApp && steamAppId === null) {
       details.push({ path: 'steam_app_id', message: '스팀 게임을 골라 주세요.' });
     } else if (!game.requiresSteamApp && steamAppId !== null) {
       details.push({ path: 'steam_app_id', message: '이 게임은 스팀 게임을 고를 수 없습니다.' });
+    }
+    const customName = body.custom_game_name ?? null;
+    if (game.code === 'other' && !customName) {
+      details.push({ path: 'custom_game_name', message: '게임 이름을 입력해 주세요.' });
+    } else if (game.code !== 'other' && customName) {
+      details.push({ path: 'custom_game_name', message: '이 게임은 게임 이름을 따로 적지 않습니다.' });
     }
     if (details.length > 0) throw new AppError('VALIDATION_FAILED', undefined, { details });
 
@@ -227,8 +238,10 @@ export class ScrimsService {
           autoBalance,
           usePositions,
           tftMode,
+          lolMap,
           steamAppId: steamApp?.app_id ?? null,
           steamAppName: steamApp?.name ?? null,
+          customGameName: game.code === 'other' ? customName : null,
         },
       });
       // 방장 = 참가자 1번(메인 기본값 4)
@@ -237,7 +250,7 @@ export class ScrimsService {
           scrimId: scrim.id,
           userId: user.id,
           status: 'joined',
-          preferredPositions: body.host_preferred_positions,
+          preferredPositions: hostPositions,
           joinedAt: now,
         },
       });
@@ -294,6 +307,9 @@ export class ScrimsService {
         const cd = this.capacityDetail(body.capacity, game, s.tftMode);
         if (cd) details.push(cd);
       }
+      if (body.custom_game_name !== undefined && game.code !== 'other') {
+        details.push({ path: 'custom_game_name', message: '이 게임은 게임 이름을 따로 적지 않습니다.' });
+      }
       if (details.length > 0) throw new AppError('VALIDATION_FAILED', undefined, { details });
 
       const joinedCount = await countJoined(tx, s.id);
@@ -313,13 +329,14 @@ export class ScrimsService {
             body.auto_balance === undefined
               ? undefined
               : appliedAutoBalance({
-                  game: game.code as 'lol' | 'tft' | 'steam',
+                  game: game.code as 'lol' | 'tft' | 'steam' | 'other',
                   hasTeams: game.hasTeams,
                   tftMode: s.tftMode,
                   requested: body.auto_balance,
                 }),
           steamAppId: steamApp?.app_id,
           steamAppName: steamApp?.name,
+          customGameName: body.custom_game_name,
         },
       });
       if (body.capacity !== undefined) {

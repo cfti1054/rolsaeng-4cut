@@ -49,6 +49,7 @@ const sc = (scheduled_at: string, over: Partial<CalendarScrimItem> = {}): Calend
     my_status: null,
     result_status: null,
     ...over,
+    custom_game_name: over.custom_game_name ?? null,
   };
 };
 

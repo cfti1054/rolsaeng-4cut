@@ -2,10 +2,14 @@
 
 import {
   CreateScrimRequest,
+  LOL_MAP_LABEL,
+  LolMap,
   TFT_MODE_CAPACITY,
   TFT_MODE_LABEL,
   SCRIM_RULES_MAX_LENGTH,
   SCRIM_TITLE_MAX_LENGTH,
+  CUSTOM_GAME_NAME_MAX_LENGTH,
+  CustomGameName,
   ScrimTitle,
   type CreateScrimRequestInput,
   type GameView,
@@ -43,12 +47,14 @@ import { RestrictionBanner, scrimErrorText, useRestriction } from './scrim-bits'
 import { ScrimCard } from './scrim-card';
 import { SteamAppPicker } from './steam-app-picker';
 
-const FIELDS = ['game', 'tft_mode', 'steam_app_id', 'title', 'scheduled_at', 'capacity', 'rules', 'host_preferred_positions'] as const;
+const FIELDS = ['game', 'tft_mode', 'lol_map', 'steam_app_id', 'custom_game_name', 'title', 'scheduled_at', 'capacity', 'rules', 'host_preferred_positions'] as const;
 type FieldErrors = Partial<Record<(typeof FIELDS)[number], string>>;
 
 /** 게임 카드 설명(목업 「팀전 · 포지션 있음」「개인 순위전」) — 코드 대신 속성으로(설계 원칙 3) */
 export function gameDescription(g: Pick<GameView, 'code' | 'has_teams' | 'has_positions'>): string {
   if (g.code === 'steam') return '참가 인원 모집';
+  if (g.code === 'other') return '같이할 사람 모집';
+  if (g.code === 'lol') return '협곡 · 칼바람';
   if (g.code === 'tft') return '더블업 · 일반 · 랭크';
   if (!g.has_teams) return '개인 순위전';
   return g.has_positions ? '팀전 · 포지션 있음' : '팀전';
@@ -87,7 +93,9 @@ export function ScrimNewForm() {
   const [first, setFirst] = useState<string | null>(null);
   const [second, setSecond] = useState<string | null>(null);
   const [steamApp, setSteamApp] = useState<SteamAppRef | null>(null);
+  const [customGameName, setCustomGameName] = useState('');
   const [tftMode, setTftMode] = useState<TftMode | null>(null);
+  const [lolMap, setLolMap] = useState<LolMap>('rift');
   const [errors, setErrors] = useState<FieldErrors>({});
 
   // 기본 시작 시각은 마운트 후에(서버 렌더 시각과 달라 하이드레이션이 어긋나지 않게)
@@ -108,11 +116,13 @@ export function ScrimNewForm() {
         ? { min: game.capacity.min, max: game.capacity.max, step: game.capacity.step, default: game.capacity.default }
         : null;
   const cap = capRange ? (capacity ?? capRange.default) : null;
-  const effPositions = !!game?.has_positions && usePositions;
+  const mapIsAram = game?.code === 'lol' && lolMap === 'aram';
+  const effPositions = !!game?.has_positions && usePositions && !mapIsAram;
   const balanceChoice = game?.code === 'tft' ? tftMode === 'double_up' : !!game?.has_teams;
   const effBalance = balanceChoice && autoBalance;
   const effRated = appliedRated(game?.has_results !== false, rated);
   const needsApp = !!game?.requires_steam_app;
+  const needsCustom = game?.code === 'other';
   const positionDefaults = usePositionDefaults({
     game: game?.code ?? null,
     enabled: !!game?.has_positions,
@@ -129,14 +139,15 @@ export function ScrimNewForm() {
   const pickGame = (g: GameView) => {
     setGameCode(g.code);
     setTftMode(null);
+    setLolMap('rift');
     setCapacity(g.code === 'tft' ? null : g.capacity.default);
     setFirst(null);
     setSecond(null);
     positionDefaults.reset();
-    setErrors((e) => ({ ...e, game: undefined, steam_app_id: undefined, capacity: undefined, host_preferred_positions: undefined }));
+    setErrors((e) => ({ ...e, game: undefined, steam_app_id: undefined, custom_game_name: undefined, capacity: undefined, host_preferred_positions: undefined }));
   };
 
-  const ids = { title: useId(), date: useId(), time: useId(), cap: useId(), rules: useId(), pos: useId() };
+  const ids = { title: useId(), date: useId(), time: useId(), cap: useId(), rules: useId(), pos: useId(), custom: useId() };
   const minDate = now ? isoToKstInputs(new Date(now).toISOString()).date : undefined;
   // 상한은 GET /me/scrim-restriction scrim_policy에서만(D101). 응답 전이면 상한 없이 서버 검사에 맡긴다
   const scrimPolicy = restriction?.scrim_policy;
@@ -159,6 +170,9 @@ export function ScrimNewForm() {
     }
     if (game.code === 'tft' && !tftMode) next.tft_mode = '더블업, 일반, 랭크 중 하나를 골라 주세요.';
     if (needsApp && !steamApp) next.steam_app_id = '어떤 스팀 게임으로 내전할지 골라 주세요.';
+    if (needsCustom && !CustomGameName.safeParse(customGameName).success) {
+      next.custom_game_name = `게임 이름을 1–${CUSTOM_GAME_NAME_MAX_LENGTH}자로 입력해 주세요. 예: 마인크래프트, 오버워치 등`;
+    }
     if (effPositions && !first) next.host_preferred_positions = '방장도 참가자예요. 1지망 포지션을 골라 주세요.';
     if (rules.length > SCRIM_RULES_MAX_LENGTH) next.rules = `규칙은 ${SCRIM_RULES_MAX_LENGTH}자까지 쓸 수 있어요.`;
     if (Object.keys(next).length) {
@@ -176,8 +190,10 @@ export function ScrimNewForm() {
       auto_balance: effBalance,
       use_positions: effPositions,
       ...(game.code === 'tft' && tftMode ? { tft_mode: tftMode } : {}),
+      ...(game.code === 'lol' ? { lol_map: lolMap } : {}),
       host_preferred_positions: effPositions ? toPreferredPositions(first, second) : [],
       ...(needsApp && steamApp ? { steam_app_id: steamApp.app_id } : {}),
+      ...(needsCustom ? { custom_game_name: customGameName } : {}),
     };
     const parsed = CreateScrimRequest.safeParse(body);
     if (!parsed.success) {
@@ -214,6 +230,7 @@ export function ScrimNewForm() {
           waitlist_count: 0,
           options: { rated: effRated, auto_balance: effBalance, use_positions: effPositions },
           steam_app: needsApp ? steamApp : null,
+          custom_game_name: needsCustom ? customGameName.trim() || null : null,
           open_positions: [],
           join_closed: false,
           my_status: 'joined',
@@ -221,6 +238,7 @@ export function ScrimNewForm() {
           result_status: null,
           outcome: null,
           tft_mode: game.code === 'tft' ? tftMode : null,
+          lol_map: game.code === 'lol' ? lolMap : null,
           can_delete: false,
         }
       : null;
@@ -257,13 +275,13 @@ export function ScrimNewForm() {
                 <StepNo n="01" />게임 선택
               </legend>
               {games.isPending ? (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  {[0, 1, 2].map((i) => (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {[0, 1, 2, 3].map((i) => (
                     <Skeleton key={i} className="h-[112px] rounded-2xl" />
                   ))}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   {list.map((g) => {
                     const on = game?.code === g.code;
                     const meta = GAME_SCRIM_META[g.code];
@@ -293,6 +311,35 @@ export function ScrimNewForm() {
                       </button>
                     );
                   })}
+                </div>
+              )}
+              {game?.code === 'lol' && (
+                <div className="mt-4 flex flex-col gap-2">
+                  <span className="text-[13px] text-muted">맵</span>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {(Object.keys(LOL_MAP_LABEL) as LolMap[]).map((map) => {
+                      const on = lolMap === map;
+                      return (
+                        <button
+                          key={map}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => {
+                            setLolMap(map);
+                            setErrors((x) => ({ ...x, lol_map: undefined, host_preferred_positions: undefined }));
+                          }}
+                          className={cn(
+                            'rounded-2xl border-[1.5px] px-4 py-3 text-left',
+                            on ? 'border-accent bg-accent/5' : 'border-line bg-surface-2 hover:border-line-3',
+                          )}
+                        >
+                          <span className="block text-sm font-bold">{LOL_MAP_LABEL[map]}</span>
+                          <span className="text-xs text-muted">{map === 'aram' ? '포지션 없음' : '라인 포지션'}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {errors.lol_map && <InlineError>{errors.lol_map}</InlineError>}
                 </div>
               )}
               {game?.code === 'tft' && (
@@ -326,6 +373,28 @@ export function ScrimNewForm() {
                   {errors.tft_mode && <InlineError>{errors.tft_mode}</InlineError>}
                 </div>
               )}
+              {needsCustom && (
+                <div className="mt-4">
+                  <Field
+                    label="게임 이름"
+                    htmlFor={ids.custom}
+                    error={errors.custom_game_name}
+                    hint={`스팀에 없는 게임 · ${customGameName.trim().length}/${CUSTOM_GAME_NAME_MAX_LENGTH}`}
+                  >
+                    <input
+                      id={ids.custom}
+                      value={customGameName}
+                      placeholder="마인크래프트, 오버워치 등"
+                      maxLength={CUSTOM_GAME_NAME_MAX_LENGTH + 10}
+                      onChange={(e) => {
+                        setCustomGameName(e.target.value);
+                        setErrors((x) => ({ ...x, custom_game_name: undefined }));
+                      }}
+                      className={inputClass}
+                    />
+                  </Field>
+                </div>
+              )}
               {needsApp && (
                 <div className="mt-4">
                   <SteamAppPicker
@@ -350,7 +419,7 @@ export function ScrimNewForm() {
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   maxLength={SCRIM_TITLE_MAX_LENGTH + 10}
-                  placeholder="예: 화요일 저녁 5:5 내전"
+                  placeholder="예: 인원 모집"
                   aria-invalid={errors.title ? true : undefined}
                   className={inputClass}
                 />
@@ -452,9 +521,9 @@ export function ScrimNewForm() {
                 )}
                 <Toggle
                   label="포지션 희망 받기"
-                  desc={game?.has_positions ? '참가할 때 1지망 · 2지망을 고릅니다' : '이 게임은 포지션이 없습니다'}
+                  desc={mapIsAram ? '칼바람은 포지션이 없습니다' : game?.has_positions ? '참가할 때 1지망 · 2지망을 고릅니다' : '이 게임은 포지션이 없습니다'}
                   checked={effPositions}
-                  disabled={!game?.has_positions}
+                  disabled={!game?.has_positions || mapIsAram}
                   onChange={() => setUsePositions((v) => !v)}
                 />
                 {game?.has_results !== false && (

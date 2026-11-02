@@ -1,13 +1,15 @@
 'use client';
 
 import {
+  NICKNAME_MAX_LENGTH,
   Uuid,
   type GetUserProfileResponse,
   type ProfileTierCard,
   type RecentLolMatch,
 } from '@gcd/shared';
+import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import type { ReactNode } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { EloInfo } from '@/components/rankings/elo-info';
 import { Button, InlineError } from '@/components/ui/controls';
 import { RefreshIcon } from '@/components/ui/icons';
@@ -19,7 +21,9 @@ import { errorMessage, errorMessageWithRetry } from '@/lib/errors';
 import { formatAgo, formatDuration, formatFull, formatSyncedAt, formatYearMonth } from '@/lib/format';
 import { groupRiotAccounts, hasPendingSync, steamAccount } from '@/lib/game-accounts';
 import { POSITION_META, PROVIDER_META } from '@/lib/games';
-import { useSyncGameAccount, useUserProfile } from '@/lib/hooks/game-accounts';
+import { useUpdateMe } from '@/lib/hooks/auth';
+import { gameAccountKeys, useSyncGameAccount, useUserProfile } from '@/lib/hooks/game-accounts';
+import { checkNickname, NICKNAME_RULE_HINT } from '@/lib/nickname';
 import { useNow } from '@/lib/hooks/use-now';
 import { routes } from '@/lib/routes';
 import { TIER_META, lolRankSub, tftRankSub, tierLabel, tierMark } from '@/lib/tiers';
@@ -153,7 +157,11 @@ function ProfileBanner({ p, now }: { p: GetUserProfileResponse; now: number | nu
         />
         <div className="flex min-w-0 flex-[1_1_280px] flex-col gap-2.5">
           <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="m-0 text-[28px] font-bold tracking-[-0.03em]">{p.user.nickname}</h1>
+            {p.is_self ? (
+              <NicknameEditor userId={p.user.id} nickname={p.user.nickname} />
+            ) : (
+              <h1 className="m-0 text-[28px] font-bold tracking-[-0.03em]">{p.user.nickname}</h1>
+            )}
             {rank !== null && (
               <span className="rounded-[7px] bg-accent px-[9px] py-[3px] font-display text-xs font-bold tracking-[0.1em] text-on-accent">#{rank} ELO</span>
             )}
@@ -166,6 +174,92 @@ function ProfileBanner({ p, now }: { p: GetUserProfileResponse; now: number | nu
         {p.is_self && <SelfRefresh p={p} now={now} />}
       </div>
     </section>
+  );
+}
+
+function NicknameEditor({ userId, nickname }: { userId: string; nickname: string }) {
+  const qc = useQueryClient();
+  const update = useUpdateMe();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(nickname);
+  const [error, setError] = useState<string | null>(null);
+  const check = checkNickname(value);
+
+  const open = () => {
+    setValue(nickname);
+    setError(null);
+    setEditing(true);
+  };
+
+  const save = (e: FormEvent) => {
+    e.preventDefault();
+    if (!check.ok) return setError(check.message);
+    if (check.value === nickname) {
+      setEditing(false);
+      return;
+    }
+    setError(null);
+    update.mutate(
+      { nickname: check.value },
+      {
+        onSuccess: () => {
+          setEditing(false);
+          void qc.invalidateQueries({ queryKey: gameAccountKeys.profile(userId) });
+        },
+        onError: (err) => {
+          if (isApiError(err) && err.code === 'NICKNAME_TAKEN') return setError('이미 다른 멤버가 쓰는 닉네임이에요.');
+          setError(isApiError(err) ? errorMessage(err.code) : errorMessage('NETWORK_ERROR'));
+        },
+      },
+    );
+  };
+
+  if (!editing) {
+    return (
+      <span className="inline-flex flex-wrap items-center gap-2">
+        <h1 className="m-0 text-[28px] font-bold tracking-[-0.03em]">{nickname}</h1>
+        <button type="button" onClick={open} className="rounded-lg px-2 py-1 text-[13px] font-semibold text-accent-ink hover:bg-accent/10">
+          이름 수정
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <form onSubmit={save} className="flex min-w-0 flex-[1_1_240px] flex-col gap-1.5">
+      <label htmlFor="profile-nickname" className="text-[13px] font-semibold text-text-2">
+        닉네임
+      </label>
+      <span className="flex flex-wrap items-center gap-2">
+        <input
+          id="profile-nickname"
+          value={value}
+          autoComplete="nickname"
+          maxLength={NICKNAME_MAX_LENGTH + 10}
+          aria-invalid={error ? true : undefined}
+          onChange={(ev) => {
+            setValue(ev.target.value);
+            setError(null);
+          }}
+          className={cn(
+            'h-11 min-w-0 flex-1 rounded-xl border bg-bg px-3 text-base text-text outline-none',
+            error ? 'border-orange' : 'border-line-3 focus:border-accent',
+          )}
+        />
+        <Button type="submit" disabled={update.isPending}>
+          {update.isPending ? '저장 중' : '저장'}
+        </Button>
+        <button
+          type="button"
+          onClick={() => setEditing(false)}
+          className="rounded-lg px-2 py-1 text-[13px] font-semibold text-muted hover:text-text"
+        >
+          취소
+        </button>
+      </span>
+      <span className="text-xs text-faint">{NICKNAME_RULE_HINT}</span>
+      {error && <InlineError>{error}</InlineError>}
+    </form>
   );
 }
 

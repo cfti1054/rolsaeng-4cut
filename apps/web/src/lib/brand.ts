@@ -15,5 +15,6 @@ export const brand = {
     lol: '/brand/banner-lol.jpg',
     tft: '/brand/banner-tft.jpg',
     steam: '/brand/banner-steam.jpg',
+    other: '/brand/home-banner.jpg',
   } satisfies Record<GameCode, string>,
 } as const;

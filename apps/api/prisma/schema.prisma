@@ -78,6 +78,14 @@ enum TftMode {
   @@map("tft_mode")
 }
 
+/// 롤 내전 맵. shared LolMap. 다른 게임의 scrims.lol_map는 null
+enum LolMap {
+  rift
+  aram
+
+  @@map("lol_map")
+}
+
 enum ScrimResultStatus {
   pending
   approved
@@ -546,9 +554,13 @@ model Scrim {
   usePositions Boolean            @default(true) @map("use_positions")
   /// 롤체 모드. 다른 게임은 null
   tftMode      TftMode?           @map("tft_mode")
+  /// 롤 맵. 다른 게임은 null. 이 컬럼 전에 만든 롤 내전은 null(화면은 협곡)
+  lolMap       LolMap?            @map("lol_map")
   /// 스팀 내전에서 고른 게임(D98). 이름은 고른 시점의 값(멤버 보유 게임 이름 또는 스팀 상점)
   steamAppId   Int?               @map("steam_app_id")
   steamAppName String?            @map("steam_app_name")
+  /// 기타 모집(games.code = other)에서 적은 게임 이름. 다른 게임은 null
+  customGameName String?          @map("custom_game_name") @db.VarChar(40)
   /// S2. playing으로 바뀐 시각(방장·운영진 시작 또는 자동 시작)
   startedAt    DateTime?          @map("started_at") @db.Timestamptz(3)
   /// S2. cancelled로 바뀐 시각과 이유

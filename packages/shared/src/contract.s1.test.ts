@@ -5,10 +5,10 @@ import {
   ERROR_HTTP_STATUS,
   GAME_ACCOUNT_SYNC_STATE_TRANSITIONS,
   GAME_CODES_BY_PROVIDER,
-  GAME_PROVIDER_BY_CODE,
   GAME_SEED,
   GameAccountView,
   GameCode,
+  gameProvider,
   GetMyGameAccountsResponse,
   GetUserProfileResponse,
   LinkGameAccountRequest,
@@ -100,9 +100,14 @@ describe('riot constants', () => {
 });
 
 describe('providers', () => {
-  it('모든 GameCode에 제공자가 있고 역매핑과 일치', () => {
+  it('연동 게임은 제공자가 있고 역매핑과 일치한다. 기타는 연동하지 않는다', () => {
+    expect(gameProvider('other')).toBeNull();
     for (const code of GameCode.options) {
-      const p = GAME_PROVIDER_BY_CODE[code];
+      const p = gameProvider(code);
+      if (p === null) {
+        expect(code).toBe('other');
+        continue;
+      }
       expect((GAME_CODES_BY_PROVIDER[p] as readonly string[]).includes(code)).toBe(true);
     }
   });

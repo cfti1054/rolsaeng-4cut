@@ -200,6 +200,7 @@ describe('「다가오는 일정」 행(23-8-5, D306)', () => {
     my_status: null,
     result_status: null,
     ...p,
+    custom_game_name: p.custom_game_name ?? null,
   });
   const up = (items: AdminUpcoming['items']): AdminUpcoming => AdminUpcoming.parse({ from: '2026-11-01', to: '2026-12-01', items, has_more: false });
 

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { PaginationQuery, paginated } from './common/pagination';
 import { IsoDateTime, Uuid } from './common/primitives';
-import { ScrimCancelReason, ScrimPlayerStatus, ScrimResultStatus, ScrimStatus, ScrimTeam, TFT_MODE_CAPACITY, TftMode } from './constants/enums';
+import { LolMap, ScrimCancelReason, ScrimPlayerStatus, ScrimResultStatus, ScrimStatus, ScrimTeam, TFT_MODE_CAPACITY, TftMode } from './constants/enums';
 import { GameCode } from './constants/games';
 import { RECENT_MATCHES_MAX } from './constants/riot';
 import { SeasonRef } from './seasons';
@@ -156,7 +156,7 @@ export type ScrimOptions = z.infer<typeof ScrimOptions>;
 
 /**
  * 저장할 auto_balance.
- * 롤: 요청 && 팀 게임. 롤체 더블업: 요청값. 롤체 일반·랭크와 스팀: 항상 false.
+ * 롤: 요청 && 팀 게임. 롤체 더블업: 요청값. 롤체 일반·랭크, 스팀, 기타: 항상 false.
  */
 export function appliedAutoBalance(args: {
   game: GameCode;
@@ -164,10 +164,15 @@ export function appliedAutoBalance(args: {
   tftMode: TftMode | null;
   requested: boolean;
 }): boolean {
-  if (args.game === 'steam') return false;
+  if (args.game === 'steam' || args.game === 'other') return false;
   if (args.game === 'tft') return args.tftMode === 'double_up' && args.requested;
   return args.requested && args.hasTeams;
 }
+
+/** 기타 모집의 게임 이름(마인크래프트, 오버워치). 앞뒤 공백 제거 후 1–40자 */
+export const CUSTOM_GAME_NAME_MAX_LENGTH = 40;
+export const CustomGameName = z.string().trim().min(1).max(CUSTOM_GAME_NAME_MAX_LENGTH);
+export type CustomGameName = z.infer<typeof CustomGameName>;
 
 /** 저장할 rated. 승패를 받지 않는 게임(스팀 모집)은 항상 false. */
 export function appliedRated(hasResults: boolean, requested: boolean): boolean {
@@ -364,6 +369,11 @@ export const ScrimSummary = z.object({
   /** 스팀 내전에서 고른 게임(D98). 다른 게임과, 이 기능 전에 만든 스팀 내전은 null */
   steam_app: SteamAppRef.nullable(),
   /**
+   * 기타 모집에서 적은 게임 이름. 다른 게임은 null.
+   * 이 필드 전에 만든 응답을 읽는 테스트·목은 생략하면 null.
+   */
+  custom_game_name: z.string().min(1).max(CUSTOM_GAME_NAME_MAX_LENGTH).nullable().default(null),
+  /**
    * 모집 중(recruiting·full) && use_positions일 때만 값이 있고 그 외 []. 자리가 다 찼으면 [].
    * count 합계 ≤ capacity − joined_count(D100). 포지션별 남은 수 합계가 빈 자리를 넘으면 [](카드는 「N자리 남음」)
    */
@@ -382,6 +392,11 @@ export const ScrimSummary = z.object({
   outcome: ScrimOutcome.nullable(),
   /** 롤체 모드. 다른 게임은 null */
   tft_mode: TftMode.nullable(),
+  /**
+   * 롤 맵. 다른 게임은 null.
+   * 이 필드 전에 만든 롤 내전은 null(화면은 협곡).
+   */
+  lol_map: LolMap.nullable().default(null),
   /**
    * 운영진이고 승인된 결과가 없을 때만 true. 화면은 true일 때만 삭제 버튼을 그린다.
    * 서버는 DELETE에서 역할을 다시 검사한다.
@@ -554,6 +569,10 @@ export const CreateScrimRequest = z
     steam_app_id: SteamAppId.nullable().optional(),
     /** 롤체만 필수. 다른 게임은 없거나 null */
     tft_mode: TftMode.nullable().optional(),
+    /** 롤만. 없거나 null이면 서버가 협곡(rift)으로 저장. 다른 게임에 값이 있으면 거부 */
+    lol_map: LolMap.nullable().optional(),
+    /** other면 필수(1–40자). 다른 게임은 없거나 null */
+    custom_game_name: CustomGameName.nullable().optional(),
   })
   .strict()
   .superRefine((v, ctx) => {
@@ -562,6 +581,16 @@ export const CreateScrimRequest = z
     }
     if (v.game !== 'tft' && v.tft_mode != null) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['tft_mode'], message: '이 게임은 롤체 모드를 고를 수 없습니다.' });
+    }
+    if (v.game !== 'lol' && v.lol_map != null) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['lol_map'], message: '이 게임은 맵을 고를 수 없습니다.' });
+    }
+    const custom = v.custom_game_name ?? null;
+    if (v.game === 'other' && !custom) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['custom_game_name'], message: '게임 이름을 입력해 주세요.' });
+    }
+    if (v.game !== 'other' && custom) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['custom_game_name'], message: '이 게임은 게임 이름을 따로 적지 않습니다.' });
     }
   });
 export type CreateScrimRequest = z.infer<typeof CreateScrimRequest>;
@@ -590,6 +619,8 @@ export const UpdateScrimRequest = z
     rules: ScrimRules.nullable().optional(),
     rated: z.boolean().optional(),
     auto_balance: z.boolean().optional(),
+    /** other 내전만. 다른 게임에 오면 서버가 VALIDATION_FAILED */
+    custom_game_name: CustomGameName.optional(),
   })
   .strict()
   .refine((v) => Object.values(v).some((x) => x !== undefined), '바꿀 필드를 1개 이상 보내야 함');

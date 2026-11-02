@@ -1,6 +1,9 @@
 'use client';
 
 import {
+  CUSTOM_GAME_NAME_MAX_LENGTH,
+  LOL_MAP_LABEL,
+  CustomGameName,
   SCRIM_RULES_MAX_LENGTH,
   SCRIM_TITLE_MAX_LENGTH,
   ScrimTitle,
@@ -44,8 +47,9 @@ export function ScrimEditDialog({
   const [rated, setRated] = useState(s.options.rated);
   const [autoBalance, setAutoBalance] = useState(s.options.auto_balance);
   const [steamApp, setSteamApp] = useState<SteamAppRef | null>(s.steam_app);
+  const [customGameName, setCustomGameName] = useState(s.custom_game_name ?? '');
   const [error, setError] = useState<string | null>(null);
-  const ids = { title: useId(), date: useId(), time: useId(), cap: useId(), rules: useId(), head: useId() };
+  const ids = { title: useId(), date: useId(), time: useId(), cap: useId(), rules: useId(), head: useId(), custom: useId() };
 
   useEffect(() => {
     const d = ref.current;
@@ -69,6 +73,9 @@ export function ScrimEditDialog({
     }
     if (capacity < s.joined_count) return setError(`지금 참가 확정이 ${s.joined_count}명이라 정원을 그보다 줄일 수 없어요.`);
     if (game.requires_steam_app && !steamApp) return setError('스팀 게임을 골라 주세요.');
+    if (game.code === 'other' && !CustomGameName.safeParse(customGameName).success) {
+      return setError(`게임 이름을 1–${CUSTOM_GAME_NAME_MAX_LENGTH}자로 입력해 주세요.`);
+    }
     const patch = buildScrimPatch(s, {
       title,
       scheduledIso: iso,
@@ -84,6 +91,7 @@ export function ScrimEditDialog({
           })
         : s.options.auto_balance,
       steamAppId: game.requires_steam_app ? steamApp?.app_id : null,
+      customGameName: game.code === 'other' ? customGameName : undefined,
     });
     if (!patch) return onClose();
     const parsed = UpdateScrimRequest.safeParse(patch);
@@ -116,7 +124,25 @@ export function ScrimEditDialog({
         <h2 id={ids.head} className="m-0 text-lg font-bold">
           모집글 수정
         </h2>
+        {game.code === 'lol' && (
+          <p className="m-0 text-sm text-muted">맵 · {LOL_MAP_LABEL[s.lol_map ?? 'rift']}</p>
+        )}
         {game.requires_steam_app && <SteamAppPicker value={steamApp} onChange={setSteamApp} />}
+        {game.code === 'other' && (
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={ids.custom} className="text-[13px] text-muted">
+              게임 이름
+            </label>
+            <input
+              id={ids.custom}
+              value={customGameName}
+              placeholder="마인크래프트, 오버워치 등"
+              maxLength={CUSTOM_GAME_NAME_MAX_LENGTH + 10}
+              onChange={(e) => setCustomGameName(e.target.value)}
+              className={input}
+            />
+          </div>
+        )}
         <div className="flex flex-col gap-1.5">
           <label htmlFor={ids.title} className="text-[13px] text-muted">
             제목

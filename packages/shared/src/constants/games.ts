@@ -5,8 +5,12 @@ import { z } from 'zod';
  * 화면·서버 분기는 코드 문자열 비교 대신 games 행의 속성(has_positions, has_teams, has_results, positions)으로 한다.
  * 새 게임 추가 = GAME_SEED에 행 1개 + 이 enum에 코드 1개 추가(+ 시드 재실행).
  */
-export const GameCode = z.enum(['lol', 'tft', 'steam']);
+export const GameCode = z.enum(['lol', 'tft', 'steam', 'other']);
 export type GameCode = z.infer<typeof GameCode>;
+
+/** 라이엇·스팀 계정을 연동하는 게임. other(기타 모집)는 계정 연동이 없다. */
+export const LinkableGameCode = GameCode.exclude(['other']);
+export type LinkableGameCode = z.infer<typeof LinkableGameCode>;
 
 export type GameSeed = {
   code: GameCode;
@@ -85,6 +89,22 @@ export const GAME_SEED: readonly GameSeed[] = [
     start_requires_full: false,
     requires_steam_app: true,
   },
+  {
+    code: 'other',
+    name: '기타',
+    has_positions: false,
+    has_teams: false,
+    has_results: false,
+    positions: [],
+    sort_order: 4,
+    // 스팀에 없는 게임(마인크래프트, 오버워치 등) 같이하기. 팀 밸런스·승패 없음
+    capacity_min: 2,
+    capacity_max: 16,
+    capacity_default: 8,
+    capacity_step: 1,
+    start_requires_full: false,
+    requires_steam_app: false,
+  },
 ];
 
 /**
@@ -95,7 +115,13 @@ export const GAME_PROVIDER_BY_CODE = {
   lol: 'riot',
   tft: 'riot',
   steam: 'steam',
-} as const satisfies Record<GameCode, 'riot' | 'steam'>;
+} as const satisfies Record<LinkableGameCode, 'riot' | 'steam'>;
+
+/** 연동 제공자. other는 null */
+export function gameProvider(code: GameCode): 'riot' | 'steam' | null {
+  if (code === 'other') return null;
+  return GAME_PROVIDER_BY_CODE[code];
+}
 
 /** 제공자별로 함께 생성·삭제되는 게임 코드(표시 순서). */
 export const GAME_CODES_BY_PROVIDER = {

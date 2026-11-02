@@ -72,7 +72,7 @@ export function parseRankingsQuery(sp: { get(name: string): string | null }): Ra
 export function rankingGames(tab: RankingTab, games: readonly GameView[]): GameView[] {
   const list = [...games].sort((a, b) => a.sort_order - b.sort_order);
   if (tab === 'tier') return list.filter((g) => TierRankingGame.safeParse(g.code).success);
-  if (tab === 'elo') return list.filter((g) => g.code !== 'steam');
+  if (tab === 'elo') return list.filter((g) => g.code !== 'steam' && g.code !== 'other');
   return list;
 }
 

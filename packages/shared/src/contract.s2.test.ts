@@ -188,7 +188,9 @@ describe('games', () => {
   it('스팀은 인원 모집: 팀 배정과 승패 입력이 없다', () => {
     const steam = GAME_SEED.find((g) => g.code === 'steam');
     expect(steam).toMatchObject({ has_teams: false, has_results: false });
-    expect(GAME_SEED.filter((g) => g.code !== 'steam').every((g) => g.has_results)).toBe(true);
+    const other = GAME_SEED.find((g) => g.code === 'other');
+    expect(other).toMatchObject({ has_teams: false, has_results: false, requires_steam_app: false, capacity_min: 2, capacity_max: 16 });
+    expect(GAME_SEED.filter((g) => g.has_results).map((g) => g.code).sort()).toEqual(['lol', 'tft']);
   });
 });
 
@@ -205,6 +207,17 @@ describe('steam apps (D98)', () => {
     expect(CreateScrimRequest.safeParse({ ...base, steam_app_id: 0 }).success).toBe(false);
     expect(UpdateScrimRequest.parse({ steam_app_id: 570 }).steam_app_id).toBe(570);
     expect(UpdateScrimRequest.safeParse({ steam_app_id: null }).success).toBe(false);
+  });
+  it('기타 모집은 게임 이름이 필수이고, 다른 게임은 그 필드를 받지 않는다', () => {
+    const base = { title: '같이 하기', scheduled_at: '2026-11-01T12:00:00.000Z', capacity: 4 };
+    expect(CreateScrimRequest.parse({ ...base, game: 'other', custom_game_name: ' 마인크래프트 ' }).custom_game_name).toBe('마인크래프트');
+    expect(CreateScrimRequest.safeParse({ ...base, game: 'other' }).success).toBe(false);
+    expect(CreateScrimRequest.safeParse({ ...base, game: 'other', custom_game_name: '   ' }).success).toBe(false);
+    expect(CreateScrimRequest.safeParse({ ...base, game: 'lol', custom_game_name: '오버워치' }).success).toBe(false);
+    expect(CreateScrimRequest.parse({ ...base, game: 'lol', capacity: 10, lol_map: 'aram' }).lol_map).toBe('aram');
+    expect(CreateScrimRequest.parse({ ...base, game: 'lol', capacity: 10 }).lol_map).toBeUndefined();
+    expect(CreateScrimRequest.safeParse({ ...base, game: 'other', custom_game_name: '마인크래프트', lol_map: 'rift' }).success).toBe(false);
+    expect(UpdateScrimRequest.parse({ custom_game_name: '오버워치' }).custom_game_name).toBe('오버워치');
   });
   it('헤더 이미지 주소', () => {
     expect(steamAppHeaderImageUrl(730)).toBe('https://cdn.cloudflare.steamstatic.com/steam/apps/730/header.jpg');

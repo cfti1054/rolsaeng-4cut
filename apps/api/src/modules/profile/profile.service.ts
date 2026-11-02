@@ -53,7 +53,7 @@ export class ProfileService {
 
     const tiers: ProfileTierCard[] = [];
     for (const r of [lol, tft]) {
-      if (!r || r.code === 'steam') continue;
+      if (!r || (r.code !== 'lol' && r.code !== 'tft')) continue;
       tiers.push(
         ProfileTierCard.parse({
           game_account_id: r.id,

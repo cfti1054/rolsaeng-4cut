@@ -15,7 +15,7 @@ import type {
   ScrimSummary,
   UpdateScrimRequestInput,
 } from '@gcd/shared';
-import { SCRIM_MIN_PLAYERS_TO_START, TFT_MODE_LABEL } from '@gcd/shared';
+import { LOL_MAP_LABEL, SCRIM_MIN_PLAYERS_TO_START, TFT_MODE_LABEL, type LolMap } from '@gcd/shared';
 import { positionLabel } from './games';
 import { TEAM_LABEL } from './scrim-results';
 
@@ -122,9 +122,16 @@ function shareStatusLabel(status: ScrimStatus, joinClosed: boolean): string {
   }
 }
 
-function shareHeading(code: GameCode, tftMode: TftMode | null | undefined, steamApp: string | null): string {
-  if (code === 'lol') return '⚔️ LOL 협곡 내전';
+function shareHeading(
+  code: GameCode,
+  tftMode: TftMode | null | undefined,
+  steamApp: string | null,
+  customName: string | null,
+  lolMap: LolMap | null | undefined,
+): string {
+  if (code === 'lol') return `⚔️ LOL ${LOL_MAP_LABEL[lolMap ?? 'rift']} 내전`;
   if (code === 'tft') return `♟️ TFT${tftMode ? ` ${TFT_MODE_LABEL[tftMode]}` : ''} 내전`;
+  if (code === 'other') return `🎮 기타 모집${customName ? ` · ${customName}` : ''}`;
   return `🕹️ 스팀 내전${steamApp ? ` · ${steamApp}` : ''}`;
 }
 
@@ -133,13 +140,15 @@ export function scrimShareText(
   s: Pick<ScrimDetail, 'title' | 'scheduled_at' | 'capacity' | 'joined_count' | 'status' | 'join_closed'> & {
     game: { code: GameCode };
     steam_app?: ScrimDetail['steam_app'];
+    custom_game_name?: string | null;
     tft_mode?: TftMode | null;
+    lol_map?: LolMap | null;
   },
   url: string,
 ): string {
   const k = kst(Date.parse(s.scheduled_at));
   return [
-    shareHeading(s.game.code, s.tft_mode, s.steam_app?.name ?? null),
+    shareHeading(s.game.code, s.tft_mode, s.steam_app?.name ?? null, s.custom_game_name ?? null, s.lol_map),
     s.title,
     '',
     `📅 ${k.m}월 ${k.d}일 (${WEEKDAYS[k.weekday]})`,
@@ -501,7 +510,10 @@ export function scrimBannedUntilFromRetry(retryAfterSec: number | undefined, now
 
 /** 바뀐 필드만 담는다(PATCH는 1개 이상 필요). 바뀐 게 없으면 null */
 export function buildScrimPatch(
-  s: Pick<ScrimDetail, 'title' | 'scheduled_at' | 'capacity' | 'rules' | 'options'> & { steam_app?: ScrimDetail['steam_app'] },
+  s: Pick<ScrimDetail, 'title' | 'scheduled_at' | 'capacity' | 'rules' | 'options'> & {
+    steam_app?: ScrimDetail['steam_app'];
+    custom_game_name?: string | null;
+  },
   next: {
     title: string;
     scheduledIso: string;
@@ -511,6 +523,8 @@ export function buildScrimPatch(
     autoBalance: boolean;
     /** 스팀 게임(D98). 고르지 않았으면(null·생략) 보내지 않는다 */
     steamAppId?: number | null;
+    /** 기타 모집 게임 이름. 생략하면 그대로 둔다 */
+    customGameName?: string;
   },
 ): UpdateScrimRequestInput | null {
   const patch: UpdateScrimRequestInput = {};
@@ -522,6 +536,8 @@ export function buildScrimPatch(
   if (next.rated !== s.options.rated) patch.rated = next.rated;
   if (next.autoBalance !== s.options.auto_balance) patch.auto_balance = next.autoBalance;
   if (next.steamAppId != null && next.steamAppId !== s.steam_app?.app_id) patch.steam_app_id = next.steamAppId;
+  const custom = next.customGameName?.trim();
+  if (custom && custom !== (s.custom_game_name ?? '')) patch.custom_game_name = custom;
   return Object.keys(patch).length ? patch : null;
 }
 
