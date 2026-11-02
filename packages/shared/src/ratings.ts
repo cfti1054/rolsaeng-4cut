@@ -82,10 +82,14 @@ export type ProfileScrim = z.infer<typeof ProfileScrim>;
  * game 필수. season 생략 → 현재 시즌, 현재 시즌이 없으면 starts_at ≤ now인 가장 최근 시즌, 그것도 없으면 season null·points [].
  * 없는 season id → NOT_FOUND.
  */
-export const GetUserRatingHistoryQuery = z.object({
-  game: GameCode,
-  season: Uuid.optional(),
-});
+export const GetUserRatingHistoryQuery = z
+  .object({
+    game: GameCode,
+    season: Uuid.optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.game === 'other') ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['game'], message: '이 게임은 레이팅 기록이 없습니다.' });
+  });
 export type GetUserRatingHistoryQuery = z.infer<typeof GetUserRatingHistoryQuery>;
 
 export const GetUserRatingHistoryParams = z.object({ id: Uuid });

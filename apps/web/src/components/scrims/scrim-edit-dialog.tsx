@@ -1,6 +1,12 @@
 'use client';
 
 import {
+  CUSTOM_GAME_NAME_MAX_LENGTH,
+  isPartyRecruit,
+  LOL_FORMAT_LABEL,
+  LOL_MAP_LABEL,
+  TFT_MODE_LABEL,
+  CustomGameName,
   SCRIM_RULES_MAX_LENGTH,
   SCRIM_TITLE_MAX_LENGTH,
   ScrimTitle,
@@ -44,8 +50,9 @@ export function ScrimEditDialog({
   const [rated, setRated] = useState(s.options.rated);
   const [autoBalance, setAutoBalance] = useState(s.options.auto_balance);
   const [steamApp, setSteamApp] = useState<SteamAppRef | null>(s.steam_app);
+  const [customGameName, setCustomGameName] = useState(s.custom_game_name ?? '');
   const [error, setError] = useState<string | null>(null);
-  const ids = { title: useId(), date: useId(), time: useId(), cap: useId(), rules: useId(), head: useId() };
+  const ids = { title: useId(), date: useId(), time: useId(), cap: useId(), rules: useId(), head: useId(), custom: useId() };
 
   useEffect(() => {
     const d = ref.current;
@@ -55,6 +62,7 @@ export function ScrimEditDialog({
   // 원래 시작 시각이 상한을 넘는 모집글은 그대로 둘 수 있어야 하므로 max는 상한과 현재 값 중 큰 쪽
   const limitMs = scheduleMaxMs(Date.now(), scrimPolicy);
   const maxDate = limitMs !== null ? isoToKstInputs(new Date(Math.max(limitMs, Date.parse(s.scheduled_at))).toISOString()).date : undefined;
+  const party = isPartyRecruit(s.game.code, s.tft_mode, s.lol_format);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -69,21 +77,27 @@ export function ScrimEditDialog({
     }
     if (capacity < s.joined_count) return setError(`지금 참가 확정이 ${s.joined_count}명이라 정원을 그보다 줄일 수 없어요.`);
     if (game.requires_steam_app && !steamApp) return setError('스팀 게임을 골라 주세요.');
+    if (game.code === 'other' && !CustomGameName.safeParse(customGameName).success) {
+      return setError(`게임 이름을 1–${CUSTOM_GAME_NAME_MAX_LENGTH}자로 입력해 주세요.`);
+    }
     const patch = buildScrimPatch(s, {
       title,
       scheduledIso: iso,
       capacity,
       rules,
-      rated: game.has_results ? rated : s.options.rated,
-      autoBalance: game.has_results
-        ? appliedAutoBalance({
-            game: game.code,
-            hasTeams: game.has_teams,
-            tftMode: s.tft_mode,
-            requested: autoBalance,
-          })
-        : s.options.auto_balance,
+      rated: party ? false : game.has_results ? rated : s.options.rated,
+      autoBalance: party
+        ? false
+        : game.has_results
+          ? appliedAutoBalance({
+              game: game.code,
+              hasTeams: game.has_teams,
+              tftMode: s.tft_mode,
+              requested: autoBalance,
+            })
+          : s.options.auto_balance,
       steamAppId: game.requires_steam_app ? steamApp?.app_id : null,
+      customGameName: game.code === 'other' ? customGameName : undefined,
     });
     if (!patch) return onClose();
     const parsed = UpdateScrimRequest.safeParse(patch);
@@ -116,7 +130,32 @@ export function ScrimEditDialog({
         <h2 id={ids.head} className="m-0 text-lg font-bold">
           모집글 수정
         </h2>
+        {game.code === 'lol' && (
+          <p className="m-0 text-sm text-muted">
+            맵 · {LOL_MAP_LABEL[s.lol_map ?? 'rift']} · {LOL_FORMAT_LABEL[s.lol_format ?? 'scrim']}
+          </p>
+        )}
+        {game.code === 'tft' && s.tft_mode && (
+          <p className="m-0 text-sm text-muted">
+            모드 · {TFT_MODE_LABEL[s.tft_mode]} · {LOL_FORMAT_LABEL[isPartyRecruit(s.game.code, s.tft_mode, s.lol_format) ? 'party' : 'scrim']}
+          </p>
+        )}
         {game.requires_steam_app && <SteamAppPicker value={steamApp} onChange={setSteamApp} />}
+        {game.code === 'other' && (
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={ids.custom} className="text-[13px] text-muted">
+              게임 이름
+            </label>
+            <input
+              id={ids.custom}
+              value={customGameName}
+              placeholder="마인크래프트, 오버워치 등"
+              maxLength={CUSTOM_GAME_NAME_MAX_LENGTH + 10}
+              onChange={(e) => setCustomGameName(e.target.value)}
+              className={input}
+            />
+          </div>
+        )}
         <div className="flex flex-col gap-1.5">
           <label htmlFor={ids.title} className="text-[13px] text-muted">
             제목
@@ -154,7 +193,9 @@ export function ScrimEditDialog({
         {capacity > s.capacity && s.waitlist_count > 0 && (
           <p className="m-0 text-xs text-faint">정원을 늘리면 대기 1번부터 순서대로 참가 확정돼요.</p>
         )}
-        {game.has_results ? (
+        {party ? (
+          <p className="m-0 text-xs text-muted">인원 모집이라 팀 자동 밸런스와 ELO 반영을 쓰지 않아요.</p>
+        ) : game.has_results ? (
           <div className="flex flex-col gap-2">
             {game.has_teams || s.tft_mode === 'double_up' ? (
               <Toggle

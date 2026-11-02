@@ -8,6 +8,7 @@ export const GAME_META: Record<GameCode, { short: string; name: string }> = {
   lol: { short: '롤', name: '리그 오브 레전드' },
   tft: { short: '롤체', name: '전략적 팀 전투' },
   steam: { short: '스팀', name: '스팀 게임' },
+  other: { short: '기타', name: '기타' },
 };
 
 /**
@@ -20,7 +21,7 @@ export const GAME_SCRIM_META: Record<
   { label: string; tag: string; abbr: string; dot: string; ink: string; banner: string; tile: string; fill: string; stroke: string }
 > = {
   lol: {
-    label: '롤 협곡',
+    label: '롤',
     tag: 'LEAGUE',
     abbr: 'LoL',
     dot: 'bg-cyan',
@@ -51,6 +52,17 @@ export const GAME_SCRIM_META: Record<
     tile: 'bg-orange/14 text-orange-ink',
     fill: 'fill-orange',
     stroke: 'stroke-orange',
+  },
+  other: {
+    label: '기타',
+    tag: 'OTHER',
+    abbr: 'ETC',
+    dot: 'bg-gold',
+    ink: 'text-gold-ink',
+    banner: 'bg-hero',
+    tile: 'bg-gold/14 text-gold-ink',
+    fill: 'fill-gold',
+    stroke: 'stroke-gold',
   },
 };
 

@@ -1,6 +1,9 @@
 'use client';
 
 import {
+  isPartyRecruit,
+  LOL_FORMAT_LABEL,
+  LOL_MAP_LABEL,
   Uuid,
   type GameView,
   type ScrimDetail,
@@ -10,11 +13,12 @@ import {
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { Badge, Button, ConfirmDialog, InlineError, Notice, Toast } from '@/components/ui/controls';
+import { InfoTip } from '@/components/ui/info-tip';
 import { Avatar, Card, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
 import { isApiError } from '@/lib/api/client';
 import { copyText } from '@/lib/clipboard';
 import { cn } from '@/lib/cn';
-import { duoBalanceNote } from '@/lib/elo-info';
+import { duoBalanceNote, rosterSkillEloText } from '@/lib/elo-info';
 import { errorMessage } from '@/lib/errors';
 import { formatFull } from '@/lib/format';
 import { positionLabel } from '@/lib/games';
@@ -157,7 +161,7 @@ function DetailBody({
       <HostMenu s={s} onToast={setToast} />
       <div className="flex flex-wrap items-start gap-5">
         <Roster s={s} onToast={setToast} />
-        <div className="flex min-w-0 flex-[2_1_520px] flex-col gap-5">
+        <div className="flex min-w-0 flex-[1.7_1_460px] flex-col gap-5">
           <JoinPanel s={s} onToast={setToast} />
           {s.game.has_teams && <TeamsPanel s={s} onToast={setToast} />}
           {s.tft_mode === 'double_up' && s.options.auto_balance && <DuoPanel s={s} />}
@@ -201,8 +205,8 @@ function DetailSkeleton() {
       <Skeleton className="h-5 w-24" />
       <Skeleton className="h-[220px] rounded-[24px]" />
       <div className="flex flex-wrap gap-5">
-        <Skeleton className="h-[420px] flex-[1_1_300px] rounded-[20px]" />
-        <Skeleton className="h-[420px] flex-[2_1_520px] rounded-[20px]" />
+        <Skeleton className="h-[420px] flex-[1.3_1_400px] rounded-[20px]" />
+        <Skeleton className="h-[420px] flex-[1.7_1_460px] rounded-[20px]" />
       </div>
     </div>
   );
@@ -233,6 +237,8 @@ function Hero({ s }: { s: ScrimDetail }) {
         <div className="flex min-w-0 flex-col gap-2.5">
           <div className="flex flex-wrap gap-2">
             <GameTag game={s.game.code} capacity={s.capacity} boxed />
+            {s.game.code === 'lol' && <StatusPill label={LOL_MAP_LABEL[s.lol_map ?? 'rift']} tone="neutral" className="rounded-lg" />}
+            {isPartyRecruit(s.game.code, s.tft_mode, s.lol_format) && <StatusPill label={LOL_FORMAT_LABEL.party} tone="neutral" className="rounded-lg" />}
             <StatusPill label={badge.label} tone={badge.tone} className="rounded-lg" />
             {s.viewer.status === 'joined' && open && <StatusPill label="참가 중" tone="cyan" className="rounded-lg" />}
             {s.viewer.status === 'waitlist' && open && (
@@ -242,6 +248,11 @@ function Hero({ s }: { s: ScrimDetail }) {
           <h1 id="scrim-title" className="m-0 break-words text-[26px] font-bold tracking-[-0.03em] md:text-[30px]">
             {s.title}
           </h1>
+          {s.custom_game_name && (
+            <span className="inline-flex w-fit items-center rounded-2xl border border-line-2 bg-surface px-4 py-2 text-[15px] font-bold text-gold-ink">
+              {s.custom_game_name}
+            </span>
+          )}
           {s.steam_app && (
             <a
               href={steamStoreUrl(s.steam_app.app_id)}
@@ -456,6 +467,15 @@ function HostMenu({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => 
 // 참가자 슬롯 + 대기열 + 운영진 노쇼
 // -----------------------------------------------------------------------------
 
+function SkillEloTip() {
+  return (
+    <InfoTip compact label="실력값과 분기 ELO 설명">
+      <h3 className="m-0 text-sm font-bold text-text">실력값과 분기 ELO</h3>
+      <p className="m-0 mt-1">{rosterSkillEloText()}</p>
+    </InfoTip>
+  );
+}
+
 function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => void }) {
   const me = useMe();
   const { restriction } = useRestriction();
@@ -467,11 +487,20 @@ function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => vo
   const [markTarget, setMarkTarget] = useState<ScrimPlayerView | null>(null);
   const open = isOpenStatus(s.status);
   const empty = open ? Math.max(0, s.capacity - s.players.length) : 0;
+  const usePositions = s.options.use_positions;
+  const showSlot = usePositions || s.players.some((p) => p.team !== null);
+  const rowGrid = cn(
+    'grid items-center gap-x-3',
+    showSlot && showNoShow && 'grid-cols-[minmax(0,1fr)_auto_max-content_auto]',
+    showSlot && !showNoShow && 'grid-cols-[minmax(0,1fr)_auto_max-content]',
+    !showSlot && showNoShow && 'grid-cols-[minmax(0,1fr)_max-content_auto]',
+    !showSlot && !showNoShow && 'grid-cols-[minmax(0,1fr)_max-content]',
+  );
 
   return (
     <section
       aria-labelledby="roster-title"
-      className="flex min-w-0 flex-[1_1_300px] flex-col gap-2 rounded-[20px] border border-line bg-surface p-[22px] shadow-[inset_0_1px_0_var(--hi)]"
+      className="flex min-w-0 flex-[1.3_1_400px] flex-col gap-2 rounded-[20px] border border-line bg-surface p-[22px] shadow-[inset_0_1px_0_var(--hi)]"
     >
       <SectionHead
         eyebrow="ROSTER"
@@ -483,65 +512,82 @@ function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => vo
           </span>
         }
       />
-      <ul className="m-0 mt-1.5 flex list-none flex-col p-0">
+      <div className={cn(rowGrid, 'mt-3')}>
+        <span className="pb-1.5 text-xs font-medium text-faint">참가자</span>
+        {showSlot && <span className="pb-1.5 text-right text-xs font-medium text-faint">{usePositions ? '포지션' : '팀'}</span>}
+        <span className="flex items-center justify-end whitespace-nowrap pb-1.5 text-xs font-medium text-faint">
+          실력값 (분기 ELO)
+          <SkillEloTip />
+        </span>
+        {showNoShow && <span className="pb-1.5" />}
+        <span className="col-span-full border-b border-line" />
         {s.players.map((p) => (
-          <li key={p.user.id} className="flex min-h-[42px] items-center gap-2.5 py-1">
-            <Avatar src={p.user.avatar_url} name={p.user.nickname} size={30} />
-            <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-sm font-medium">
-              <Link href={routes.member(p.user.id)} className="truncate text-text no-underline hover:text-text hover:underline">
-                {p.user.nickname}
-              </Link>
-              {p.is_new && <NewBadge />}
-              {p.is_host && <Badge tone="accent">방장</Badge>}
-              {p.user.id === me.data?.id && <span className="text-xs text-faint">(나)</span>}
-              {p.status === 'no_show' && (
-                <span title={p.no_show_marked_at ? `${formatFull(p.no_show_marked_at)} 표시` : undefined}>
-                  <Badge tone="orange">노쇼</Badge>
-                </span>
-              )}
-            </span>
-            {p.team ? (
-              <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-text-2">
-                <span aria-hidden="true" className={cn('size-2 rounded-full', TEAM_TONE[p.team].dot)} />
-                <span className="sr-only">{TEAM_LABEL[p.team].ko}</span>
-                {p.position ? positionLabel(p.position) : null}
+          <div key={p.user.id} className="contents">
+            <span className="flex min-h-[42px] min-w-0 items-center gap-2.5 py-1">
+              <Avatar src={p.user.avatar_url} name={p.user.nickname} size={30} />
+              <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-sm font-medium">
+                <Link href={routes.member(p.user.id)} className="truncate text-text no-underline hover:text-text hover:underline">
+                  {p.user.nickname}
+                </Link>
+                {p.is_new && <NewBadge />}
+                {p.is_host && <Badge tone="accent">방장</Badge>}
+                {p.user.id === me.data?.id && <span className="text-xs text-faint">(나)</span>}
+                {p.status === 'no_show' && (
+                  <span title={p.no_show_marked_at ? `${formatFull(p.no_show_marked_at)} 표시` : undefined}>
+                    <Badge tone="orange">노쇼</Badge>
+                  </span>
+                )}
               </span>
-            ) : (
-              <PositionChips positions={p.preferred_positions} />
-            )}
-            <span className="w-10 shrink-0 text-right font-display text-sm font-semibold tabular-nums" title="실력값">
-              {p.skill}
             </span>
-            {showNoShow &&
-              (p.status === 'no_show' ? (
-                <Button
-                  className="h-8 px-2.5 text-xs"
-                  disabled={noShow.isPending}
-                  onClick={() =>
-                    noShow.mutate(
-                      { userId: p.user.id, noShow: false },
-                      { onSuccess: () => onToast({ message: `${p.user.nickname}님의 노쇼를 정정했어요.`, tone: 'success' }) },
-                    )
-                  }
-                >
-                  노쇼 정정
-                </Button>
+            {showSlot &&
+              (p.team ? (
+                <span className="flex items-center justify-end gap-1.5 text-[11px] text-text-2">
+                  <span aria-hidden="true" className={cn('size-2 rounded-full', TEAM_TONE[p.team].dot)} />
+                  <span className="sr-only">{TEAM_LABEL[p.team].ko}</span>
+                  {p.position ? positionLabel(p.position) : null}
+                </span>
               ) : (
-                s.viewer.can_mark_no_show && (
-                  <Button variant="danger" className="h-8 px-2.5 text-xs" disabled={noShow.isPending} onClick={() => setMarkTarget(p)}>
-                    노쇼 표시
-                  </Button>
-                )
+                <span className="flex items-center justify-end">
+                  <PositionChips positions={p.preferred_positions} />
+                </span>
               ))}
-          </li>
+            <span className="flex items-baseline justify-end gap-1 font-display text-sm tabular-nums">
+              <span className="font-semibold">{p.skill}</span>
+              <span className="text-[13px] font-medium text-muted">({p.elo})</span>
+            </span>
+            {showNoShow && (
+              <span className="flex items-center justify-end">
+                {p.status === 'no_show' ? (
+                  <Button
+                    className="h-8 px-2.5 text-xs"
+                    disabled={noShow.isPending}
+                    onClick={() =>
+                      noShow.mutate(
+                        { userId: p.user.id, noShow: false },
+                        { onSuccess: () => onToast({ message: `${p.user.nickname}님의 노쇼를 정정했어요.`, tone: 'success' }) },
+                      )
+                    }
+                  >
+                    노쇼 정정
+                  </Button>
+                ) : (
+                  s.viewer.can_mark_no_show && (
+                    <Button variant="danger" className="h-8 px-2.5 text-xs" disabled={noShow.isPending} onClick={() => setMarkTarget(p)}>
+                      노쇼 표시
+                    </Button>
+                  )
+                )}
+              </span>
+            )}
+          </div>
         ))}
         {Array.from({ length: empty }, (_, i) => (
-          <li key={`empty-${i}`} className="flex min-h-[42px] items-center gap-2.5 py-1 text-sm text-faint">
+          <div key={`empty-${i}`} className="col-span-full flex min-h-[42px] items-center gap-2.5 py-1 text-sm text-faint">
             <span aria-hidden="true" className="size-[30px] shrink-0 rounded-full border border-dashed border-line-3" />
             빈 자리
-          </li>
+          </div>
         ))}
-      </ul>
+      </div>
       {showNoShow && policy && <p className="m-0 px-1 text-xs text-faint">{noShowMarkHintText(policy)}</p>}
       {showNoShow && noShow.isError &&<InlineError>{scrimErrorText(noShow.error)}</InlineError>}
 

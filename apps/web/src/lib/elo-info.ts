@@ -9,6 +9,12 @@ import { BALANCE_ELO_WEIGHT_MAX, BALANCE_FULL_WEIGHT_GAMES, RATING_START_ELO, ty
 export const ELO_INFO_TITLE = '내전/모집 ELO란?';
 export const ELO_INFO_LABEL = '내전/모집 ELO 설명';
 
+/** 참가자 목록 「실력값 (분기 ELO)」 ⓘ. 비중은 밸런스 상수다 */
+export function rosterSkillEloText(): string {
+  const n = percent(BALANCE_ELO_WEIGHT_MAX);
+  return `앞 숫자는 팀을 나눌 때 쓰는 실력값이에요. 괄호 안은 이번 분기 내전/모집 ELO예요. 실력값은 티어를 중심으로 이번 분기 ELO를 조금 섞고, ${BALANCE_FULL_WEIGHT_GAMES}경기부터 ELO 비중이 최대 ${n}%예요.`;
+}
+
 /** 더블업 2인 팀 설명. 숫자는 롤 밸런스와 같은 계약 상수다. */
 export function duoBalanceNote(): string {
   const n = percent(BALANCE_ELO_WEIGHT_MAX);

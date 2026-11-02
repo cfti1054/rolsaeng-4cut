@@ -53,6 +53,8 @@ export const CalendarScrimItem = z.object({
   game: ScrimGameRef,
   /** 스팀 내전에서 고른 게임(ScrimSummary.steam_app과 같음) */
   steam_app: SteamAppRef.nullable(),
+  /** 기타 모집 게임 이름(ScrimSummary.custom_game_name과 같음). 생략하면 null */
+  custom_game_name: z.string().min(1).max(40).nullable().default(null),
   date: IsoDate,
   scheduled_at: IsoDateTime,
   status: CalendarScrimStatus,

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { GAME_CODES_BY_PROVIDER, GAME_PROVIDER_BY_CODE, GameCode, type GameProvider } from '@gcd/shared';
+import { GAME_CODES_BY_PROVIDER, GameCode, gameProvider, type GameProvider } from '@gcd/shared';
 import { AppError } from '../../common/app-error';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -50,6 +50,9 @@ export class GameCatalog {
   }
 
   async providerOf(gameId: string): Promise<GameProvider> {
-    return GAME_PROVIDER_BY_CODE[await this.codeOf(gameId)];
+    const code = await this.codeOf(gameId);
+    const provider = gameProvider(code);
+    if (!provider) throw new AppError('INTERNAL_ERROR', undefined, { message: `연동 계정이 없는 게임: ${code}` });
+    return provider;
   }
 }

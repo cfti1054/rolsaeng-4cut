@@ -113,7 +113,9 @@ export function RatingHistoryPanel({ p, className }: { p: GetUserProfileResponse
           disabled={!games.data}
         >
           {!game && <option value="">게임</option>}
-          {(games.data?.items ?? []).map((g) => (
+          {(games.data?.items ?? [])
+            .filter((g) => g.code !== 'other')
+            .map((g) => (
             <option key={g.code} value={g.code}>
               {g.name}
             </option>

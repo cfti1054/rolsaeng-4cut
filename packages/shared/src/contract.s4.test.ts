@@ -115,6 +115,7 @@ describe('GET /rankings/elo', () => {
     expect(GetEloRankingQuery.safeParse({}).success).toBe(false);
     expect(GetEloRankingQuery.safeParse({ game: 'lol', season: 'current' }).success).toBe(false);
     expect(GetEloRankingQuery.safeParse({ game: 'steam', season: ID2 }).success).toBe(true);
+    expect(GetEloRankingQuery.safeParse({ game: 'other' }).success).toBe(false);
   });
   it('시즌 없음: season·synced_at null, 빈 목록', () => {
     const r = GetEloRankingResponse.parse({

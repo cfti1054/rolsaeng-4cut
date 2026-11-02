@@ -47,6 +47,33 @@ export const TFT_MODE_CAPACITY: Record<TftMode, { min: number; max: number; step
 };
 
 /**
+ * scrims.lol_map. 롤 작성 때만 쓴다. 다른 게임은 null.
+ * rift: 협곡(포지션). aram: 칼바람(포지션 없음, 팀은 그대로).
+ * 이 필드 전에 만든 롤 내전은 null이고 화면은 협곡으로 본다.
+ */
+export const LolMap = z.enum(['rift', 'aram']);
+export type LolMap = z.infer<typeof LolMap>;
+
+export const LOL_MAP_LABEL: Record<LolMap, string> = {
+  rift: '협곡',
+  aram: '칼바람',
+};
+
+/**
+ * scrims.lol_format. 롤·롤체 작성 때 쓴다. 스팀·기타는 null.
+ * scrim: 내전. 팀 자동 밸런스와 ELO 반영을 켤 수 있다.
+ * party: 인원 모집. 둘 다 저장하지 않는다.
+ * 롤체 랭크는 항상 party. 이 필드 전에 만든 롤·롤체 글은 null이고, 랭크가 아니면 화면은 내전으로 본다.
+ */
+export const LolFormat = z.enum(['scrim', 'party']);
+export type LolFormat = z.infer<typeof LolFormat>;
+
+export const LOL_FORMAT_LABEL: Record<LolFormat, string> = {
+  scrim: '내전',
+  party: '인원 모집',
+};
+
+/**
  * scrim_results.status — 명세 공백 보완(slice.md 결정).
  * S6: reverted = 운영진이 승인을 되돌린 결과(레이팅 역반영, 계약 S6 6절). 활성 결과가 아니다(부분 고유 인덱스는 pending·approved만).
  */

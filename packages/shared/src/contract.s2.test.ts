@@ -82,6 +82,7 @@ const detail = {
       position_preference: null,
       duo_index: null,
       skill: 1000,
+      elo: 1000,
       is_new: true,
     },
   ],
@@ -152,7 +153,7 @@ describe('S2 transitions', () => {
 });
 
 describe('games', () => {
-  it('정원 범위: min ≤ default ≤ max, default·max는 step 간격 위, 롤 2–10 짝수·꽉 차야 시작', () => {
+  it('정원 범위: min ≤ default ≤ max, default·max는 step 간격 위, 롤 2–10·꽉 차야 시작', () => {
     for (const g of GAME_SEED) {
       expect(g.capacity_min).toBeLessThanOrEqual(g.capacity_default);
       expect(g.capacity_default).toBeLessThanOrEqual(g.capacity_max);
@@ -161,7 +162,7 @@ describe('games', () => {
       expect((g.capacity_max - g.capacity_min) % g.capacity_step).toBe(0);
     }
     const lol = GAME_SEED.find((g) => g.code === 'lol');
-    expect([lol?.capacity_min, lol?.capacity_max, lol?.capacity_step, lol?.start_requires_full]).toEqual([2, 10, 2, true]);
+    expect([lol?.capacity_min, lol?.capacity_max, lol?.capacity_step, lol?.start_requires_full]).toEqual([2, 10, 1, true]);
     // 포지션 게임은 정원이 포지션 수 × 2(팀)로 나뉘어야 open_positions 계산이 맞다
     for (const g of GAME_SEED.filter((x) => x.has_positions)) {
       expect(g.capacity_max % (g.positions.length * 2)).toBe(0);
@@ -173,7 +174,7 @@ describe('games', () => {
         {
           ...lolGame,
           sort_order: 1,
-          capacity: { min: 2, max: 10, default: 10, step: 2, start_requires_full: true },
+          capacity: { min: 2, max: 10, default: 10, step: 1, start_requires_full: true },
           requires_steam_app: false,
         },
       ],
@@ -187,7 +188,9 @@ describe('games', () => {
   it('스팀은 인원 모집: 팀 배정과 승패 입력이 없다', () => {
     const steam = GAME_SEED.find((g) => g.code === 'steam');
     expect(steam).toMatchObject({ has_teams: false, has_results: false });
-    expect(GAME_SEED.filter((g) => g.code !== 'steam').every((g) => g.has_results)).toBe(true);
+    const other = GAME_SEED.find((g) => g.code === 'other');
+    expect(other).toMatchObject({ has_teams: false, has_results: false, requires_steam_app: false, capacity_min: 2, capacity_max: 16 });
+    expect(GAME_SEED.filter((g) => g.has_results).map((g) => g.code).sort()).toEqual(['lol', 'tft']);
   });
 });
 
@@ -204,6 +207,22 @@ describe('steam apps (D98)', () => {
     expect(CreateScrimRequest.safeParse({ ...base, steam_app_id: 0 }).success).toBe(false);
     expect(UpdateScrimRequest.parse({ steam_app_id: 570 }).steam_app_id).toBe(570);
     expect(UpdateScrimRequest.safeParse({ steam_app_id: null }).success).toBe(false);
+  });
+  it('기타 모집은 게임 이름이 필수이고, 다른 게임은 그 필드를 받지 않는다', () => {
+    const base = { title: '같이 하기', scheduled_at: '2026-11-01T12:00:00.000Z', capacity: 4 };
+    expect(CreateScrimRequest.parse({ ...base, game: 'other', custom_game_name: ' 마인크래프트 ' }).custom_game_name).toBe('마인크래프트');
+    expect(CreateScrimRequest.safeParse({ ...base, game: 'other' }).success).toBe(false);
+    expect(CreateScrimRequest.safeParse({ ...base, game: 'other', custom_game_name: '   ' }).success).toBe(false);
+    expect(CreateScrimRequest.safeParse({ ...base, game: 'lol', custom_game_name: '오버워치' }).success).toBe(false);
+    expect(CreateScrimRequest.parse({ ...base, game: 'lol', capacity: 10, lol_map: 'aram' }).lol_map).toBe('aram');
+    expect(CreateScrimRequest.parse({ ...base, game: 'lol', capacity: 10 }).lol_map).toBeUndefined();
+    expect(CreateScrimRequest.safeParse({ ...base, game: 'other', custom_game_name: '마인크래프트', lol_map: 'rift' }).success).toBe(false);
+    expect(CreateScrimRequest.parse({ ...base, game: 'lol', capacity: 5, lol_format: 'party' }).lol_format).toBe('party');
+    expect(CreateScrimRequest.safeParse({ ...base, game: 'other', custom_game_name: '마인크래프트', lol_format: 'party' }).success).toBe(false);
+    expect(CreateScrimRequest.parse({ ...base, game: 'tft', capacity: 8, tft_mode: 'double_up', lol_format: 'scrim' }).lol_format).toBe('scrim');
+    expect(CreateScrimRequest.parse({ ...base, game: 'tft', capacity: 4, tft_mode: 'normal', lol_format: 'party' }).lol_format).toBe('party');
+    expect(CreateScrimRequest.safeParse({ ...base, game: 'tft', capacity: 3, tft_mode: 'ranked', lol_format: 'scrim' }).success).toBe(false);
+    expect(UpdateScrimRequest.parse({ custom_game_name: '오버워치' }).custom_game_name).toBe('오버워치');
   });
   it('헤더 이미지 주소', () => {
     expect(steamAppHeaderImageUrl(730)).toBe('https://cdn.cloudflare.steamstatic.com/steam/apps/730/header.jpg');

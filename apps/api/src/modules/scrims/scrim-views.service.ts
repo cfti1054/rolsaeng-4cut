@@ -216,12 +216,15 @@ export class ScrimViews {
       options: { rated: scrim.rated, auto_balance: scrim.autoBalance, use_positions: scrim.usePositions },
       steam_app:
         scrim.steamAppId !== null && scrim.steamAppName ? { app_id: scrim.steamAppId, name: scrim.steamAppName } : null,
+      custom_game_name: scrim.customGameName,
       open_positions: openPositions,
       join_closed: isJoinClosed(scrim.scheduledAt, now),
       my_status: myStatus,
       created_at: scrim.createdAt.toISOString(),
       ...this.resultSummary(scrim, latest, users),
       tft_mode: scrim.tftMode,
+      lol_map: scrim.lolMap,
+      lol_format: scrim.lolFormat,
       can_delete: viewer.role === 'admin' && latest?.status !== 'approved',
     };
   }
@@ -375,6 +378,7 @@ export class ScrimViews {
               ? positionPreferenceOf(p.preferredPositions, p.position)
               : null,
           skill: s.skill,
+          elo: s.rating,
           is_new: s.isNew,
         };
       }),

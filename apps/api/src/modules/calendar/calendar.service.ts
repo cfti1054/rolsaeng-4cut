@@ -35,6 +35,7 @@ export function toCalendarScrimItem(s: ScrimSummary): CalendarScrimItem {
     title: s.title,
     game: s.game,
     steam_app: s.steam_app,
+    custom_game_name: s.custom_game_name,
     date: kstDateKey(new Date(s.scheduled_at)),
     scheduled_at: s.scheduled_at,
     status: s.status as CalendarScrimStatus,

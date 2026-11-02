@@ -175,7 +175,9 @@ export function upcomingRows(u: AdminUpcoming): UpcomingRow[] {
       kind: 'scrim',
       date: `${dot2(it.date)} (${weekdayOf(it.date)})`,
       time,
-      game: GAME_META[it.game.code]?.short ?? it.game.name,
+      game: it.custom_game_name
+        ? `${GAME_META[it.game.code]?.short ?? it.game.name} · ${it.custom_game_name}`
+        : (GAME_META[it.game.code]?.short ?? it.game.name),
       title: it.title,
       chip,
       href: routes.scrim(it.id),

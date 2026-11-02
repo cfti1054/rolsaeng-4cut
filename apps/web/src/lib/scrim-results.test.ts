@@ -36,6 +36,7 @@ const player = (n: number, extra: Partial<ScrimPlayerView> = {}): ScrimPlayerVie
   no_show_marked_at: null,
   position_preference: null,
   skill: 1000,
+  elo: 1000,
   is_new: false,
   ...extra,
 });
