@@ -1,6 +1,6 @@
 'use client';
 
-import { LOL_MAP_LABEL, steamAppHeaderImageUrl, TFT_MODE_LABEL, type ScrimSummary } from '@gcd/shared';
+import { isPartyRecruit, LOL_FORMAT_LABEL, LOL_MAP_LABEL, steamAppHeaderImageUrl, TFT_MODE_LABEL, type ScrimSummary } from '@gcd/shared';
 import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -112,6 +112,9 @@ export function ScrimCard({ s, now, preview = false }: { s: ScrimSummary; now: n
         <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0" aria-label="진행 방식">
           {s.game.code === 'lol' && (
             <li className="rounded-lg border border-line-2 bg-surface-2 px-[9px] py-[3px] text-xs text-text-2">{LOL_MAP_LABEL[s.lol_map ?? 'rift']}</li>
+          )}
+          {isPartyRecruit(s.game.code, s.tft_mode, s.lol_format) && (
+            <li className="rounded-lg border border-line-2 bg-surface-2 px-[9px] py-[3px] text-xs text-text-2">{LOL_FORMAT_LABEL.party}</li>
           )}
           {s.tft_mode && (
             <li className="rounded-lg border border-line-2 bg-surface-2 px-[9px] py-[3px] text-xs text-text-2">{TFT_MODE_LABEL[s.tft_mode]}</li>

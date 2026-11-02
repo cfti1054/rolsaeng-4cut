@@ -2,7 +2,9 @@
 
 import {
   CreateScrimRequest,
+  LOL_FORMAT_LABEL,
   LOL_MAP_LABEL,
+  LolFormat,
   LolMap,
   TFT_MODE_CAPACITY,
   TFT_MODE_LABEL,
@@ -17,6 +19,8 @@ import {
   type TftMode,
   type SteamAppRef,
   appliedRated,
+  isPartyRecruit,
+  recruitFormat,
 } from '@gcd/shared';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -96,6 +100,7 @@ export function ScrimNewForm() {
   const [customGameName, setCustomGameName] = useState('');
   const [tftMode, setTftMode] = useState<TftMode | null>(null);
   const [lolMap, setLolMap] = useState<LolMap>('rift');
+  const [lolFormat, setLolFormat] = useState<LolFormat>('scrim');
   const [errors, setErrors] = useState<FieldErrors>({});
 
   // 기본 시작 시각은 마운트 후에(서버 렌더 시각과 달라 하이드레이션이 어긋나지 않게)
@@ -117,10 +122,12 @@ export function ScrimNewForm() {
         : null;
   const cap = capRange ? (capacity ?? capRange.default) : null;
   const mapIsAram = game?.code === 'lol' && lolMap === 'aram';
+  const format = game ? recruitFormat(game.code, tftMode, lolFormat) : null;
+  const party = game ? isPartyRecruit(game.code, tftMode, format) : false;
   const effPositions = !!game?.has_positions && usePositions && !mapIsAram;
-  const balanceChoice = game?.code === 'tft' ? tftMode === 'double_up' : !!game?.has_teams;
+  const balanceChoice = party ? false : game?.code === 'tft' ? tftMode === 'double_up' : !!game?.has_teams;
   const effBalance = balanceChoice && autoBalance;
-  const effRated = appliedRated(game?.has_results !== false, rated);
+  const effRated = party ? false : appliedRated(game?.has_results !== false, rated);
   const needsApp = !!game?.requires_steam_app;
   const needsCustom = game?.code === 'other';
   const positionDefaults = usePositionDefaults({
@@ -140,6 +147,7 @@ export function ScrimNewForm() {
     setGameCode(g.code);
     setTftMode(null);
     setLolMap('rift');
+    setLolFormat('scrim');
     setCapacity(g.code === 'tft' ? null : g.capacity.default);
     setFirst(null);
     setSecond(null);
@@ -191,6 +199,7 @@ export function ScrimNewForm() {
       use_positions: effPositions,
       ...(game.code === 'tft' && tftMode ? { tft_mode: tftMode } : {}),
       ...(game.code === 'lol' ? { lol_map: lolMap } : {}),
+      ...(format ? { lol_format: format } : {}),
       host_preferred_positions: effPositions ? toPreferredPositions(first, second) : [],
       ...(needsApp && steamApp ? { steam_app_id: steamApp.app_id } : {}),
       ...(needsCustom ? { custom_game_name: customGameName } : {}),
@@ -239,6 +248,7 @@ export function ScrimNewForm() {
           outcome: null,
           tft_mode: game.code === 'tft' ? tftMode : null,
           lol_map: game.code === 'lol' ? lolMap : null,
+          lol_format: format,
           can_delete: false,
         }
       : null;
@@ -340,6 +350,28 @@ export function ScrimNewForm() {
                     })}
                   </div>
                   {errors.lol_map && <InlineError>{errors.lol_map}</InlineError>}
+                  <span className="mt-2 text-[13px] text-muted">진행</span>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {(Object.keys(LOL_FORMAT_LABEL) as LolFormat[]).map((format) => {
+                      const on = lolFormat === format;
+                      return (
+                        <button
+                          key={format}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => setLolFormat(format)}
+                          className={cn(
+                            'rounded-2xl border-[1.5px] px-4 py-3 text-left',
+                            on ? 'border-accent bg-accent/5' : 'border-line bg-surface-2 hover:border-line-3',
+                          )}
+                        >
+                          <span className="block text-sm font-bold">{LOL_FORMAT_LABEL[format]}</span>
+                          <span className="text-xs text-muted">{format === 'party' ? '파티만 모음' : '밸런스 · ELO를 켤 수 있음'}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {party && <p className="m-0 text-xs text-muted">인원 모집은 팀 자동 밸런스와 ELO 반영을 쓰지 않아요.</p>}
                 </div>
               )}
               {game?.code === 'tft' && (
@@ -348,7 +380,7 @@ export function ScrimNewForm() {
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {(Object.keys(TFT_MODE_LABEL) as TftMode[]).map((mode) => {
                       const on = tftMode === mode;
-                      const hint = mode === 'double_up' ? '2명씩 팀' : mode === 'ranked' ? '최대 3인 · 개인전' : '개인전';
+                      const hint = mode === 'double_up' ? '2명씩 팀' : mode === 'ranked' ? '최대 3인 · 인원 모집' : '개인전';
                       return (
                         <button
                           key={mode}
@@ -371,6 +403,33 @@ export function ScrimNewForm() {
                     })}
                   </div>
                   {errors.tft_mode && <InlineError>{errors.tft_mode}</InlineError>}
+                  {tftMode === 'ranked' && <p className="m-0 text-xs text-muted">랭크는 인원 모집이라 팀 자동 밸런스와 ELO 반영을 쓰지 않아요.</p>}
+                  {(tftMode === 'normal' || tftMode === 'double_up') && (
+                    <>
+                      <span className="mt-2 text-[13px] text-muted">진행</span>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {(Object.keys(LOL_FORMAT_LABEL) as LolFormat[]).map((item) => {
+                          const on = lolFormat === item;
+                          return (
+                            <button
+                              key={item}
+                              type="button"
+                              aria-pressed={on}
+                              onClick={() => setLolFormat(item)}
+                              className={cn(
+                                'rounded-2xl border-[1.5px] px-4 py-3 text-left',
+                                on ? 'border-accent bg-accent/5' : 'border-line bg-surface-2 hover:border-line-3',
+                              )}
+                            >
+                              <span className="block text-sm font-bold">{LOL_FORMAT_LABEL[item]}</span>
+                              <span className="text-xs text-muted">{item === 'party' ? '파티만 모음' : '밸런스 · ELO를 켤 수 있음'}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {party && <p className="m-0 text-xs text-muted">인원 모집은 팀 자동 밸런스와 ELO 반영을 쓰지 않아요.</p>}
+                    </>
+                  )}
                 </div>
               )}
               {needsCustom && (
@@ -526,7 +585,7 @@ export function ScrimNewForm() {
                   disabled={!game?.has_positions || mapIsAram}
                   onChange={() => setUsePositions((v) => !v)}
                 />
-                {game?.has_results !== false && (
+                {game?.has_results !== false && !party && (
                   <Toggle label="분기 ELO에 반영" desc="운영진 승인 후 레이팅이 바뀝니다" checked={rated} onChange={() => setRated((v) => !v)} />
                 )}
               </div>

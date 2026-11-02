@@ -193,11 +193,11 @@ describe('isCapacityInRange', () => {
     expect(isCapacityInRange(4.5, r)).toBe(false);
     expect(isCapacityInRange(Number.NaN, r)).toBe(false);
   });
-  it('롤 정원 2–10 짝수만(GAME_SEED)', () => {
+  it('롤 정원 2–10 한 명 단위(GAME_SEED)', () => {
     const lol = GAME_SEED.find((g) => g.code === 'lol')!;
     const r = { min: lol.capacity_min, max: lol.capacity_max, step: lol.capacity_step };
-    for (const ok of [2, 4, 6, 8, 10]) expect(isCapacityInRange(ok, r)).toBe(true);
-    for (const bad of [0, 1, 3, 5, 7, 9, 11, 12]) expect(isCapacityInRange(bad, r)).toBe(false);
+    for (const ok of [2, 3, 4, 5, 6, 7, 8, 9, 10]) expect(isCapacityInRange(ok, r)).toBe(true);
+    for (const bad of [0, 1, 11, 12]) expect(isCapacityInRange(bad, r)).toBe(false);
   });
   it('step은 min 기준: min 3, step 2 → 3·5·7', () => {
     const r = { min: 3, max: 7, step: 2 };

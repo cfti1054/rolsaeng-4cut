@@ -224,6 +224,7 @@ export class ScrimViews {
       ...this.resultSummary(scrim, latest, users),
       tft_mode: scrim.tftMode,
       lol_map: scrim.lolMap,
+      lol_format: scrim.lolFormat,
       can_delete: viewer.role === 'admin' && latest?.status !== 'approved',
     };
   }

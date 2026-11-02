@@ -49,11 +49,11 @@ export const GAME_SEED: readonly GameSeed[] = [
     has_results: true,
     positions: ['top', 'jungle', 'mid', 'bot', 'support'],
     sort_order: 1,
-    // 1:1–5:5. 두 팀 인원이 같도록 짝수만, 정한 정원이 꽉 차야 시작(D97)
+    // 2–10명. 홀수·짝수 모두. 정한 정원이 꽉 차야 시작(D97)
     capacity_min: 2,
     capacity_max: 10,
     capacity_default: 10,
-    capacity_step: 2,
+    capacity_step: 1,
     start_requires_full: true,
     requires_steam_app: false,
   },

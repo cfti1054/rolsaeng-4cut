@@ -82,7 +82,7 @@ describe('S2 목: 게임·목록', () => {
     await t.ready;
     const res = await t.api.request(ApiPath.games, ListGamesResponse);
     expect(res.items.map((g) => g.code)).toEqual(['lol', 'tft', 'steam', 'other']);
-    expect(res.items[0]!.capacity).toEqual({ min: 2, max: 10, default: 10, step: 2, start_requires_full: true });
+    expect(res.items[0]!.capacity).toEqual({ min: 2, max: 10, default: 10, step: 1, start_requires_full: true });
     expect(res.items[3]).toMatchObject({
       name: '기타',
       has_teams: false,
@@ -264,7 +264,7 @@ describe('S2 목: 작성·수정·시작·취소', () => {
     const t = setup();
     await t.ready;
     await expect(
-      t.create({ game: 'lol', title: '테스트 내전', scheduled_at: t.kst(-2), capacity: 7, host_preferred_positions: [] }),
+      t.create({ game: 'lol', title: '테스트 내전', scheduled_at: t.kst(-2), capacity: 11, host_preferred_positions: [] }),
     ).rejects.toMatchObject({
       code: 'VALIDATION_FAILED',
       details: [{ path: 'scheduled_at' }, { path: 'capacity' }, { path: 'host_preferred_positions' }],
@@ -415,6 +415,84 @@ describe('스팀 게임 선택 목(D98)', () => {
     await expect(t.create({ game: 'tft', title: '롤체', scheduled_at: t.kst(3), capacity: 4, tft_mode: 'normal', lol_map: 'rift' })).rejects.toMatchObject({
       details: [{ path: 'lol_map' }],
     });
+  });
+
+  it('롤 인원 모집은 밸런스와 ELO를 저장하지 않고 홀수 정원을 받는다', async () => {
+    const t = setup();
+    await t.ready;
+    const party = await t.create({
+      game: 'lol',
+      title: '칼바람 파티',
+      scheduled_at: t.kst(3),
+      capacity: 5,
+      lol_map: 'aram',
+      lol_format: 'party',
+      rated: true,
+      auto_balance: true,
+    });
+    expect(party.lol_format).toBe('party');
+    expect(party.capacity).toBe(5);
+    expect(party.options.rated).toBe(false);
+    expect(party.options.auto_balance).toBe(false);
+    const scrim = await t.create({ game: 'lol', title: '협곡 내전', scheduled_at: t.kst(3), capacity: 3, host_preferred_positions: ['mid'] });
+    expect(scrim.lol_format).toBe('scrim');
+    expect(scrim.capacity).toBe(3);
+    await expect(
+      t.create({ game: 'other', title: '기타', scheduled_at: t.kst(3), capacity: 4, custom_game_name: '마인크래프트', lol_format: 'party' }),
+    ).rejects.toMatchObject({ details: [{ path: 'lol_format' }] });
+  });
+
+  it('롤체 랭크는 인원 모집이고, 일반·더블업은 내전과 인원 모집을 고른다', async () => {
+    const t = setup();
+    await t.ready;
+    const ranked = await t.create({
+      game: 'tft',
+      title: '롤체 랭크',
+      scheduled_at: t.kst(3),
+      capacity: 3,
+      tft_mode: 'ranked',
+      rated: true,
+      auto_balance: true,
+    });
+    expect(ranked.lol_format).toBe('party');
+    expect(ranked.options.rated).toBe(false);
+    expect(ranked.options.auto_balance).toBe(false);
+    const party = await t.create({
+      game: 'tft',
+      title: '더블업 파티',
+      scheduled_at: t.kst(3),
+      capacity: 4,
+      tft_mode: 'double_up',
+      lol_format: 'party',
+      rated: true,
+      auto_balance: true,
+    });
+    expect(party.options).toMatchObject({ rated: false, auto_balance: false });
+    const scrim = await t.create({
+      game: 'tft',
+      title: '일반 내전',
+      scheduled_at: t.kst(3),
+      capacity: 4,
+      tft_mode: 'normal',
+      lol_format: 'scrim',
+      rated: true,
+    });
+    expect(scrim.lol_format).toBe('scrim');
+    expect(scrim.options.rated).toBe(true);
+    expect(scrim.options.auto_balance).toBe(false);
+    const duo = await t.create({
+      game: 'tft',
+      title: '더블업 내전',
+      scheduled_at: t.kst(3),
+      capacity: 4,
+      tft_mode: 'double_up',
+      auto_balance: true,
+    });
+    expect(duo.lol_format).toBe('scrim');
+    expect(duo.options.auto_balance).toBe(true);
+    await expect(
+      t.create({ game: 'tft', title: '랭크 내전', scheduled_at: t.kst(3), capacity: 3, tft_mode: 'ranked', lol_format: 'scrim' }),
+    ).rejects.toMatchObject({ details: [{ path: 'lol_format' }] });
   });
 });
 

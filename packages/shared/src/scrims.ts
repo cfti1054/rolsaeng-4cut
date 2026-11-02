@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { PaginationQuery, paginated } from './common/pagination';
 import { IsoDateTime, Uuid } from './common/primitives';
-import { LolMap, ScrimCancelReason, ScrimPlayerStatus, ScrimResultStatus, ScrimStatus, ScrimTeam, TFT_MODE_CAPACITY, TftMode } from './constants/enums';
+import { LolFormat, LolMap, ScrimCancelReason, ScrimPlayerStatus, ScrimResultStatus, ScrimStatus, ScrimTeam, TFT_MODE_CAPACITY, TftMode } from './constants/enums';
 import { GameCode } from './constants/games';
 import { RECENT_MATCHES_MAX } from './constants/riot';
 import { SeasonRef } from './seasons';
@@ -173,6 +173,26 @@ export function appliedAutoBalance(args: {
 export const CUSTOM_GAME_NAME_MAX_LENGTH = 40;
 export const CustomGameName = z.string().trim().min(1).max(CUSTOM_GAME_NAME_MAX_LENGTH);
 export type CustomGameName = z.infer<typeof CustomGameName>;
+
+/**
+ * 저장할 진행(내전·인원 모집). 롤은 생략하면 내전. 롤체 랭크는 항상 인원 모집.
+ * 롤체 일반·더블업은 생략하면 내전. 스팀·기타는 null.
+ */
+export function recruitFormat(
+  game: string,
+  tftMode: TftMode | null | undefined,
+  requested: LolFormat | null | undefined,
+): LolFormat | null {
+  if (game === 'lol') return requested ?? 'scrim';
+  if (game !== 'tft') return null;
+  if (tftMode === 'ranked') return 'party';
+  return requested ?? 'scrim';
+}
+
+/** 인원 모집이면 팀 자동 밸런스와 ELO를 저장하지 않는다. 롤체 랭크는 항상 인원 모집. */
+export function isPartyRecruit(game: string, tftMode: TftMode | null | undefined, format: LolFormat | null | undefined): boolean {
+  return recruitFormat(game, tftMode, format) === 'party';
+}
 
 /** 저장할 rated. 승패를 받지 않는 게임(스팀 모집)은 항상 false. */
 export function appliedRated(hasResults: boolean, requested: boolean): boolean {
@@ -398,6 +418,11 @@ export const ScrimSummary = z.object({
    */
   lol_map: LolMap.nullable().default(null),
   /**
+   * 롤이 내전인지 인원 모집인지. 다른 게임은 null.
+   * 이 필드 전에 만든 롤 내전은 null(화면은 내전).
+   */
+  lol_format: LolFormat.nullable().default(null),
+  /**
    * 운영진이고 승인된 결과가 없을 때만 true. 화면은 true일 때만 삭제 버튼을 그린다.
    * 서버는 DELETE에서 역할을 다시 검사한다.
    */
@@ -571,6 +596,8 @@ export const CreateScrimRequest = z
     tft_mode: TftMode.nullable().optional(),
     /** 롤만. 없거나 null이면 서버가 협곡(rift)으로 저장. 다른 게임에 값이 있으면 거부 */
     lol_map: LolMap.nullable().optional(),
+    /** 롤·롤체. 없거나 null이면 내전. 롤체 랭크에 scrim을 보내면 거부. party면 밸런스·ELO를 저장하지 않는다 */
+    lol_format: LolFormat.nullable().optional(),
     /** other면 필수(1–40자). 다른 게임은 없거나 null */
     custom_game_name: CustomGameName.nullable().optional(),
   })
@@ -584,6 +611,12 @@ export const CreateScrimRequest = z
     }
     if (v.game !== 'lol' && v.lol_map != null) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['lol_map'], message: '이 게임은 맵을 고를 수 없습니다.' });
+    }
+    if (v.game !== 'lol' && v.game !== 'tft' && v.lol_format != null) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['lol_format'], message: '이 게임은 내전·인원 모집을 고를 수 없습니다.' });
+    }
+    if (v.game === 'tft' && v.tft_mode === 'ranked' && v.lol_format === 'scrim') {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['lol_format'], message: '롤체 랭크는 인원 모집만 할 수 있습니다.' });
     }
     const custom = v.custom_game_name ?? null;
     if (v.game === 'other' && !custom) {

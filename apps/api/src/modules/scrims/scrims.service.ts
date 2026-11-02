@@ -13,6 +13,8 @@ import {
 import {
   appliedAutoBalance,
   appliedRated,
+  isPartyRecruit,
+  recruitFormat,
   type CreateScrimRequest,
   type ErrorDetail,
   type JoinScrimRequest,
@@ -181,9 +183,17 @@ export class ScrimsService {
     // 진행 방식 적용값(D77)
     const tftMode = game.code === 'tft' ? (body.tft_mode ?? null) : null;
     const lolMap = game.code === 'lol' ? (body.lol_map ?? 'rift') : null;
+    const lolFormat = recruitFormat(game.code, tftMode, body.lol_format);
     if (game.code !== 'lol' && body.lol_map != null) {
       throw new AppError('VALIDATION_FAILED', undefined, { details: [{ path: 'lol_map', message: '이 게임은 맵을 고를 수 없습니다.' }] });
     }
+    if (game.code !== 'lol' && game.code !== 'tft' && body.lol_format != null) {
+      throw new AppError('VALIDATION_FAILED', undefined, { details: [{ path: 'lol_format', message: '이 게임은 내전·인원 모집을 고를 수 없습니다.' }] });
+    }
+    if (game.code === 'tft' && tftMode === 'ranked' && body.lol_format === 'scrim') {
+      throw new AppError('VALIDATION_FAILED', undefined, { details: [{ path: 'lol_format', message: '롤체 랭크는 인원 모집만 할 수 있습니다.' }] });
+    }
+    const party = isPartyRecruit(game.code, tftMode, lolFormat);
     const usePositions = body.use_positions && game.hasPositions && lolMap !== 'aram';
     const hostPositions = usePositions ? body.host_preferred_positions : [];
     if (game.code === 'tft' && tftMode === null) {
@@ -196,7 +206,7 @@ export class ScrimsService {
       game: body.game,
       hasTeams: game.hasTeams,
       tftMode,
-      requested: body.auto_balance,
+      requested: party ? false : body.auto_balance,
     });
     const scheduledAt = new Date(body.scheduled_at);
 
@@ -234,11 +244,12 @@ export class ScrimsService {
           capacity: body.capacity,
           status: statusForJoinedCount(1, body.capacity),
           rules: body.rules ?? null,
-          rated: appliedRated(game.hasResults, body.rated),
+          rated: party ? false : appliedRated(game.hasResults, body.rated),
           autoBalance,
           usePositions,
           tftMode,
           lolMap,
+          lolFormat,
           steamAppId: steamApp?.app_id ?? null,
           steamAppName: steamApp?.name ?? null,
           customGameName: game.code === 'other' ? customName : null,
@@ -324,16 +335,18 @@ export class ScrimsService {
           scheduledAt,
           capacity: body.capacity,
           rules: body.rules === undefined ? undefined : body.rules,
-          rated: body.rated === undefined ? undefined : appliedRated(game.hasResults, body.rated),
+          rated: isPartyRecruit(game.code, s.tftMode, s.lolFormat) ? false : body.rated === undefined ? undefined : appliedRated(game.hasResults, body.rated),
           autoBalance:
-            body.auto_balance === undefined
-              ? undefined
-              : appliedAutoBalance({
-                  game: game.code as 'lol' | 'tft' | 'steam' | 'other',
-                  hasTeams: game.hasTeams,
-                  tftMode: s.tftMode,
-                  requested: body.auto_balance,
-                }),
+            isPartyRecruit(game.code, s.tftMode, s.lolFormat)
+              ? false
+              : body.auto_balance === undefined
+                ? undefined
+                : appliedAutoBalance({
+                    game: game.code as 'lol' | 'tft' | 'steam' | 'other',
+                    hasTeams: game.hasTeams,
+                    tftMode: s.tftMode,
+                    requested: body.auto_balance,
+                  }),
           steamAppId: steamApp?.app_id,
           steamAppName: steamApp?.name,
           customGameName: body.custom_game_name,

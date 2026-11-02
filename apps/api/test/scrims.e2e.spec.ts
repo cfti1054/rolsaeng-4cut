@@ -88,7 +88,7 @@ function lockedIds(app: TestApp): unknown[] {
 // -----------------------------------------------------------------------------
 
 describe('GET /games', () => {
-  it('sort_order 순 3개, 정원 범위(롤 2–10 짝수·꽉 차야 시작, 롤체 2–8, 스팀 2–16), id 비노출', async () => {
+  it('sort_order 순 3개, 정원 범위(롤 2–10·꽉 차야 시작, 롤체 2–8, 스팀 2–16), id 비노출', async () => {
     t = await createTestApp({ fixedClock: true });
     const a = await login(t, 'alice');
     const res = await call(t, 'GET', '/games', a.token);
@@ -101,7 +101,7 @@ describe('GET /games', () => {
       ['steam', false, false],
     ]);
     expect(body.items.map((g) => [g.code, g.capacity])).toEqual([
-      ['lol', { min: 2, max: 10, default: 10, step: 2, start_requires_full: true }],
+      ['lol', { min: 2, max: 10, default: 10, step: 1, start_requires_full: true }],
       ['tft', { min: 2, max: 8, default: 8, step: 1, start_requires_full: false }],
       ['steam', { min: 2, max: 16, default: 8, step: 1, start_requires_full: false }],
     ]);
@@ -161,15 +161,15 @@ describe('POST /scrims 작성', () => {
     expect(t.prisma.scrim.rows).toHaveLength(0);
   });
 
-  it('롤 정원: 2·6·8 허용, 홀수 7 → 400(「2명 단위」 안내)', async () => {
+  it('롤 정원: 2–10은 홀수·짝수 모두 허용, 범위 밖은 400', async () => {
     t = await createTestApp({ fixedClock: true });
     const a = await login(t, 'alice');
-    for (const capacity of [2, 6, 8]) expect((await create(t, a, { capacity })).capacity).toBe(capacity);
-    const err = await expectError(await call(t, 'POST', '/scrims', a.token, { ...LOL_BASE, scheduled_at: at(t, DAY), capacity: 7 }), 400, 'VALIDATION_FAILED');
-    expect(err.details).toEqual([{ path: 'capacity', message: '이 게임의 정원은 2–10명 2명 단위입니다.' }]);
+    for (const capacity of [2, 3, 7, 10]) expect((await create(t, a, { capacity })).capacity).toBe(capacity);
+    const err = await expectError(await call(t, 'POST', '/scrims', a.token, { ...LOL_BASE, scheduled_at: at(t, DAY), capacity: 11 }), 400, 'VALIDATION_FAILED');
+    expect(err.details).toEqual([{ path: 'capacity', message: '이 게임의 정원은 2–10명입니다.' }]);
     const s = await create(t, a);
-    await expectError(await call(t, 'PATCH', `/scrims/${s.id}`, a.token, { capacity: 5 }), 400, 'VALIDATION_FAILED');
-    expect((await detailOf(await call(t, 'PATCH', `/scrims/${s.id}`, a.token, { capacity: 4 }))).capacity).toBe(4);
+    await expectError(await call(t, 'PATCH', `/scrims/${s.id}`, a.token, { capacity: 1 }), 400, 'VALIDATION_FAILED');
+    expect((await detailOf(await call(t, 'PATCH', `/scrims/${s.id}`, a.token, { capacity: 5 }))).capacity).toBe(5);
   });
 
   it('시작 시각 경계: 정확히 30일 뒤 허용, 30일 + 1ms 거부. 포지션 없는 게임에 포지션 → 400', async () => {

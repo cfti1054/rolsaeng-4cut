@@ -14,6 +14,8 @@ import {
 import {
   appliedAutoBalance,
   appliedRated,
+  isPartyRecruit,
+  recruitFormat,
   ApiPath,
   ApproveScrimResultRequest,
   BALANCE_PLAYERS_MAX,
@@ -24,6 +26,7 @@ import {
   SaveScrimTeamsRequest,
   scrimCapacityRange,
   ScrimTeam,
+  LolFormat,
   LolMap,
   TftMode,
   SubmitScrimResultRequest,
@@ -134,6 +137,7 @@ const MockScrim = z.object({
   tft_mode: TftMode.nullable().default(null),
   /** 이 필드 전에 저장된 목 DB도 읽히도록 기본 null. 롤 시드는 협곡 */
   lol_map: LolMap.nullable().default(null),
+  lol_format: LolFormat.nullable().default(null),
   started_at: IsoDateTime.nullable(),
   cancelled_at: IsoDateTime.nullable(),
   cancel_reason: ScrimCancelReason.nullable(),
@@ -357,6 +361,7 @@ function seed(me: Me, now: number, opts?: MockS2Options): MockS2State {
       auto_balance: s.game === 'steam' || s.game === 'other' ? false : game.has_teams,
       tft_mode: s.game === 'tft' ? 'normal' : null,
       lol_map: s.game === 'lol' ? (s.lol_map ?? 'rift') : null,
+      lol_format: s.game === 'lol' ? (s.lol_format ?? 'scrim') : null,
       use_positions: game.has_positions && (s.game !== 'lol' || (s.lol_map ?? 'rift') !== 'aram'),
       steam_app: game.requires_steam_app ? steamApp(steamPicks[steamPick++ % steamPicks.length]!) : null,
       custom_game_name: null,
@@ -367,6 +372,11 @@ function seed(me: Me, now: number, opts?: MockS2Options): MockS2State {
       updated_at: iso(Math.min(created, now)),
       ...s,
     };
+    scrim.lol_format = recruitFormat(scrim.game, scrim.tft_mode, scrim.lol_format);
+    if (scrim.lol_format === 'party') {
+      scrim.rated = false;
+      scrim.auto_balance = false;
+    }
     let t = Date.parse(scrim.created_at);
     for (const [userId, pos] of [...joined, ...waitlist]) {
       t += 7 * MIN_MS;
@@ -974,6 +984,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
       outcome: outcomeOf(s),
       tft_mode: s.tft_mode,
       lol_map: s.lol_map,
+      lol_format: s.lol_format,
       can_delete: isAdmin && latestResult(state, s.id)?.status !== 'approved',
     });
   };
@@ -1248,15 +1259,19 @@ export function handleS2(ctx: MockS2Context): Response | null {
     const b = parsed.data;
     const game = gameOf(b.game);
     const lolMap = b.game === 'lol' ? (b.lol_map ?? 'rift') : null;
+    const tftMode = b.game === 'tft' ? (b.tft_mode ?? null) : null;
+    const lolFormat = recruitFormat(b.game, tftMode, b.lol_format);
+    const party = isPartyRecruit(b.game, tftMode, lolFormat);
     const usePositions = b.use_positions && game.has_positions && lolMap !== 'aram';
     const hostPositions = usePositions ? b.host_preferred_positions : [];
     const details: { path: string; message: string }[] = [];
     const si = scheduleIssue(b.scheduled_at);
     if (si) details.push({ path: 'scheduled_at', message: si });
-    const tftMode = b.game === 'tft' ? (b.tft_mode ?? null) : null;
     const ci = capacityIssue(game, b.capacity, tftMode);
     if (ci) details.push({ path: 'capacity', message: ci });
     if (b.game !== 'lol' && b.lol_map != null) details.push({ path: 'lol_map', message: '이 게임은 맵을 고를 수 없습니다.' });
+    if (b.game !== 'lol' && b.game !== 'tft' && b.lol_format != null) details.push({ path: 'lol_format', message: '이 게임은 내전·인원 모집을 고를 수 없습니다.' });
+    if (b.game === 'tft' && tftMode === 'ranked' && b.lol_format === 'scrim') details.push({ path: 'lol_format', message: '롤체 랭크는 인원 모집만 할 수 있습니다.' });
     const pi = validatePositions(hostPositions, game.positions, usePositions);
     if (pi) details.push({ path: 'host_preferred_positions', message: pi });
     const appId = b.steam_app_id ?? null;
@@ -1279,11 +1294,12 @@ export function handleS2(ctx: MockS2Context): Response | null {
       status: 'recruiting',
       host_id: me.id,
       rules: b.rules ?? null,
-      rated: appliedRated(game.has_results, b.rated),
-      auto_balance: appliedAutoBalance({ game: b.game, hasTeams: game.has_teams, tftMode, requested: b.auto_balance }),
+      rated: party ? false : appliedRated(game.has_results, b.rated),
+      auto_balance: appliedAutoBalance({ game: b.game, hasTeams: game.has_teams, tftMode, requested: party ? false : b.auto_balance }),
       use_positions: usePositions,
       tft_mode: tftMode,
       lol_map: lolMap,
+      lol_format: lolFormat,
       steam_app: app,
       custom_game_name: b.game === 'other' ? customName : null,
       started_at: null,
@@ -1713,9 +1729,15 @@ export function handleS2(ctx: MockS2Context): Response | null {
     if (b.title !== undefined) s.title = b.title;
     if (b.scheduled_at !== undefined) s.scheduled_at = iso(Date.parse(b.scheduled_at));
     if (b.rules !== undefined) s.rules = b.rules ?? null;
-    if (b.rated !== undefined) s.rated = appliedRated(game.has_results, b.rated);
-    if (b.auto_balance !== undefined) {
-      s.auto_balance = appliedAutoBalance({ game: s.game, hasTeams: game.has_teams, tftMode: s.tft_mode, requested: b.auto_balance });
+    if (isPartyRecruit(s.game, s.tft_mode, s.lol_format)) {
+      s.rated = false;
+      s.auto_balance = false;
+      if (s.tft_mode === 'ranked') s.lol_format = 'party';
+    } else {
+      if (b.rated !== undefined) s.rated = appliedRated(game.has_results, b.rated);
+      if (b.auto_balance !== undefined) {
+        s.auto_balance = appliedAutoBalance({ game: s.game, hasTeams: game.has_teams, tftMode: s.tft_mode, requested: b.auto_balance });
+      }
     }
     if (app) s.steam_app = app;
     if (b.custom_game_name !== undefined) s.custom_game_name = b.custom_game_name;

@@ -179,6 +179,7 @@ export class FakePrisma {
     steamAppName: null,
     tftMode: null,
     lolMap: null,
+    lolFormat: null,
     startedAt: null,
     cancelledAt: null,
     cancelReason: null,
@@ -519,6 +520,7 @@ export class FakePrisma {
           game_id: r.gameId,
           auto_balance: r.autoBalance,
           tft_mode: r.tftMode,
+          lol_format: r.lolFormat,
         },
       ] as T;
     }
