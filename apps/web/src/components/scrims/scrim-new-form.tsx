@@ -419,7 +419,7 @@ export function ScrimNewForm() {
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   maxLength={SCRIM_TITLE_MAX_LENGTH + 10}
-                  placeholder="예: 인원 모집"
+                  placeholder="예: 화요일 저녁 5:5 내전"
                   aria-invalid={errors.title ? true : undefined}
                   className={inputClass}
                 />

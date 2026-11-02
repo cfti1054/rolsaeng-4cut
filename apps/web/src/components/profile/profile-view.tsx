@@ -218,9 +218,9 @@ function NicknameEditor({ userId, nickname }: { userId: string; nickname: string
     return (
       <span className="inline-flex flex-wrap items-center gap-2">
         <h1 className="m-0 text-[28px] font-bold tracking-[-0.03em]">{nickname}</h1>
-        <button type="button" onClick={open} className="rounded-lg px-2 py-1 text-[13px] font-semibold text-accent-ink hover:bg-accent/10">
+        <Button type="button" size="sm" variant="primary" onClick={open}>
           이름 수정
-        </button>
+        </Button>
       </span>
     );
   }
