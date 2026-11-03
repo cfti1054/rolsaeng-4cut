@@ -1,10 +1,11 @@
 'use client';
 
 import { STEAM_APP_QUERY_MAX_LENGTH, steamAppHeaderImageUrl, type SteamAppRef } from '@gcd/shared';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { InlineError, Notice } from '@/components/ui/controls';
 import { Skeleton } from '@/components/ui/primitives';
 import { isApiError } from '@/lib/api/client';
+import { brand } from '@/lib/brand';
 import { cn } from '@/lib/cn';
 import { errorMessage } from '@/lib/errors';
 import { useSteamApps } from '@/lib/hooks/scrims';
@@ -16,14 +17,54 @@ export function steamStoreUrl(appId: number): string {
   return `https://store.steampowered.com/app/${appId}/`;
 }
 
-/** 스팀 게임 머리 이미지(460×215 비율). CDN 이미지라 next/image 원격 설정 없이 img를 쓴다 */
-export function SteamAppImage({ appId, className }: { appId: number; className?: string }) {
+/**
+ * 스팀 CDN 머리 이미지. 앱에 이미지가 없거나 CDN이 막혀 깨지면 기본 스팀 배너로 바꾼다.
+ * 하이드레이션 전에 난 오류는 onError가 못 받으므로 마운트 때 한 번 더 본다.
+ * appId가 바뀌면 key로 다시 마운트해 실패 상태를 지운다.
+ */
+export function SteamHeaderImg(props: { appId: number; className?: string; fallbackClassName?: string; width?: number; height?: number }) {
+  return <SteamHeaderImgInner key={props.appId} {...props} />;
+}
+
+function SteamHeaderImgInner({
+  appId,
+  className,
+  fallbackClassName,
+  width,
+  height,
+}: {
+  appId: number;
+  className?: string;
+  fallbackClassName?: string;
+  width?: number;
+  height?: number;
+}) {
+  const [failed, setFailed] = useState(false);
+  const ref = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    const img = ref.current;
+    if (img && img.complete && img.naturalWidth === 0) setFailed(true);
+  }, []);
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={steamAppHeaderImageUrl(appId)}
+      ref={ref}
+      src={failed ? brand.gameBanner.steam : steamAppHeaderImageUrl(appId)}
       alt=""
       loading="lazy"
+      width={width}
+      height={height}
+      onError={() => setFailed(true)}
+      className={failed && fallbackClassName ? fallbackClassName : className}
+    />
+  );
+}
+
+/** 스팀 게임 머리 이미지(460×215 비율). CDN 이미지라 next/image 원격 설정 없이 img를 쓴다 */
+export function SteamAppImage({ appId, className }: { appId: number; className?: string }) {
+  return (
+    <SteamHeaderImg
+      appId={appId}
       width={460}
       height={215}
       className={cn('aspect-[460/215] shrink-0 rounded-lg bg-surface-2 object-cover', className)}
