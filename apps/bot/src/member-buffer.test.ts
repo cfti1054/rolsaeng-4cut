@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiRequestError } from './api-client';
-import { createMemberBuffer } from './member-buffer';
+import { MEMBER_QUEUE_MAX, createMemberBuffer } from './member-buffer';
 import type { Logger } from './log';
 
 const silent: Logger = { info() {}, error() {} };
@@ -29,6 +29,25 @@ describe('멤버 이벤트 버퍼', () => {
     mode = 'ok';
     await buffer.flush();
     expect(buffer.pending()).toBe(0);
+    buffer.stop();
+  });
+
+  it('API가 계속 실패하면 큐 상한을 넘기지 않고 가장 오래된 것부터 버린다', async () => {
+    const dropped: number[] = [];
+    const logger: Logger = {
+      info() {},
+      error(msg, fields) {
+        if (msg === 'member events dropped') dropped.push(Number(fields?.count));
+      },
+    };
+    const buffer = createMemberBuffer(async () => {
+      throw new ApiRequestError(503, 'INTERNAL_ERROR', true);
+    }, logger);
+    buffer.push(event);
+    await buffer.flush();
+    for (let i = 0; i < MEMBER_QUEUE_MAX + 5; i += 1) buffer.push(event);
+    expect(buffer.pending()).toBe(MEMBER_QUEUE_MAX);
+    expect(dropped.reduce((a, b) => a + b, 0)).toBe(6);
     buffer.stop();
   });
 });

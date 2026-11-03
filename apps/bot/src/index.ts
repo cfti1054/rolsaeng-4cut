@@ -268,40 +268,51 @@ export async function main(): Promise<void> {
   process.once('SIGTERM', () => shutdown('SIGTERM'));
   process.once('SIGINT', () => shutdown('SIGINT'));
 
+  /** 기동 단계 하나가 실패해도 나머지 단계와 주기 작업은 돈다. 실패한 단계는 다음 주기에 다시 한다. */
+  async function startupStep(name: string, task: () => Promise<void>): Promise<void> {
+    try {
+      await task();
+    } catch (err) {
+      log.error('startup step failed', { step: name, reason: err instanceof Error ? err.name : 'error' });
+    }
+  }
+
   client.once(Events.ClientReady, () => {
+    if (stopping) return;
+    startTimers();
     void enqueue(async () => {
-      try {
-        await registerCommands();
-      } catch (err) {
-        log.error('commands failed', { reason: err instanceof Error ? err.name : 'error' });
-      }
-      await reconcile();
-      await publishPresence();
-      await deliverNotices({
-        store,
-        pending: () => api.pendingNotices(),
-        deliver: (id) => api.deliverNotice(id),
-        post: postNotice,
-        logger: log,
-      });
-      await deliverPatchNotes({
-        store,
-        pending: () => api.pendingPatchNotes(),
-        deliver: (id) => api.deliverPatchNote(id),
-        send: sendDm,
-        logger: log,
-      });
-      await notifyUpcomingScrims({
-        store,
-        withinMin: SCRIM_WITHIN_MIN,
-        load: (withinMin) => api.upcomingScrims(withinMin),
-        send: sendDm,
-        logger: log,
-      });
-      startTimers();
+      if (stopping) return;
+      await startupStep('commands', registerCommands);
+      await startupStep('reconcile', reconcile);
+      await startupStep('presence', publishPresence);
+      await startupStep('notices', () =>
+        deliverNotices({
+          store,
+          pending: () => api.pendingNotices(),
+          deliver: (id) => api.deliverNotice(id),
+          post: postNotice,
+          logger: log,
+        }),
+      );
+      await startupStep('patch-notes', () =>
+        deliverPatchNotes({
+          store,
+          pending: () => api.pendingPatchNotes(),
+          deliver: (id) => api.deliverPatchNote(id),
+          send: sendDm,
+          logger: log,
+        }),
+      );
+      await startupStep('scrims', () =>
+        notifyUpcomingScrims({
+          store,
+          withinMin: SCRIM_WITHIN_MIN,
+          load: (withinMin) => api.upcomingScrims(withinMin),
+          send: sendDm,
+          logger: log,
+        }),
+      );
       log.info('ready', { user: client.user?.username ?? '' });
-    }).catch((err: unknown) => {
-      log.error('ready failed', { reason: err instanceof Error ? err.name : 'error' });
     });
   });
 
