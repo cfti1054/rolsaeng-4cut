@@ -74,6 +74,7 @@ export const ErrorCode = z.enum([
   'SEASON_NOT_EDITABLE', // 409 이 단계의 시즌에서 바꿀 수 없는 값(시작한 시즌의 시작 시각, 끝난 시즌의 기간, 시작한 시즌 삭제)
   'SEASON_OVERLAP', // 409 다른 시즌과 기간이 겹침
   'DISCORD_ALREADY_NOTIFIED', // 409 디스코드 알림이 이미 나가서 알림 설정(notify_discord)을 바꿀 수 없음
+  'ADMIN_DELETE_ADMIN', // 409 운영진(본인 포함)은 삭제할 수 없음. 먼저 멤버로 내린다
 ]);
 export type ErrorCode = z.infer<typeof ErrorCode>;
 
@@ -133,6 +134,7 @@ export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
   SEASON_NOT_EDITABLE: 409,
   SEASON_OVERLAP: 409,
   DISCORD_ALREADY_NOTIFIED: 409,
+  ADMIN_DELETE_ADMIN: 409,
 };
 
 /** VALIDATION_FAILED일 때만 채우는 필드별 상세. path는 snake_case 필드 경로(`nickname`, `events.0.type`). */

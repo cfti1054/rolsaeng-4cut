@@ -427,3 +427,16 @@ export type ListAdminAuditLogsResponse = z.infer<typeof ListAdminAuditLogsRespon
 /** 공통 경로 파라미터 `:id`(uuid). 형식이 틀리면 VALIDATION_FAILED(path id) */
 export const AdminIdParams = z.object({ id: Uuid });
 export type AdminIdParams = z.infer<typeof AdminIdParams>;
+
+/** 익명화 삭제한 회원의 닉네임 접두사. 저장 시 붙이므로 내전 기록·결과 등 모든 화면에 그대로 보인다 */
+export const DELETED_MEMBER_NICKNAME_PREFIX = '(Del) ';
+
+/**
+ * 익명화 삭제 후 닉네임(접두사 + 원래 닉네임). 닉네임은 전역 유일이고 최대 50자라서, 합쳐서 50자를 넘으면
+ * 원래 닉네임 앞 34자 + 공백 + 사용자 id 앞 8자로 줄인다(유일성은 id 조각으로 지킨다).
+ */
+export function deletedMemberNickname(nickname: string, userId: string): string {
+  const full = `${DELETED_MEMBER_NICKNAME_PREFIX}${nickname}`;
+  if ([...full].length <= 50) return full;
+  return `${DELETED_MEMBER_NICKNAME_PREFIX}${[...nickname].slice(0, 34).join('')} ${userId.slice(0, 8)}`;
+}

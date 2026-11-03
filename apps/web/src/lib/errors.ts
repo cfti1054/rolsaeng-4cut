@@ -68,6 +68,7 @@ export const ERROR_MESSAGES: Record<AppErrorCode, string> = {
   ADMIN_SELF_ROLE_CHANGE: '내 역할은 바꿀 수 없어요. 다른 운영진에게 부탁해 주세요.',
   ADMIN_ROLE_LOCKED: '서버 설정으로 지정된 운영진이라 웹에서 강등할 수 없어요.',
   ADMIN_LAST_ADMIN: '마지막 운영진은 강등할 수 없어요.',
+  ADMIN_DELETE_ADMIN: '운영진은 삭제할 수 없어요. 먼저 멤버로 내린 뒤 삭제해 주세요.',
   SEASON_NOT_EDITABLE: '이미 시작했거나 끝난 분기라 이 값은 바꿀 수 없어요.',
   SEASON_OVERLAP: '다른 분기와 기간이 겹쳐요.',
   DISCORD_ALREADY_NOTIFIED: '디스코드 알림이 이미 나가서 알림 설정을 바꿀 수 없어요.',

@@ -33,8 +33,8 @@ export class AdminOverviewService {
 
     const [total, active, admins, scrimsThisWeek, pendingCount, oldestPending, thisMonth, prevMonth, marks, cache, upcoming] =
       await Promise.all([
-        this.prisma.user.count(),
-        this.prisma.user.count({ where: { leftAt: null } }),
+        this.prisma.user.count({ where: { deletedAt: null } }),
+        this.prisma.user.count({ where: { leftAt: null, deletedAt: null } }),
         this.prisma.user.count({ where: { role: 'admin' } }),
         this.prisma.scrim.count({ where: { status: { not: 'cancelled' }, scheduledAt: { gte: week.start, lt: week.end } } }),
         this.prisma.scrimResult.count({ where: { status: 'pending' } }),

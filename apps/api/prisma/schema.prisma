@@ -171,6 +171,8 @@ model User {
   /// S5. 봇이 서버 퇴장을 알린 시각(POST /bot/member-events leave). null이면 서버 멤버. 순위 대상에서 빠진다(rankableUserWhere, S4 Q4)
   /// 재입장 이벤트 또는 길드 검사를 통과한 로그인이 null로 되돌린다(S5 계약 6-6)
   leftAt                 DateTime? @map("left_at") @db.Timestamptz(3)
+  /// 운영진이 익명화 삭제한 시각. 로그인 정보는 지우고 닉네임은 「(Del) 원래닉네임」으로 바꾼다. 내전 기록은 남는다. 순위·회원 목록에서 뺀다
+  deletedAt              DateTime? @map("deleted_at") @db.Timestamptz(3)
   /// S5. 마지막으로 반영한 입장·퇴장 판단 시각(봇 occurred_at 또는 길드 검사 로그인 시각). 이보다 이른 이벤트는 무시(순서 뒤바뀜 방지)
   guildMembershipAt      DateTime? @map("guild_membership_at") @db.Timestamptz(3)
   createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)

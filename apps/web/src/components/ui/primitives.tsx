@@ -1,3 +1,4 @@
+import { DELETED_MEMBER_NICKNAME_PREFIX } from '@gcd/shared';
 import type { HTMLAttributes, ReactNode } from 'react';
 import { brand } from '@/lib/brand';
 import { cn } from '@/lib/cn';
@@ -95,13 +96,17 @@ export function Skeleton({ className }: { className?: string }) {
 }
 
 /** 원형 아바타. 이미지가 없으면 닉네임 첫 글자 */
+/** 익명화 삭제 회원(닉네임이 「(Del) 」로 시작)은 디스코드 사진이 없으니 사이트 아이콘을 쓴다(app/icon.png) */
+const DELETED_AVATAR_SRC = '/icon.png';
+
 export function Avatar({ src, name, size = 38, className }: { src: string | null; name: string; size?: number; className?: string }) {
   const initial = Array.from(name.trim())[0] ?? '?';
-  return src ? (
+  const shownSrc = src ?? (name.startsWith(DELETED_MEMBER_NICKNAME_PREFIX) ? DELETED_AVATAR_SRC : null);
+  return shownSrc ? (
     // 디스코드 CDN 이미지. next/image 원격 도메인 설정 없이 쓰기 위해 img 사용
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={src}
+      src={shownSrc}
       alt=""
       width={size}
       height={size}

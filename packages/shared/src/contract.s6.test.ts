@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   ADMIN_AUDIT_TARGET_BY_ACTION,
+  DELETED_MEMBER_NICKNAME_PREFIX,
+  deletedMemberNickname,
   AdminAuditAction,
   AdminAuditLogItem,
   AdminAuditTargetType,
@@ -56,7 +58,7 @@ const user = { id: ID, nickname: '새벽감자', avatar_url: null };
 const lol = { code: 'lol', name: '리그 오브 레전드', has_positions: true, has_teams: true, has_results: true, positions: ['top'] } as const;
 
 describe('S6 경로', () => {
-  it('새 경로 25개(이의 제기 3개 제거, D281)', () => {
+  it('새 경로 26개(이의 제기 3개 제거, D281, 회원 삭제 1개 추가)', () => {
     const expected: Record<string, string> = {
       scrimResultRevert: '/scrims/:id/result/revert',
       myNotificationSettings: '/me/notification-settings',
@@ -68,6 +70,7 @@ describe('S6 경로', () => {
       adminNoShowScrims: '/admin/no-show/scrims',
       adminMembers: '/admin/members',
       adminMemberRole: '/admin/members/:id/role',
+      adminMember: '/admin/members/:id',
       adminNotices: '/admin/notices',
       adminNotice: '/admin/notices/:id',
       adminPatchNotes: '/admin/patch-notes',
@@ -85,7 +88,7 @@ describe('S6 경로', () => {
       botPatchNoteDelivered: '/bot/patch-notes/:id/delivered',
     };
     for (const [k, v] of Object.entries(expected)) expect((ApiPath as Record<string, string>)[k], k).toBe(v);
-    expect(Object.keys(expected)).toHaveLength(25);
+    expect(Object.keys(expected)).toHaveLength(26);
     // 결과 이의 제기 경로는 없다(D281)
     for (const k of ['scrimResultDisputes', 'adminDisputes', 'adminDisputeResolve']) expect(k in ApiPath, k).toBe(false);
     for (const v of Object.values(ApiPath)) expect(v.includes('dispute'), v).toBe(false);
@@ -103,7 +106,7 @@ describe('S6 경로', () => {
 });
 
 describe('S6 오류 코드·scope', () => {
-  it('오류 코드 8개 추가(전체 54개, 이의 제기 3개 제거 D281), 상태 표 일치', () => {
+  it('오류 코드 9개 추가(전체 55개, 이의 제기 3개 제거 D281, 회원 삭제 1개 추가), 상태 표 일치', () => {
     const s6 = {
       SCRIM_RESULT_NOT_APPROVED: 409,
       SCRIM_RESULT_REVERT_NOT_ALLOWED: 409,
@@ -113,12 +116,13 @@ describe('S6 오류 코드·scope', () => {
       SEASON_NOT_EDITABLE: 409,
       SEASON_OVERLAP: 409,
       DISCORD_ALREADY_NOTIFIED: 409,
+      ADMIN_DELETE_ADMIN: 409,
     } as const;
     for (const [c, status] of Object.entries(s6)) {
       expect(ErrorCode.options).toContain(c);
       expect(ERROR_HTTP_STATUS[c as ErrorCode]).toBe(status);
     }
-    expect(ErrorCode.options).toHaveLength(54);
+    expect(ErrorCode.options).toHaveLength(55);
     for (const c of ['SCRIM_DISPUTE_NOT_ALLOWED', 'SCRIM_DISPUTE_EXISTS', 'DISPUTE_ALREADY_RESOLVED']) {
       expect(ErrorCode.options as readonly string[]).not.toContain(c);
     }
@@ -385,5 +389,19 @@ describe('S6 봇 공지·패치노트 전송', () => {
     expect(PostBotDeliveredRequest.safeParse({}).success).toBe(true);
     expect(PostBotDeliveredRequest.safeParse({ ok: true }).success).toBe(false);
     expect(PostBotDeliveredResponse.parse({ id: ID, status: 'already_delivered', discord_notified_at: T }).status).toBe('already_delivered');
+  });
+});
+
+describe('S6 익명화 삭제 닉네임', () => {
+  const ID = '0f8c2a4e-1b2c-4d3e-8f90-123456789abc';
+  it('접두사 「(Del) 」 + 원래 닉네임, 50자 이하는 그대로 붙인다', () => {
+    expect(DELETED_MEMBER_NICKNAME_PREFIX).toBe('(Del) ');
+    expect(deletedMemberNickname('새벽감자', ID)).toBe('(Del) 새벽감자');
+  });
+  it('합쳐서 50자를 넘으면 앞 34자 + 공백 + id 앞 8자(50자 이하, 유일성 유지)', () => {
+    const long = '가'.repeat(50);
+    const out = deletedMemberNickname(long, ID);
+    expect([...out].length).toBeLessThanOrEqual(50);
+    expect(out).toBe(`(Del) ${'가'.repeat(34)} 0f8c2a4e`);
   });
 });

@@ -36,9 +36,10 @@ export class JwtGuard implements CanActivate {
     }
     const user = await this.prisma.user.findUnique({
       where: { id: result.claims.sub },
-      select: { id: true, role: true },
+      select: { id: true, role: true, deletedAt: true },
     });
-    if (!user) throw new AppError('UNAUTHENTICATED');
+    // 익명화 삭제한 회원은 아직 유효한 액세스 토큰이 있어도 쓸 수 없다
+    if (!user || user.deletedAt) throw new AppError('UNAUTHENTICATED');
 
     req.authUser = { id: user.id, role: user.role };
     return true;

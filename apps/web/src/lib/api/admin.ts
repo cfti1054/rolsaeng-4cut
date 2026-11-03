@@ -88,6 +88,11 @@ export function changeMemberRole(id: string, body: ChangeMemberRoleRequest) {
   return apiClient.request(fillPath(ApiPath.adminMemberRole, { id }), ChangeMemberRoleResponse, { method: 'PATCH', body });
 }
 
+/** DELETE /admin/members/:id (204). 운영진·기록 있는 회원은 409 */
+export function deleteMember(id: string) {
+  return apiClient.request(fillPath(ApiPath.adminMember, { id }), null, { method: 'DELETE' });
+}
+
 // ---- 공지·패치노트·이벤트 쓰기(목록은 lib/api/news.ts 공개 GET) ----
 
 /** POST /admin/notices (201) */
