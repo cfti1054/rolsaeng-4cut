@@ -967,6 +967,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
       scheduled_at: s.scheduled_at,
       capacity: s.capacity,
       status: s.status,
+      cancel_reason: s.cancel_reason,
       host: userRef(s.host_id, me),
       joined_count: isOpen(s) ? joined.length : joined.length + noShow,
       waitlist_count: rows.filter((p) => p.status === 'waitlist').length,

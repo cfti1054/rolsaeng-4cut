@@ -380,6 +380,8 @@ export const ScrimSummary = z.object({
   /** 정원(방장 포함) */
   capacity: z.number().int().min(1),
   status: ScrimStatus,
+  /** 취소된 모집의 사유(status cancelled일 때만, 그 외 null). not_started = 시작 시각이 지나 자동 마감 → 화면은 「모집 종료」 */
+  cancel_reason: ScrimCancelReason.nullable().default(null),
   host: ScrimUserRef,
   /** 참가 확정(joined) 인원. 시작 후에는 joined + no_show */
   joined_count: z.number().int().min(0),

@@ -209,6 +209,7 @@ export class ScrimViews {
       scheduled_at: scrim.scheduledAt.toISOString(),
       capacity: scrim.capacity,
       status: scrim.status,
+      cancel_reason: scrim.cancelReason,
       host: this.userRef(users, scrim.hostId),
       // 모집 중에는 no_show 행이 없다(노쇼는 시작 뒤에만) → 항상 joined + no_show
       joined_count: joined.length + noShow.length,
