@@ -380,6 +380,8 @@ export const ScrimSummary = z.object({
   /** 정원(방장 포함) */
   capacity: z.number().int().min(1),
   status: ScrimStatus,
+  /** 취소된 모집의 사유(status cancelled일 때만, 그 외 null). not_started = 시작 시각이 지나 자동 마감 → 화면은 「모집 종료」 */
+  cancel_reason: ScrimCancelReason.nullable().default(null),
   host: ScrimUserRef,
   /** 참가 확정(joined) 인원. 시작 후에는 joined + no_show */
   joined_count: z.number().int().min(0),
@@ -529,6 +531,11 @@ export const ScrimViewer = z.object({
   can_edit: z.boolean(),
   can_cancel: z.boolean(),
   can_start: z.boolean(),
+  /**
+   * 결과 없는 모집(스팀·롤·롤체 인원 모집)을 끝낼 수 있음. 방장은 시작 뒤 언제든, 운영진은 시작 6시간 뒤부터.
+   * 이 필드 전 응답은 생략 → false
+   */
+  can_finish: z.boolean().optional(),
   can_mark_no_show: z.boolean(),
   can_edit_teams: z.boolean(),
   can_balance: z.boolean(),
@@ -699,6 +706,9 @@ export type LeaveScrimResponse = z.infer<typeof LeaveScrimResponse>;
 // -----------------------------------------------------------------------------
 
 export const StartScrimResponse = ScrimDetail;
+/** POST /scrims/:id/finish → 200 ScrimDetail (결과 없는 모집을 방장·운영진이 끝냄) */
+export const FinishScrimResponse = ScrimDetail;
+export type FinishScrimResponse = z.infer<typeof FinishScrimResponse>;
 export type StartScrimResponse = z.infer<typeof StartScrimResponse>;
 
 export const CancelScrimResponse = ScrimDetail;

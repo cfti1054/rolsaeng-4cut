@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   type TeamPlan,
+  canFinishScrim,
   canStartScrim,
   computeOpenPositions,
   evaluateTeams,
@@ -17,6 +18,7 @@ import {
   BALANCE_PLAYERS_MAX,
   BALANCE_PLAYERS_MIN,
   GameCode,
+  isPartyRecruit,
   type MyScrimStatus,
   SCRIM_RESULT_REVERT_WINDOW_DAYS,
   ScrimDetail,
@@ -209,6 +211,7 @@ export class ScrimViews {
       scheduled_at: scrim.scheduledAt.toISOString(),
       capacity: scrim.capacity,
       status: scrim.status,
+      cancel_reason: scrim.cancelReason,
       host: this.userRef(users, scrim.hostId),
       // 모집 중에는 no_show 행이 없다(노쇼는 시작 뒤에만) → 항상 joined + no_show
       joined_count: joined.length + noShow.length,
@@ -402,6 +405,15 @@ export class ScrimViews {
           hostOrAdmin &&
           open &&
           canStartScrim({ requiresFull: game.startRequiresFull, capacity: scrim.capacity, joinedCount }),
+        can_finish: canFinishScrim({
+          status: scrim.status,
+          startedAt: scrim.startedAt,
+          now,
+          noResult: !game.hasResults || isPartyRecruit(game.code, scrim.tftMode, scrim.lolFormat),
+          hasPendingResult: hasActive,
+          isHost,
+          isAdmin,
+        }),
         can_mark_no_show:
           isAdmin &&
           (scrim.status === 'playing' || scrim.status === 'finished') &&

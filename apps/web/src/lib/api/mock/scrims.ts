@@ -1,7 +1,9 @@
 import {
   addKstMonths,
+  canFinishScrim,
   canStartScrim,
   computeScrimRestriction,
+  isAutoFinishDue,
   orderWaitlist as coreOrderWaitlist,
   validatePreferredPositions,
   computeOpenPositions as coreComputeOpenPositions,
@@ -300,6 +302,9 @@ const gameOf = (code: GameCode): GameSeed => GAME_SEED.find((g) => g.code === co
 
 const iso = (t: number) => new Date(t).toISOString();
 const isOpen = (s: { status: string }) => s.status === 'recruiting' || s.status === 'full';
+/** 결과를 입력하지 않는 모집(스팀, 롤·롤체 인원 모집). 서버 finish·자동 종료의 noResult와 같다 */
+const noResultRecruit = (s: Pick<MockScrim, 'game' | 'tft_mode' | 'lol_format'>) =>
+  !gameOf(s.game).has_results || isPartyRecruit(s.game, s.tft_mode, s.lol_format);
 const isClosed = (s: MockScrim, now: number) => now >= Date.parse(s.scheduled_at);
 
 /** core `orderWaitlist`(joinedAt 오름차순, 같으면 id) — 목 행(joined_at 문자열)을 Date로 바꿔 넘긴다 */
@@ -892,6 +897,20 @@ export function handleS2(ctx: MockS2Context): Response | null {
     else Object.assign(s, { status: 'cancelled', cancelled_at: iso(now), cancel_reason: 'not_started', updated_at: iso(now) });
     changed = true;
   }
+  // 결과 없는 모집: 시작 24시간이 지나도 끝나지 않으면 자동 종료(서버 isAutoFinishDue와 같다)
+  for (const s of state.scrims) {
+    if (s.status !== 'playing' || !s.started_at) continue;
+    const due = isAutoFinishDue({
+      status: s.status,
+      startedAt: new Date(s.started_at),
+      now: new Date(now),
+      noResult: noResultRecruit(s),
+      hasPendingResult: state.results.some((r) => r.scrim_id === s.id && r.status === 'pending'),
+    });
+    if (!due) continue;
+    Object.assign(s, { status: 'finished', updated_at: iso(now) });
+    changed = true;
+  }
   if (changed) persist();
 
   /** 서버 흐름 4단계 뒤: 대기열 승격 + recruiting ↔ full */
@@ -967,6 +986,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
       scheduled_at: s.scheduled_at,
       capacity: s.capacity,
       status: s.status,
+      cancel_reason: s.cancel_reason,
       host: userRef(s.host_id, me),
       joined_count: isOpen(s) ? joined.length : joined.length + noShow,
       waitlist_count: rows.filter((p) => p.status === 'waitlist').length,
@@ -1050,6 +1070,15 @@ export function handleS2(ctx: MockS2Context): Response | null {
         can_edit: isHost && open,
         can_cancel: (isHost || isAdmin) && open,
         can_start: (isHost || isAdmin) && open && canStart(s),
+        can_finish: canFinishScrim({
+          status: s.status,
+          startedAt: s.started_at ? new Date(s.started_at) : null,
+          now: new Date(now),
+          noResult: noResultRecruit(s),
+          hasPendingResult: state.results.some((r) => r.scrim_id === s.id && r.status === 'pending'),
+          isHost,
+          isAdmin,
+        }),
         can_mark_no_show:
           isAdmin &&
           (s.status === 'playing' || s.status === 'finished') &&
@@ -1560,6 +1589,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
   for (const [template, action] of [
     [ApiPath.scrimJoin, 'join'],
     [ApiPath.scrimStart, 'start'],
+    [ApiPath.scrimFinish, 'finish'],
     [ApiPath.scrimCancel, 'cancel'],
   ] as const) {
     m = matchTemplate(template, path);
@@ -1637,6 +1667,23 @@ export function handleS2(ctx: MockS2Context): Response | null {
       if (!isOpen(s)) return error('SCRIM_NOT_RECRUITING', '모집 중 아님');
       if (!canStart(s)) return error('SCRIM_CANNOT_START', '시작 조건 미충족');
       Object.assign(s, { status: 'playing', started_at: iso(now), updated_at: iso(now) });
+      persist();
+      return json(200, detail(s));
+    }
+
+    if (action === 'finish' && method === 'POST') {
+      if (!isHost && !isAdmin) return error('FORBIDDEN', '방장·운영진만');
+      const allowed = canFinishScrim({
+        status: s.status,
+        startedAt: s.started_at ? new Date(s.started_at) : null,
+        now: new Date(now),
+        noResult: noResultRecruit(s),
+        hasPendingResult: state.results.some((r) => r.scrim_id === s.id && r.status === 'pending'),
+        isHost,
+        isAdmin,
+      });
+      if (!allowed) return error('SCRIM_FINISH_NOT_ALLOWED', '지금은 결과 없이 끝낼 수 없음');
+      Object.assign(s, { status: 'finished', updated_at: iso(now) });
       persist();
       return json(200, detail(s));
     }

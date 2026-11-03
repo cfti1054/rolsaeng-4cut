@@ -41,6 +41,7 @@ import {
   listScrims,
   searchSteamApps,
   setScrimNoShow,
+  finishScrim,
   startScrim,
   updateScrim,
 } from '@/lib/api/scrims';
@@ -233,6 +234,16 @@ export function useStartScrim(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => startScrim(id),
+    onSuccess: (d) => applyScrimDetail(qc, d),
+    onError: (err) => handleScrimMutationError(qc, id, err),
+  });
+}
+
+/** POST /scrims/:id/finish — 결과 없는 모집 종료(방장·운영진) */
+export function useFinishScrim(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => finishScrim(id),
     onSuccess: (d) => applyScrimDetail(qc, d),
     onError: (err) => handleScrimMutationError(qc, id, err),
   });

@@ -28,6 +28,7 @@ import {
   SetScrimNoShowParams,
   SetScrimNoShowRequest,
   type SetScrimNoShowResponse,
+  type FinishScrimResponse,
   type StartScrimResponse,
   UpdateScrimRequest,
   type UpdateScrimResponse,
@@ -118,6 +119,13 @@ export class ScrimsController {
   @HttpCode(200)
   start(@CurrentUser() user: AuthUser, @Param(idPipe) params: IdParam): Promise<StartScrimResponse> {
     return this.scrims.start(user, params.id);
+  }
+
+  /** POST /scrims/:id/finish → 200 FinishScrimResponse (결과 없는 모집: 방장·운영진, 운영진은 시작 6시간 뒤) */
+  @Post(ApiPath.scrimFinish)
+  @HttpCode(200)
+  finish(@CurrentUser() user: AuthUser, @Param(idPipe) params: IdParam): Promise<FinishScrimResponse> {
+    return this.scrims.finish(user, params.id);
   }
 
   /** DELETE /scrims/:id → 204. 운영진만. 승인된 결과가 있으면 409. */

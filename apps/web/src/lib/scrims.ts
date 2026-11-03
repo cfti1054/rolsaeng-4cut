@@ -203,7 +203,10 @@ export type BadgeTone = 'accent' | 'orange' | 'cyan' | 'violet' | 'neutral';
 
 /** 목록 카드 상태 배지(계약 8절): 내 상태 우선, 그 외 status·join_closed. S3: 진행 중 + 결과 pending → 「승인 대기」 */
 export function scrimCardBadge(
-  s: Pick<ScrimSummary, 'status' | 'join_closed' | 'my_status'> & { result_status?: ScrimSummary['result_status'] },
+  s: Pick<ScrimSummary, 'status' | 'join_closed' | 'my_status'> & {
+    result_status?: ScrimSummary['result_status'];
+    cancel_reason?: ScrimSummary['cancel_reason'];
+  },
 ): { label: string; tone: BadgeTone } {
   if (s.my_status === 'joined' && isOpenStatus(s.status)) return { label: '참가 중', tone: 'cyan' };
   if (s.my_status === 'waitlist' && isOpenStatus(s.status)) return { label: '대기 중', tone: 'cyan' };
@@ -220,7 +223,8 @@ export function scrimCardBadge(
     case 'finished':
       return { label: '종료', tone: 'neutral' };
     case 'cancelled':
-      return { label: '취소됨', tone: 'neutral' };
+      // 시작 시각이 지나 자동 마감된 모집은 취소가 아니라 「모집 종료」
+      return s.cancel_reason === 'not_started' ? { label: '모집 종료', tone: 'neutral' } : { label: '취소됨', tone: 'neutral' };
   }
 }
 
@@ -237,7 +241,11 @@ export function scrimOutcomeLine(s: Pick<ScrimSummary, 'status' | 'outcome'>): {
 
 /** 상세 헤더 배지(S2 계약 6절 표 + S3 8절: 팀 구성 완료·승인 대기) */
 export function scrimDetailBadge(
-  s: Pick<ScrimDetail, 'status' | 'join_closed'> & { balance?: ScrimDetail['balance']; result_status?: ScrimDetail['result_status'] },
+  s: Pick<ScrimDetail, 'status' | 'join_closed'> & {
+    balance?: ScrimDetail['balance'];
+    result_status?: ScrimDetail['result_status'];
+    cancel_reason?: ScrimDetail['cancel_reason'];
+  },
 ): { label: string; tone: BadgeTone } {
   switch (s.status) {
     case 'recruiting':
@@ -252,7 +260,7 @@ export function scrimDetailBadge(
     case 'finished':
       return { label: '종료', tone: 'neutral' };
     case 'cancelled':
-      return { label: '취소된 내전/모집', tone: 'neutral' };
+      return s.cancel_reason === 'not_started' ? { label: '모집 종료', tone: 'neutral' } : { label: '취소된 내전/모집', tone: 'neutral' };
   }
 }
 
@@ -380,7 +388,7 @@ export function scrimSteps(
 export const CANCEL_REASON_TEXT: Record<ScrimCancelReason, string> = {
   host: '방장이 모집을 취소했어요.',
   admin: '운영진이 모집을 취소했어요.',
-  not_started: '시작 시각이 지나도 시작되지 않아 자동으로 취소됐어요.',
+  not_started: '시작 시각이 지나 자동으로 마감됐어요.',
 };
 
 /** 수정 대화상자 정원 하한: max(min, 참가 확정 인원)을 step 간격 위 값으로 올림(D79, D96) */

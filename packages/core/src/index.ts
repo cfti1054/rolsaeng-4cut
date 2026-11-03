@@ -146,6 +146,7 @@ export {
   type RevertRatingRow,
 } from './result-review';
 export { planRoleChange, adminMemberStatus } from './admin';
+export { FINISH_ADMIN_AFTER_MIN, FINISH_AUTO_AFTER_MIN, canFinishScrim, isAutoFinishDue, type FinishInput } from './scrim-finish';
 export { newsSubtitle, resolveEventsRange, dashboardNewsWindow } from './news';
 export {
   parsePatchLine,

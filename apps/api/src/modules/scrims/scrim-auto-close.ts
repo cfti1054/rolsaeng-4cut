@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { canStartScrim, decideOverdueScrim } from '@gcd/core';
+import { FINISH_AUTO_AFTER_MIN, canStartScrim, decideOverdueScrim, isAutoFinishDue } from '@gcd/core';
+import { isPartyRecruit } from '@gcd/shared';
 import { APP_CLOCK, type Clock } from '../../common/clock';
 import { scrimWriteTx } from '../../common/scrim-tx';
 import { APP_CONFIG, type AppConfig } from '../../config/env';
@@ -13,7 +14,7 @@ export const SCRIM_AUTO_CLOSE_LOCK_KEY = 'scrim-auto-close';
 export const SCRIM_AUTO_CLOSE_BATCH = 100;
 
 export type AutoCloseOutcome = 'start' | 'cancel' | null;
-export type AutoCloseRun = { acquired: boolean; started: number; cancelled: number; skipped: number; failed: number };
+export type AutoCloseRun = { acquired: boolean; started: number; cancelled: number; finished: number; skipped: number; failed: number };
 
 /**
  * 시작 시각 + SCRIM_AUTO_CLOSE_AFTER_MIN분이 지나도 시작하지 않은 모집글 자동 마감(계약 S2 5-5, D78).
@@ -31,7 +32,7 @@ export class ScrimAutoCloser {
   ) {}
 
   async runOnce(): Promise<AutoCloseRun> {
-    const out: AutoCloseRun = { acquired: false, started: 0, cancelled: 0, skipped: 0, failed: 0 };
+    const out: AutoCloseRun = { acquired: false, started: 0, cancelled: 0, finished: 0, skipped: 0, failed: 0 };
     await this.prisma.$transaction(
       async (tx) => {
         const lock = await tx.$queryRaw<{ ok: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext(${SCRIM_AUTO_CLOSE_LOCK_KEY})) AS ok`;
@@ -56,10 +57,46 @@ export class ScrimAutoCloser {
             this.log.error(`자동 마감 실패 scrim=${t.id}: ${err instanceof Error ? err.message : 'unknown'}`);
           }
         }
+        // 결과 없는 모집을 방장·운영진이 끝내지 않고 시작 24시간이 지나면 자동 종료(D-종료 규칙, core isAutoFinishDue)
+        const finishTargets = await this.prisma.scrim.findMany({
+          where: { status: 'playing', startedAt: { lte: new Date(now.getTime() - FINISH_AUTO_AFTER_MIN * 60_000) } },
+          orderBy: [{ startedAt: 'asc' }, { id: 'asc' }],
+          take: SCRIM_AUTO_CLOSE_BATCH,
+          select: { id: true },
+        });
+        for (const t of finishTargets) {
+          try {
+            if (await this.finishOne(t.id, now)) out.finished++;
+            else out.skipped++;
+          } catch (err) {
+            out.failed++;
+            this.log.error(`자동 종료 실패 scrim=${t.id}: ${err instanceof Error ? err.message : 'unknown'}`);
+          }
+        }
       },
       { timeout: 5 * 60_000, maxWait: 10_000 },
     );
     return out;
+  }
+
+  /** 한 건(결과 없는 모집 자동 종료): 행 잠금 후 다시 판정. 대상이 아니면 false */
+  async finishOne(id: string, now: Date): Promise<boolean> {
+    return scrimWriteTx(this.prisma, async (tx) => {
+      const s = await lockOrNotFound(tx, id);
+      const game = await loadGame(tx, s.gameId);
+      const pending = await tx.scrimResult.count({ where: { scrimId: s.id, status: 'pending' } });
+      const due = isAutoFinishDue({
+        status: s.status,
+        startedAt: s.startedAt,
+        now,
+        noResult: !game.hasResults || isPartyRecruit(game.code, s.tftMode, s.lolFormat),
+        hasPendingResult: pending > 0,
+      });
+      if (!due) return false;
+      assertScrimTransition(s.status, 'finished');
+      await tx.scrim.update({ where: { id: s.id }, data: { status: 'finished' } });
+      return true;
+    });
   }
 
   /** 한 건: 별도 트랜잭션 + 행 잠금 후 다시 판정(그사이 수정·시작된 건은 null → 건너뜀) */
