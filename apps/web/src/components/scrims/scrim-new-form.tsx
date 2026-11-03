@@ -234,6 +234,7 @@ export function ScrimNewForm() {
           scheduled_at: scheduledIso ? new Date(scheduledIso).toISOString() : new Date(now ?? 0).toISOString(),
           capacity: cap,
           status: 'recruiting',
+          cancel_reason: null,
           host: { id: me.data?.id ?? '00000000-0000-4000-8000-000000000000', nickname: me.data?.nickname ?? '나', avatar_url: null },
           joined_count: 1,
           waitlist_count: 0,
