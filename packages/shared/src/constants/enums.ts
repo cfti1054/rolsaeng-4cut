@@ -160,6 +160,7 @@ export type RiotLinkVerificationStatus = z.infer<typeof RiotLinkVerificationStat
  */
 export const AdminAuditAction = z.enum([
   'member.role_change',
+  'member.delete',
   'notice.create',
   'notice.update',
   'notice.delete',
@@ -193,6 +194,7 @@ export type AdminAuditTargetType = z.infer<typeof AdminAuditTargetType>;
 /** action → target_type. 서버는 감사 행을 쓸 때 이 표로 target_type을 정한다 */
 export const ADMIN_AUDIT_TARGET_BY_ACTION: Record<AdminAuditAction, AdminAuditTargetType> = {
   'member.role_change': 'user',
+  'member.delete': 'user',
   'notice.create': 'notice',
   'notice.update': 'notice',
   'notice.delete': 'notice',

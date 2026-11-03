@@ -24,6 +24,7 @@ import {
   createPatchNote,
   createSeason,
   deleteEvent,
+  deleteMember,
   deleteNotice,
   deletePatchNote,
   deleteSeason,
@@ -270,6 +271,19 @@ export function useChangeMemberRole() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { id: string; role: UserRole }) => guarded(qc, () => changeMemberRole(v.id, { role: v.role })),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: adminKeys.membersAll });
+      void qc.invalidateQueries({ queryKey: adminKeys.overview });
+      void qc.invalidateQueries({ queryKey: adminKeys.auditAll });
+    },
+  });
+}
+
+/** 운영진 전용 회원 삭제. 성공하면 목록·통계·감사를 다시 읽는다 */
+export function useDeleteMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => guarded(qc, () => deleteMember(id)),
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: adminKeys.membersAll });
       void qc.invalidateQueries({ queryKey: adminKeys.overview });

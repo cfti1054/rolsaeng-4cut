@@ -375,6 +375,7 @@ export const API_KEY_SCOPE_LABEL: Record<ApiKeyScope, string> = {
 
 export const AUDIT_ACTION_LABEL: Record<AdminAuditAction, string> = {
   'member.role_change': '역할 변경',
+  'member.delete': '회원 삭제',
   'notice.create': '공지 작성',
   'notice.update': '공지 수정',
   'notice.delete': '공지 삭제',

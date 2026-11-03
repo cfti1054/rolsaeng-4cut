@@ -430,3 +430,13 @@
 **기본값:** 세션 저장은 가이드 7절 A. 채팅 활동은 모으지 않음. 결과·대기 승격 DM(Q12)은 없음. `bot:users:read`는 키가 쓰지 않아 발급 목록에서 뺌. 공지 채널은 `DISCORD_NOTICE_CHANNEL_ID`.
 
 **확인:** `@gcd/bot` typecheck, test 26 passed, build 성공. `prisma validate` 성공. 디스코드 로그인, Railway, 마이그레이션 적용은 하지 않음.
+
+## 후속: 관리자 회원 삭제 — 2026-11-03 — 판정: 구현 (API·웹 typecheck·테스트 미실행)
+
+**사용자 요청:** 관리자만 가입한 회원을 삭제할 수 있게.
+
+**구현:** `DELETE /admin/members/:id`(204, JwtGuard + admin). 같은 트랜잭션에서 admin-roles advisory 잠금, 요청자 role 재확인, 대상 확인. 운영진(본인·ADMIN_DISCORD_IDS 포함)은 `ADMIN_DELETE_ADMIN`(409), 내전 참가·방장·결과 제출·승인·반려·되돌리기·이의 제기·노쇼 표시 기록이 하나라도 있으면 `ADMIN_MEMBER_HAS_HISTORY`(409). 그 밖에는 delete(토큰·게임 계정·레이팅·활동은 cascade) + 감사 `member.delete`. 웹은 멤버 행의 「삭제」 버튼(운영진 행·본인 행 제외) + 확인 대화상자. 목은 `deleted_user_ids`에 기록.
+
+**기본값:** 소프트 삭제가 아닌 실제 삭제. 기록이 없는 회원만 가능(다른 회원의 결과·레이팅 보존). 마이그레이션 없음(감사 action은 text 컬럼).
+
+**확인:** `@gcd/shared` typecheck 통과. 계약 테스트 갱신(오류 코드 56개, 관리자 경로 26개). API·웹 typecheck와 vitest는 실행 못 함: 이 환경의 기본 Node가 v16이고 apps/api·apps/web 의존성이 설치되어 있지 않음.

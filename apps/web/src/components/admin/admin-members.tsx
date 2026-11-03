@@ -12,7 +12,7 @@ import { isApiError } from '@/lib/api/client';
 import { cn } from '@/lib/cn';
 import { errorMessage } from '@/lib/errors';
 import { formatYearMonth } from '@/lib/format';
-import { useAdminMembers, useChangeMemberRole } from '@/lib/hooks/admin';
+import { useAdminMembers, useChangeMemberRole, useDeleteMember } from '@/lib/hooks/admin';
 import { useMyScrimRestriction } from '@/lib/hooks/scrims';
 import { routes } from '@/lib/routes';
 import type { ToastFn } from './admin-view';
@@ -126,11 +126,15 @@ export function AdminMembersTab({ meId, onToast }: { meId: string; onToast: Toas
 
 function MemberRow({ m, isMe, onToast }: { m: AdminMemberItem; isMe: boolean; onToast: ToastFn }) {
   const change = useChangeMemberRole();
+  const remove = useDeleteMember();
   const [next, setNext] = useState<UserRole | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const st = memberStatusText(m);
   const tone = STATUS_TONE[st.tone];
   const locked = m.role_locked;
   const disabled = isMe || locked || change.isPending;
+  // 운영진(본인 포함)은 서버가 ADMIN_DELETE_ADMIN으로 막으므로 멤버 행에만 삭제 버튼을 둔다
+  const canDelete = !isMe && m.role === 'member';
   const cell = 'px-3.5 py-3';
   return (
     <tr className="bg-surface-2">
@@ -175,6 +179,27 @@ function MemberRow({ m, isMe, onToast }: { m: AdminMemberItem; isMe: boolean; on
           <span aria-hidden="true" className={cn('size-[7px] rounded-full', tone.dot)} />
           {st.text}
         </span>
+        {canDelete && (
+          <Button size="sm" variant="danger" className="ml-2" onClick={() => setDeleting(true)} disabled={remove.isPending}>
+            삭제
+          </Button>
+        )}
+        <ConfirmDialog
+          open={deleting}
+          title={`${m.user.nickname}님을 삭제할까요?`}
+          description="계정과 로그인 정보가 지워지고 되돌릴 수 없어요. 내전 참가나 결과 기록이 있는 회원은 삭제할 수 없어요."
+          confirmLabel="삭제"
+          confirmVariant="danger"
+          pending={remove.isPending}
+          onClose={() => setDeleting(false)}
+          onConfirm={() =>
+            remove.mutate(m.user.id, {
+              onSuccess: () => onToast({ message: `${m.user.nickname}님을 삭제했어요.`, tone: 'success' }),
+              onError: (e) => onToast({ message: errText(e), tone: 'error' }),
+              onSettled: () => setDeleting(false),
+            })
+          }
+        />
         <ConfirmDialog
           open={next !== null}
           title={`${m.user.nickname}님 역할을 바꿀까요?`}

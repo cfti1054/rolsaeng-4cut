@@ -88,6 +88,12 @@ export class AdminController {
     return this.members.changeRole(user, params.id, body);
   }
 
+  @Delete(ApiPath.adminMember)
+  @HttpCode(204)
+  deleteMember(@CurrentUser() user: AuthUser, @Param(idPipe) params: AdminIdParams): Promise<void> {
+    return this.members.remove(user, params.id);
+  }
+
   @Get(ApiPath.adminApiKeys)
   listApiKeys(): Promise<ListAdminApiKeysResponse> {
     return this.apiKeys.list();

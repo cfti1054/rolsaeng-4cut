@@ -217,6 +217,8 @@ export const MockS6Fields = {
   audit: z.array(MockAudit).default([]),
   api_keys: z.array(MockApiKey).default([]),
   members: z.array(MockMemberMeta).default([]),
+  /** 운영진이 삭제한 회원 id. 시드 회원도 목록에서 빠지도록 기록한다 */
+  deleted_user_ids: z.array(Uuid).default([]),
   notify: z.object({ scrim_start: z.boolean(), patch: z.boolean() }).default({ scrim_start: true, patch: false }),
 };
 export interface S6Data {
@@ -226,6 +228,7 @@ export interface S6Data {
   audit: MockAudit[];
   api_keys: MockApiKey[];
   members: MockMemberMeta[];
+  deleted_user_ids: string[];
   notify: { scrim_start: boolean; patch: boolean };
 }
 export const emptyS6 = (): S6Data => ({
@@ -235,6 +238,7 @@ export const emptyS6 = (): S6Data => ({
   audit: [],
   api_keys: [],
   members: [],
+  deleted_user_ids: [],
   notify: { scrim_start: true, patch: false },
 });
 
@@ -903,6 +907,7 @@ export function handleS6(ctx: MockS6Context): Response | null {
     return [
       meRow,
       ...ctx.users.flatMap((u) => {
+        if (st.deleted_user_ids.includes(u.id)) return [];
         const x: MockMemberMeta | undefined = meta.get(u.id);
         return x ? [{ id: u.id, role: x.role, role_locked: x.role_locked, discord_username: x.discord_username, joined_at: x.joined_at, last_login_at: x.last_login_at, left_at: x.left_at }] : [];
       }),
@@ -972,6 +977,24 @@ export function handleS6(ctx: MockS6Context): Response | null {
       ctx.persist();
     }
     return json(200, memberItem(memberRows().find((x) => x.id === target.id)!));
+  }
+  m = match(ApiPath.adminMember, path);
+  if (m && method === 'DELETE') {
+    if (!AdminIdParams.safeParse(m).success) return error('VALIDATION_FAILED', 'id 형식', { details: [{ path: 'id', message: 'uuid' }] });
+    const target = memberRows().find((x) => x.id === m!.id);
+    if (!target) return error('NOT_FOUND', '회원 없음');
+    if (target.role === 'admin') return error('ADMIN_DELETE_ADMIN', 'ADMIN_DELETE_ADMIN');
+    const hasHistory =
+      st.players.some((p) => p.user_id === target.id) ||
+      st.scrims.some((s) => s.host_id === target.id) ||
+      st.results.some((r) => [r.submitted_by, r.approved_by, r.rejected_by, r.reverted_by].includes(target.id));
+    if (hasHistory) return error('ADMIN_MEMBER_HAS_HISTORY', 'ADMIN_MEMBER_HAS_HISTORY');
+    const nick = ctx.userRef(target.id).nickname;
+    st.deleted_user_ids.push(target.id);
+    st.members = st.members.filter((x) => x.user_id !== target.id);
+    audit('member.delete', target.id, `${nick} 회원 삭제`, { id: target.id, nickname: nick, role: target.role });
+    ctx.persist();
+    return json(204, null);
   }
 
   // ---- 공지 ----

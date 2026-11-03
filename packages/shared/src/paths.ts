@@ -80,6 +80,7 @@ export const ApiPath = {
   adminNoShowScrims: '/admin/no-show/scrims',
   adminMembers: '/admin/members',
   adminMemberRole: '/admin/members/:id/role',
+  adminMember: '/admin/members/:id',
   adminNotices: '/admin/notices',
   adminNotice: '/admin/notices/:id',
   adminPatchNotes: '/admin/patch-notes',

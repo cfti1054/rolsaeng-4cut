@@ -212,4 +212,49 @@ export class AdminMembersService {
     );
     return built.item;
   }
+
+  /**
+   * DELETE /admin/members/:id. $transaction: admin-roles advisory(역할 변경과 직렬화) → 요청자 role 재확인 →
+   * 대상(없으면 NOT_FOUND) → 운영진이면 ADMIN_DELETE_ADMIN(본인·ADMIN_DISCORD_IDS 포함, 먼저 멤버로 내린다) →
+   * 내전 기록(참가·방장·결과 제출·승인·반려·되돌리기·이의 제기·노쇼 표시) 하나라도 있으면 ADMIN_MEMBER_HAS_HISTORY(기록을 지우면 다른 회원의 결과·레이팅이 깨진다) →
+   * delete(토큰·게임 계정·레이팅·활동은 cascade) + 감사 member.delete. 감사 target_id는 FK가 없어 삭제 뒤에도 남는다.
+   */
+  async remove(admin: AuthUser, targetId: string): Promise<void> {
+    const now = this.clock.now();
+    await this.prisma.$transaction(
+      async (tx) => {
+        await advisoryXactLock(tx, ADMIN_ROLES_LOCK_KEY);
+        const actor = await tx.user.findUnique({ where: { id: admin.id } });
+        if (!actor || actor.role !== 'admin') throw new AppError('FORBIDDEN');
+        const target = await tx.user.findUnique({ where: { id: targetId } });
+        if (!target) throw new AppError('NOT_FOUND');
+        if (target.role === 'admin') throw new AppError('ADMIN_DELETE_ADMIN');
+        const [participations, hosted, results, disputes] = await Promise.all([
+          tx.scrimPlayer.count({ where: { OR: [{ userId: target.id }, { noShowMarkedById: target.id }] } }),
+          tx.scrim.count({ where: { hostId: target.id } }),
+          tx.scrimResult.count({
+            where: { OR: [{ submittedById: target.id }, { approvedById: target.id }, { rejectedById: target.id }, { revertedById: target.id }] },
+          }),
+          tx.scrimResultDispute.count({ where: { OR: [{ userId: target.id }, { resolvedById: target.id }] } }),
+        ]);
+        if (participations + hosted + results + disputes > 0) throw new AppError('ADMIN_MEMBER_HAS_HISTORY');
+        await tx.user.delete({ where: { id: target.id } });
+        await writeAudit(tx, {
+          actorId: admin.id,
+          action: 'member.delete',
+          targetId: target.id,
+          summary: `${target.nickname} 회원 삭제`,
+          details: {
+            id: target.id,
+            nickname: target.nickname,
+            role: target.role,
+            joined_at: target.createdAt,
+            last_login_at: target.lastLoginAt,
+          },
+          at: now,
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
+    );
+  }
 }
