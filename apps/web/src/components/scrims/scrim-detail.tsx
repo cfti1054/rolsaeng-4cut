@@ -32,6 +32,7 @@ import {
   useLeaveScrim,
   useScrim,
   useSetScrimNoShow,
+  useFinishScrim,
   useStartScrim,
 } from '@/lib/hooks/scrims';
 import { useNow } from '@/lib/hooks/use-now';
@@ -383,14 +384,15 @@ function DuoPanel({ s }: { s: ScrimDetail }) {
 function HostMenu({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => void }) {
   const games = useGames();
   const start = useStartScrim(s.id);
+  const finish = useFinishScrim(s.id);
   const cancel = useCancelScrim(s.id);
   const { restriction } = useRestriction();
-  const [dialog, setDialog] = useState<'edit' | 'start' | 'cancel' | null>(null);
+  const [dialog, setDialog] = useState<'edit' | 'start' | 'finish' | 'cancel' | null>(null);
   const v = s.viewer;
-  if (!v.can_edit && !v.can_cancel && !v.can_start) return null;
+  if (!v.can_edit && !v.can_cancel && !v.can_start && !v.can_finish) return null;
   const game: GameView | undefined = games.data?.items.find((g) => g.code === s.game.code);
   const blocked = !v.can_start ? startBlockedReason(s.capacity, game?.capacity) : null;
-  const err = start.error ?? cancel.error;
+  const err = start.error ?? finish.error ?? cancel.error;
   // 인원 모집(파티)은 내전이 아니므로 「내전 시작」 대신 「모집 완료」로 부른다. 요청 자체는 같다
   const party = isPartyRecruit(s.game.code, s.tft_mode, s.lol_format);
 
@@ -402,6 +404,11 @@ function HostMenu({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => 
         <Button variant="primary" onClick={() => setDialog('start')} disabled={!v.can_start || start.isPending} aria-describedby={blocked ? 'start-blocked' : undefined}>
           {start.isPending ? (party ? '완료하는 중…' : '시작하는 중…') : party ? '모집 완료' : '내전 시작'}
         </Button>
+        {v.can_finish && (
+          <Button variant="primary" onClick={() => setDialog('finish')} disabled={finish.isPending}>
+            {finish.isPending ? '종료하는 중…' : '경기 종료'}
+          </Button>
+        )}
         {v.can_cancel && (
           <Button variant="danger" onClick={() => setDialog('cancel')} disabled={cancel.isPending} className="ml-auto">
             모집 취소
@@ -445,6 +452,21 @@ function HostMenu({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => 
           start
             .mutateAsync()
             .then(() => onToast({ message: party ? '모집을 완료했어요.' : '내전을 시작했어요.', tone: 'success' }))
+            .catch(() => setDialog(null))
+        }
+      />
+      <ConfirmDialog
+        open={dialog === 'finish'}
+        title="경기를 종료할까요?"
+        description="결과를 입력하지 않고 모집을 끝내요. 참가 기록은 그대로 남고, 되돌릴 수 없어요."
+        confirmLabel="종료"
+        confirmVariant="primary"
+        pending={finish.isPending}
+        onClose={() => setDialog(null)}
+        onConfirm={() =>
+          finish
+            .mutateAsync()
+            .then(() => onToast({ message: '경기를 종료했어요.', tone: 'success' }))
             .catch(() => setDialog(null))
         }
       />

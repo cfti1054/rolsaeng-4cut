@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
+  canFinishScrim,
   canStartScrim,
   isCapacityInRange,
   isJoinClosed,
@@ -478,6 +479,34 @@ export class ScrimsService {
       assertScrimTransition(s.status, 'playing');
       // 대기열 행은 그대로(D95)
       await tx.scrim.update({ where: { id: s.id }, data: { status: 'playing', startedAt: now } });
+    });
+    return this.views.detail(id, user, now);
+  }
+
+  /**
+   * POST /scrims/:id/finish — 결과를 입력하지 않는 모집(스팀·롤·롤체 인원 모집)을 끝낸다(방장은 언제든, 운영진은 시작 6시간 뒤부터).
+   * 승인 대기 결과가 있으면 SCRIM_FINISH_NOT_ALLOWED. 내전은 결과 승인으로만 끝난다.
+   */
+  async finish(user: AuthUser, id: string): Promise<ScrimDetail> {
+    const now = this.clock.now();
+    await scrimWriteTx(this.prisma, async (tx) => {
+      const s = await lockOrNotFound(tx, id);
+      const isHost = s.hostId === user.id;
+      if (!isHost && user.role !== 'admin') throw new AppError('FORBIDDEN');
+      const game = await loadGame(tx, s.gameId);
+      const pending = await tx.scrimResult.count({ where: { scrimId: s.id, status: 'pending' } });
+      const allowed = canFinishScrim({
+        status: s.status,
+        startedAt: s.startedAt,
+        now,
+        noResult: !game.hasResults || isPartyRecruit(game.code, s.tftMode, s.lolFormat),
+        hasPendingResult: pending > 0,
+        isHost,
+        isAdmin: user.role === 'admin',
+      });
+      if (!allowed) throw new AppError('SCRIM_FINISH_NOT_ALLOWED');
+      assertScrimTransition(s.status, 'finished');
+      await tx.scrim.update({ where: { id: s.id }, data: { status: 'finished' } });
     });
     return this.views.detail(id, user, now);
   }

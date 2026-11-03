@@ -49,6 +49,7 @@ export const ERROR_MESSAGES: Record<AppErrorCode, string> = {
   SCRIM_BANNED: '노쇼가 쌓여 지금은 새 내전 참가·대기 등록·모집글 작성이 제한돼 있어요.',
   SCRIM_CAPACITY_BELOW_JOINED: '정원을 지금 참가 확정된 인원보다 적게 줄일 수 없어요.',
   SCRIM_CANNOT_START: '아직 시작할 수 없어요. 시작에 필요한 인원이 모였는지 확인해 주세요.',
+  SCRIM_FINISH_NOT_ALLOWED: '지금은 경기를 끝낼 수 없어요. 승인 대기 중인 결과가 있는지 확인해 주세요.',
   SCRIM_NO_SHOW_NOT_ALLOWED: '지금은 노쇼를 표시할 수 없어요. 진행 중·종료된 내전의 참가자에게만, 표시 기한 안에 표시할 수 있어요.',
   // S3 팀 구성·결과(409는 훅이 상세를 다시 조회하므로 「새로 고쳤어요」로 안내)
   SCRIM_TEAMS_NOT_EDITABLE: '지금은 팀 구성을 바꿀 수 없어요. 결과가 제출됐거나 내전 상태가 바뀌었어요. 화면을 새로 고쳤어요.',

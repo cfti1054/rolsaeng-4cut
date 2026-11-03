@@ -35,6 +35,7 @@ export const ApiPath = {
   scrimDuos: '/scrims/:id/duos',
   scrimJoin: '/scrims/:id/join',
   scrimStart: '/scrims/:id/start',
+  scrimFinish: '/scrims/:id/finish',
   scrimCancel: '/scrims/:id/cancel',
   scrimPlayerNoShow: '/scrims/:id/players/:userId/no-show',
   // S2 내 노쇼 제한 상태

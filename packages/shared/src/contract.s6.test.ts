@@ -106,7 +106,7 @@ describe('S6 경로', () => {
 });
 
 describe('S6 오류 코드·scope', () => {
-  it('오류 코드 9개 추가(전체 55개, 이의 제기 3개 제거 D281, 회원 삭제 1개 추가), 상태 표 일치', () => {
+  it('오류 코드 9개 추가(전체 56개, 이의 제기 3개 제거 D281, 회원 삭제 1개 추가, 결과 없는 모집 종료 1개 별도), 상태 표 일치', () => {
     const s6 = {
       SCRIM_RESULT_NOT_APPROVED: 409,
       SCRIM_RESULT_REVERT_NOT_ALLOWED: 409,
@@ -122,7 +122,7 @@ describe('S6 오류 코드·scope', () => {
       expect(ErrorCode.options).toContain(c);
       expect(ERROR_HTTP_STATUS[c as ErrorCode]).toBe(status);
     }
-    expect(ErrorCode.options).toHaveLength(55);
+    expect(ErrorCode.options).toHaveLength(56);
     for (const c of ['SCRIM_DISPUTE_NOT_ALLOWED', 'SCRIM_DISPUTE_EXISTS', 'DISPUTE_ALREADY_RESOLVED']) {
       expect(ErrorCode.options as readonly string[]).not.toContain(c);
     }

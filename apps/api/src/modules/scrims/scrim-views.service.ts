@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   type TeamPlan,
+  canFinishScrim,
   canStartScrim,
   computeOpenPositions,
   evaluateTeams,
@@ -17,6 +18,7 @@ import {
   BALANCE_PLAYERS_MAX,
   BALANCE_PLAYERS_MIN,
   GameCode,
+  isPartyRecruit,
   type MyScrimStatus,
   SCRIM_RESULT_REVERT_WINDOW_DAYS,
   ScrimDetail,
@@ -403,6 +405,15 @@ export class ScrimViews {
           hostOrAdmin &&
           open &&
           canStartScrim({ requiresFull: game.startRequiresFull, capacity: scrim.capacity, joinedCount }),
+        can_finish: canFinishScrim({
+          status: scrim.status,
+          startedAt: scrim.startedAt,
+          now,
+          noResult: !game.hasResults || isPartyRecruit(game.code, scrim.tftMode, scrim.lolFormat),
+          hasPendingResult: hasActive,
+          isHost,
+          isAdmin,
+        }),
         can_mark_no_show:
           isAdmin &&
           (scrim.status === 'playing' || scrim.status === 'finished') &&

@@ -23,6 +23,7 @@ import {
   ListScrimsResponse,
   SearchSteamAppsResponse,
   SetScrimNoShowResponse,
+  FinishScrimResponse,
   StartScrimResponse,
   UpdateScrimResponse,
   fillPath,
@@ -88,6 +89,11 @@ export function leaveScrim(id: string) {
 }
 
 /** POST /scrims/:id/start */
+/** POST /scrims/:id/finish — 결과 없는 모집을 끝냄(방장·운영진, 운영진은 시작 6시간 뒤부터) */
+export function finishScrim(id: string) {
+  return apiClient.request(fillPath(ApiPath.scrimFinish, { id }), FinishScrimResponse, { method: 'POST' });
+}
+
 export function startScrim(id: string) {
   return apiClient.request(fillPath(ApiPath.scrimStart, { id }), StartScrimResponse, { method: 'POST' });
 }

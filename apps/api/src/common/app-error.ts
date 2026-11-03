@@ -39,6 +39,7 @@ export const DEFAULT_ERROR_MESSAGE: Record<ErrorCode, string> = {
   SCRIM_BANNED: '노쇼 누적으로 내전 참가가 제한된 상태입니다.',
   SCRIM_CAPACITY_BELOW_JOINED: '정원을 현재 참가 인원보다 적게 바꿀 수 없습니다.',
   SCRIM_CANNOT_START: '시작 조건을 채우지 못했습니다.',
+  SCRIM_FINISH_NOT_ALLOWED: '지금은 결과 없이 끝낼 수 없습니다.',
   SCRIM_NO_SHOW_NOT_ALLOWED: '노쇼를 표시할 수 없는 상태입니다.',
   SCRIM_TEAMS_NOT_EDITABLE: '지금은 팀 구성을 바꿀 수 없습니다.',
   SCRIM_BALANCE_UNAVAILABLE: '이 내전은 팀 자동 밸런스를 쓸 수 없습니다.',
