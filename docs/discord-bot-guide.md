@@ -86,7 +86,7 @@ apps/bot/
 - 봇 토큰이 코드나 Git에 들어가지 않았는지 확인합니다.
 
 ### 단계 6. Railway 배포
-9절 절차를 따릅니다.
+8절 절차를 따릅니다. 처음 배포할 때의 단계별 체크리스트는 [railway-bot-setup.md](railway-bot-setup.md)에 있습니다.
 
 ### 단계 7. 배포 후 검증
 - Railway 로그에 `ready` 같은 기동 메시지가 나오는지 확인합니다.
