@@ -13,7 +13,8 @@
 | 봇용 API 엔드포인트 | 구현됨 (S5) | [apps/api/src/modules/bot/](../apps/api/src/modules/bot/) |
 | API 키 인증 가드 | 구현됨 | [apps/api/src/common/guards/api-key.guard.ts](../apps/api/src/common/guards/api-key.guard.ts) |
 | API 키 발급 CLI | 구현됨 | [apps/api/scripts/api-key.ts](../apps/api/scripts/api-key.ts) |
-| 디스코드 봇 프로세스 | **미구현** (이 저장소의 `apps/bot`으로 추가 예정) | — |
+| 디스코드 봇 프로세스 | 구현됨 | [apps/bot/](../apps/bot/) |
+| 봇 테이블 3개(음성 세션·보낸 DM·공지 발송 기록) | 마이그레이션만 추가됨. DB 적용은 배포 시 `prisma migrate deploy`(부분 고유 인덱스가 Prisma 모델 밖에 있으니 `migrate dev`로 새 마이그레이션을 만들 때 드롭 구문이 생기지 않는지 확인) | [20261102190000_bot_voice_sessions](../apps/api/prisma/migrations/20261102190000_bot_voice_sessions/migration.sql) |
 | Railway 봇 서비스 | **미생성** | — |
 
 봇은 API와 **별도 프로세스**입니다. 이 저장소의 API는 봇의 요청을 받기만 하고, 디스코드에 직접 붙지 않습니다.
@@ -50,48 +51,48 @@
 ### 단계 2. 디스코드 앱 준비
 - 디스코드 개발자 포털에서 앱을 만들고 **Bot 토큰**을 발급받습니다.
 - Privileged Gateway Intents에서 **Server Members**, **Presence**를 켭니다.
-- 채팅 활동을 받는다면 **Message Content**도 켭니다. 채팅 정책은 아직 미정입니다.
+- **Message Content**는 켜지 않습니다. 채팅 활동은 모으지 않습니다(12절).
 - OAuth2 URL Generator에서 `bot`, `applications.commands` 스코프로 초대 URL을 만들고 커뮤니티 서버에 초대합니다. 권한 세부 내용은 5절을 보세요.
 
 ### 단계 3. API 키 발급
 ```
-corepack pnpm --filter api api-key create --name "디스코드 봇" --scopes bot:activity,bot:users:read,bot:scrims:read,bot:rankings:read,bot:members,bot:presence
+corepack pnpm --filter api api-key create --name "디스코드 봇" --scopes bot:activity,bot:scrims:read,bot:rankings:read,bot:members,bot:presence,bot:notices,bot:patch-notes
 ```
 - 원문 키는 **한 번만** 출력됩니다. 바로 Railway 환경 변수 `BOT_API_KEY`에 넣습니다.
 - 키는 DB에 해시로만 저장됩니다. 원문을 잃어버리면 새로 발급하고 이전 키는 폐기합니다.
 
-### 단계 4. 봇 로컬 개발
-1. `apps/bot` 패키지를 만듭니다(TypeScript, discord.js v14).
-2. 로컬 `.env`에 환경 변수를 넣고 실행합니다(8절 표 참고).
-3. 로컬 API(`corepack pnpm --filter api dev`)에 연결해서 이벤트가 들어가는지 확인합니다.
-4. 봇 구현 권장 구조는 아래와 같습니다.
+### 단계 4. 봇 로컬 실행
+1. `apps/bot/.env.example`을 `apps/bot/.env`로 복사하고 값을 채웁니다(6절).
+2. 세션 테이블을 적용합니다(`corepack pnpm --filter api prisma:deploy`). API는 `corepack pnpm --filter api build` 후 `corepack pnpm --filter api start`로 띄웁니다.
+3. `corepack pnpm --filter @gcd/bot dev` 로 봇을 실행하고, 음성 입장·퇴장이 API에 들어가는지 확인합니다.
+4. 패키지 구조는 아래와 같습니다.
 
 ```
 apps/bot/
   src/
-    index.ts          클라이언트 로그인, 이벤트 등록, SIGTERM 처리
-    events/           voiceStateUpdate, presenceUpdate, guildMemberAdd/Remove
+    index.ts          클라이언트 로그인, 이벤트 등록, 60초 루프, SIGTERM 처리
+    events/           음성 인원·플레이 스냅샷
     commands/         슬래시 명령어 (랭킹, 곧 시작하는 내전)
-    outbox.ts         공지·패치노트 발송 루프
+    jobs.ts           활동 전송, 공지·패치노트, 내전 시작 DM
     api-client.ts     X-API-Key 헤더, 재시도·백오프, 응답 검증
-    session-store.ts  음성 세션 저장(재시작 복구용)
+    session-store.ts  음성 세션·보낸 DM·공지 발송 기록
   Dockerfile
   package.json
 ```
 
 ### 단계 5. 배포 전 점검
 - 봇을 로컬에서 실행해 음성 채널 입장·퇴장이 `POST /bot/activity`로 한 번씩만 들어가는지 확인합니다.
-- 같은 세션을 두 번 보내도 API가 `duplicated`로 응답하는지 확인합니다.
+- 같은 세션을 두 번 보내도 API가 `duplicate`로 응답하는지 확인합니다.
 - 봇 토큰이 코드나 Git에 들어가지 않았는지 확인합니다.
 
 ### 단계 6. Railway 배포
-9절 절차를 따릅니다.
+8절 절차를 따릅니다. 처음 배포할 때의 단계별 체크리스트는 [railway-bot-setup.md](railway-bot-setup.md)에 있습니다.
 
 ### 단계 7. 배포 후 검증
 - Railway 로그에 `ready` 같은 기동 메시지가 나오는지 확인합니다.
 - 디스코드에서 음성 채널에 들어갔다 나와 보고, API 쪽 활동 기록이 생기는지 확인합니다.
 - 슬래시 명령어가 응답하는지 확인합니다.
-- 재배포 후에도 음성 세션이 유실되지 않는지 확인합니다.
+- 재배포 후 종료 직전까지의 음성 시간이 API에 들어갔는지, 아직 채널에 있는 회원은 새 세션으로 이어 잡히는지 확인합니다.
 
 ---
 
@@ -149,25 +150,33 @@ POST /api/v1/bot/activity
 | --- | --- | --- | --- |
 | `DISCORD_BOT_TOKEN` | bot | 봇 토큰. 비밀 | (Bot 탭에서 발급) |
 | `DISCORD_GUILD_ID` | bot | 커뮤니티 서버 ID | `123…` |
+| `DISCORD_NOTICE_CHANNEL_ID` | bot | 공지를 올릴 텍스트 채널 ID | `123…` |
 | `BOT_API_KEY` | bot | API 키 CLI로 발급한 원문 | `…` |
 | `API_BASE_URL` | bot | API 기본 주소 | `https://<api-domain>/api/v1` |
-| `DATABASE_URL` | bot (세션 저장 시) | Railway PostgreSQL 연결 문자열 | 플러그인이 자동 주입 |
+| `DATABASE_URL` | bot | 음성 세션·발송 기록용 PostgreSQL. API와 같은 데이터베이스 | 플러그인이 자동 주입 |
 | `NODE_ENV` | bot | 운영 환경 표시 | `production` |
 
 - `.env.example`에는 **값 없이 키 이름만** 적어 둡니다. 실제 값은 로컬 `.env`와 Railway Variables에만 넣습니다.
 
 ---
 
-## 7. 세션 저장 방식 결정 필요
+## 7. 세션 저장
 
-음성 세션은 봇이 재시작되어도 잃으면 안 됩니다. 두 가지 중 하나를 고르세요.
+음성 세션은 **A. PostgreSQL**에 둡니다. 봇이 `DATABASE_URL`로 직접 읽고 쓰며, 테이블은 API Prisma 마이그레이션으로만 만듭니다.
 
-| 방식 | 장점 | 단점 |
-| --- | --- | --- |
-| **A. Railway PostgreSQL에 저장** | 재배포에도 유지, 봇이 DB를 직접 봄 | 봇에 DB 연결 코드와 스키마 관리가 추가됨 |
-| **B. API에 세션 상태를 맡김** | 봇은 DB를 모름 | API 계약을 바꿔야 할 수 있음 |
+| 테이블 | 용도 |
+| --- | --- |
+| `bot_voice_sessions` | 열린 음성 세션. 회원당 하나만 열려 있다. 닫힌 뒤 API 전송이 끝나지 않은 세션도 여기 남아 다음 기동 때 다시 보낸다 |
+| `bot_direct_messages` | 내전 시작 DM·패치노트 DM을 받은 회원. 내전은 시작 시각이 바뀌면 다시 보낸다 |
+| `bot_outbound_deliveries` | 공지·패치노트를 채널이나 DM으로 올린 뒤, API `delivered` 호출이 실패해도 같은 글을 다시 올리지 않기 위한 기록 |
 
-기본 권장은 **A**입니다. 단, 봇이 DB 스키마를 직접 만지면 API 스키마와 어긋날 수 있으니 테이블은 API의 Prisma 마이그레이션으로만 만드세요.
+종료 방식에 따라 세션을 다르게 처리합니다.
+
+| 종료 | 처리 |
+| --- | --- |
+| 정상 종료(SIGTERM, 재배포) | 열린 세션을 그 시각에 닫아 API로 보낸 다음 디스코드 연결을 끊습니다. 다시 뜨면 아직 채널에 있는 회원은 **새 세션**으로 시작합니다. 꺼져 있던 동안은 음성 시간에 넣지 않습니다. |
+| 비정상 종료(크래시, 강제 종료) | 세션이 열린 채 남습니다. 다시 뜨면 아직 채널에 있는 회원은 **같은 세션을 잇고**, 채널을 떠난 회원은 `last_seen_at`까지로 닫습니다. |
+| API 전송 실패 | 세션은 닫힌 채 `delivered_at`이 비어 남고, 60초 주기나 다음 기동 때 같은 멱등 키로 다시 보냅니다. |
 
 ---
 
@@ -187,32 +196,19 @@ POST /api/v1/bot/activity
 4. **Settings → Deploy**에서 Restart Policy를 **On Failure**로 둡니다.
 5. **Settings → Scaling**에서 레플리카를 **1**로 둡니다. 2 이상이면 같은 음성 이벤트가 중복으로 발생하고 공지가 두 번 나갈 수 있습니다.
 6. **Settings → Networking**에서 공개 도메인을 만들지 **않습니다**.
-7. **Variables**에 8절 표의 `bot` 변수를 넣습니다.
+7. **Variables**에 6절 표의 `bot` 변수를 넣습니다.
 
-### 8-3. Dockerfile 예시
+### 8-3. Dockerfile
 
-> 아래는 시작점입니다. `<bot-package-name>`은 `apps/bot/package.json`의 `name`에 맞춰 바꾸세요. 실제 빌드가 성공하는지 로컬에서 먼저 확인합니다.
+실제 파일은 [apps/bot/Dockerfile](../apps/bot/Dockerfile)입니다. 패키지 이름은 `@gcd/bot`이고, 빌드 컨텍스트는 저장소 루트입니다.
 
-```dockerfile
-# apps/bot/Dockerfile
-FROM node:22-alpine
-RUN corepack enable
-WORKDIR /repo
-
-# 워크스페이스 설정과 잠금 파일을 먼저 복사해 설치 캐시를 살린다
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY packages ./packages
-COPY apps/bot ./apps/bot
-
-RUN pnpm install --frozen-lockfile --filter <bot-package-name>...
-RUN pnpm --filter <bot-package-name> build
-
-WORKDIR /repo/apps/bot
-CMD ["node", "dist/index.js"]
+```
+docker build -f apps/bot/Dockerfile -t gcd-bot .
 ```
 
-- `--filter <bot-package-name>...`은 봇이 의존하는 `packages/shared`까지 함께 설치합니다.
-- `CMD`는 빌드 결과물 위치에 맞춥니다.
+Railway 서비스 변수 `RAILWAY_DOCKERFILE_PATH=apps/bot/Dockerfile`. 루트 디렉터리는 비워 둡니다.
+
+pnpm 잠금 파일이 워크스페이스 전체 매니페스트를 보므로, API·웹 이미지의 Dockerfile도 `apps/bot/package.json`을 복사합니다. 그 이미지에 봇 코드를 넣지는 않습니다.
 
 ### 8-4. 재배포와 종료 처리
 - Railway는 재배포할 때 기존 컨테이너에 **SIGTERM**을 보냅니다. 봇은 이 신호를 받으면 다음을 해야 합니다.
@@ -222,12 +218,14 @@ CMD ["node", "dist/index.js"]
 - 종료 처리가 끝나기 전에 강제 종료되면 세션이 남을 수 있습니다. 재시작 때 복구 로직으로 보완하세요.
 
 ### 8-5. 재시작 시 세션 복구
-- 봇이 뜨면 `GUILD_ID` 서버의 현재 음성 채널 접속자를 읽습니다.
-- 세션 저장소(7절)에 남아 있던 열린 세션과 대조해 이어 가거나 닫습니다.
+- 봇이 뜨면 `DISCORD_GUILD_ID` 서버의 현재 음성 채널 접속자를 읽습니다.
+- 세션 저장소(7절)에 남아 있던 열린 세션과 대조해 이어 가거나 닫습니다. 열린 세션이 남는 것은 비정상 종료 때뿐입니다(정상 종료는 8-4에서 이미 닫음).
+- 기동 단계(명령어 등록, 세션 복구, 접속 현황, 공지, 패치노트, 내전 DM)는 하나가 실패해도 나머지와 60초 주기 작업은 그대로 돕니다. API가 봇보다 늦게 떠도 다음 주기에 따라잡습니다. 실패한 단계는 `startup step failed` 로그에 `step` 이름으로 남습니다.
 
 ### 8-6. 로그와 상태 확인
 - Railway 서비스의 **Deployments → View Logs**에서 로그를 봅니다.
-- 봇 로그에는 기동 메시지, API 호출 결과(건수, 오류 코드), 재시도 횟수를 남깁니다.
+- 봇 로그에는 기동 메시지, API 호출 결과(건수, 오류 코드)를 남깁니다. API 클라이언트 안의 재시도(최대 3번)는 따로 찍지 않고, 끝내 실패한 호출만 상태 코드와 함께 남습니다.
+- 멤버 입퇴장 이벤트는 API가 계속 실패하면 1초부터 최대 60초까지 간격을 늘려 다시 보냅니다. 메모리에는 최대 1,000건만 두고 넘치면 가장 오래된 것부터 버리며 `member events dropped`를 남깁니다.
 - **토큰과 API 키는 로그에 찍지 않습니다.**
 
 ### 8-7. 비용
@@ -244,7 +242,7 @@ CMD ["node", "dist/index.js"]
 - [ ] 음성 활동이 API 기록에 들어온다
 - [ ] `unlinked` 개수가 과도하게 늘지 않는다(연동 안내 필요 신호)
 - [ ] 공지 발송 후 `delivered`가 호출되고 같은 공지가 반복 발송되지 않는다
-- [ ] 재배포 후 열린 세션이 유실되지 않는다
+- [ ] 재배포 후 종료 직전까지의 음성 시간이 API에 들어온다(7절 표)
 - [ ] API 키 `last_used_at`이 갱신된다(관리자 화면, S6)
 - [ ] 봇 토큰 노출 의심 시 Reset Token → Railway 변수 갱신 → 재배포
 
@@ -260,7 +258,8 @@ CMD ["node", "dist/index.js"]
 | API 호출 429 또는 5xx | 요청 과다, API 일시 장애 | 백오프 재시도 확인, 배치 크기 줄이기 |
 | 활동이 기록 안 됨 | 미연동 `discord_id` | 응답의 `unlinked` 확인, 사용자 디스코드 로그인 여부 확인 |
 | 같은 공지가 여러 번 나감 | 레플리카 2개 이상 | 레플리카를 1로 줄임 |
-| 재배포 후 세션 유실 | SIGTERM 처리 누락 | 8-4 절차 구현 여부 확인 |
+| 재배포 후 음성 시간 누락 | SIGTERM 처리가 8초 안에 끝나지 않음, API 전송 실패 | 로그의 `shutdown failed`·`activity failed` 확인. 닫힌 세션은 다음 기동 때 다시 보낸다 |
+| 기동 후 공지·DM이 안 나감 | 기동 단계 실패 | `startup step failed` 로그의 `step` 확인. 60초 주기에 다시 시도한다 |
 
 ---
 
@@ -273,13 +272,15 @@ CMD ["node", "dist/index.js"]
 
 ---
 
-## 12. 아직 정하지 않은 것
+## 12. 구현하면서 정한 것
 
-| 항목 | 상태 | 영향 |
+| 항목 | 결정 | 이유 |
 | --- | --- | --- |
-| 세션 저장 방식 (7절 A/B) | 미정 | 봇 구현 구조 |
-| 채팅 활동 수집 여부와 정책 | 미정 (계약 Q 항목) | Message Content 인텐트 필요 여부 |
-| 봇 요청 횟수 제한 | 미정 (계약 Q11) | 배치 크기와 주기 |
-| 결과·대기 승격 DM | 미정 (계약 Q12) | 봇 엔드포인트 추가 여부 |
+| 세션 저장 (7절) | PostgreSQL. 봇이 `pg`로 접근 | 가이드의 기본안. API 계약은 바꾸지 않음 |
+| 채팅 활동 | 모으지 않음 | 정책이 없어서 Message Content 인텐트를 켜지 않음. 음성만 `POST /bot/activity` |
+| 요청 주기 | 활동·접속·공지·내전 알림 60초. 음성·플레이 변화는 5초 뒤 접속 현황. 배치는 계약의 100건 | 계약 Q11이 없어서 계약의 권장 간격(presence 60초, 내전 알림 1–5분)을 따름 |
+| 결과·대기 승격 DM | 없음 | 계약 Q12. 내전 시작 30분 전 DM(D222)과 패치노트 DM은 구현함 |
+| 공지 채널 | `DISCORD_NOTICE_CHANNEL_ID` 필수 | 공지는 개인 DM이 아니라 채널에 올린다 |
+| API 키 scope | `bot:users:read`는 빼 둠 | 지금 봇은 회원 조회를 부르지 않음 |
 
-이 항목들이 정해지면 이 문서를 갱신합니다.
+채팅 수집이나 결과·대기 승격 DM을 넣으려면 이 문서와 봇을 같이 고칩니다.

@@ -1,6 +1,6 @@
 'use client';
 
-import { isPartyRecruit, LOL_FORMAT_LABEL, LOL_MAP_LABEL, steamAppHeaderImageUrl, TFT_MODE_LABEL, type ScrimSummary } from '@gcd/shared';
+import { isPartyRecruit, LOL_FORMAT_LABEL, LOL_MAP_LABEL, TFT_MODE_LABEL, type ScrimSummary } from '@gcd/shared';
 import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -21,6 +21,7 @@ import {
   scrimOutcomeLine,
 } from '@/lib/scrims';
 import { CapacityPips, StatusPill } from './scrim-bits';
+import { SteamHeaderImg } from './steam-app-picker';
 
 /** 옅은 배너색(라이트 토큰 banner-*)으로 왼쪽 글자 자리를 덮는다. */
 const BANNER_WASH = {
@@ -61,12 +62,10 @@ export function ScrimCard({ s, now, preview = false }: { s: ScrimSummary; now: n
     >
       <div data-theme={s.steam_app ? 'dark' : 'light'} className={cn('relative h-[92px] overflow-hidden text-text', meta.banner)}>
         {s.steam_app ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={steamAppHeaderImageUrl(s.steam_app.app_id)}
-            alt=""
-            loading="lazy"
+          <SteamHeaderImg
+            appId={s.steam_app.app_id}
             className="absolute inset-0 size-full object-cover opacity-35"
+            fallbackClassName="absolute inset-0 size-full object-cover opacity-60"
           />
         ) : (
           <>

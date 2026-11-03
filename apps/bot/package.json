@@ -1,0 +1,27 @@
+{
+  "name": "@gcd/bot",
+  "version": "0.0.0",
+  "private": true,
+  "description": "디스코드 봇. 음성·접속·입퇴장을 API로 보내고, 랭킹·내전 명령과 공지·패치노트를 전달한다.",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
+    "dev": "tsx --conditions=source src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@gcd/shared": "workspace:*",
+    "discord.js": "14.28.0",
+    "pg": "8.23.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "@types/pg": "8.23.1",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "5.0.5"
+  }
+}

@@ -420,3 +420,13 @@
 **구현:** `lol_format`을 롤체에도 저장. 랭크는 항상 `party`(내전으로 보내면 거부). 일반·더블업은 생략하면 내전. 인원 모집·랭크는 작성·수정에서 `rated`·`auto_balance`를 false로 고정. 일반 내전은 개인전이라 팀 밸런스 스위치는 없고 ELO만 켠다. 더블업 내전은 둘 다 켠다. 같은 마이그레이션에 기존 랭크 글의 밸런스·ELO를 끈다.
 
 **확인:** shared 계약 25, web 목 내전 27 passed. 브라우저(목): 랭크는 ELO·밸런스 스위치 없음, 일반 내전은 ELO만, 더블업 내전은 밸런스와 ELO, 더블업 인원 모집은 둘 다 없음.
+
+## 디스코드 봇 프로세스 — 2026-11-02 — 판정: 구현 (실디스코드·Railway·DB 적용 미실행)
+
+**근거:** `docs/discord-bot-guide.md`. API 계약은 S5·S6 봇 엔드포인트를 그대로 쓴다.
+
+**구현:** `apps/bot` (discord.js 14, `@gcd/shared`로 요청·응답 검증). 음성 입장·퇴장 → `POST /bot/activity`(KST 자정에서 분할, 멱등 키), 접속 현황 60초·변화 5초 디바운스 → `PUT /bot/presence`, 입퇴장 → `POST /bot/member-events`, `/랭킹`·`/내전`, 공지 채널 전송, 패치노트 DM, 내전 시작 30분 전 DM. SIGTERM 때 열린 세션을 닫아 보낸 뒤 종료. 세션·발송 기록은 PostgreSQL(`bot_voice_sessions`, `bot_direct_messages`, `bot_outbound_deliveries`). 마이그레이션 `20261102190000_bot_voice_sessions`. Dockerfile `apps/bot/Dockerfile`.
+
+**기본값:** 세션 저장은 가이드 7절 A. 채팅 활동은 모으지 않음. 결과·대기 승격 DM(Q12)은 없음. `bot:users:read`는 키가 쓰지 않아 발급 목록에서 뺌. 공지 채널은 `DISCORD_NOTICE_CHANNEL_ID`.
+
+**확인:** `@gcd/bot` typecheck, test 26 passed, build 성공. `prisma validate` 성공. 디스코드 로그인, Railway, 마이그레이션 적용은 하지 않음.
