@@ -440,3 +440,13 @@
 **기본값:** 소프트 삭제가 아닌 실제 삭제. 기록이 없는 회원만 가능(다른 회원의 결과·레이팅 보존). 마이그레이션 없음(감사 action은 text 컬럼).
 
 **확인:** `@gcd/shared` typecheck 통과. 계약 테스트 갱신(오류 코드 56개, 관리자 경로 26개). API·웹 typecheck와 vitest는 실행 못 함: 이 환경의 기본 Node가 v16이고 apps/api·apps/web 의존성이 설치되어 있지 않음.
+
+## 정정: 관리자 회원 삭제를 익명화로 변경 — 2026-11-03 — 판정: 구현 (API·웹 typecheck·테스트 미실행)
+
+**사용자 결정:** 내전 기록은 남기고 로그인 정보만 삭제. 표시는 저장 방식, 닉네임은 「(Del) 원래닉네임」.
+
+**구현:** 회원 행은 남기고 `users.deleted_at`(마이그레이션 `20261103120000_user_deleted_at`) 추가. 리프레시 토큰·게임 계정·Riot 인증·동기화 요청 삭제, 디스코드·이메일 값 null, 닉네임 `deletedMemberNickname`(shared). 기록이 있어도 삭제 가능. 순위(`rankableUserWhere`·`rankableUserSql`), 회원 목록·검색, 운영 개요 인원 수, JWT 가드에서 제외. `ADMIN_MEMBER_HAS_HISTORY` 제거(오류 코드 55개).
+
+**기본값:** 목 모드는 시드 닉네임이 고정이라 「(Del)」 표시를 하지 않음(목록에서만 제외). 감사 details에는 원래 닉네임 유지.
+
+**확인:** `@gcd/shared` typecheck 통과(익명화 닉네임 테스트 포함). API·웹 typecheck, vitest, prisma generate·migrate 미실행.

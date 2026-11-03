@@ -59,7 +59,6 @@ export const DEFAULT_ERROR_MESSAGE: Record<ErrorCode, string> = {
   SEASON_OVERLAP: '다른 시즌과 기간이 겹칩니다.',
   DISCORD_ALREADY_NOTIFIED: '디스코드 알림이 이미 전송되어 알림 설정을 바꿀 수 없습니다.',
   ADMIN_DELETE_ADMIN: '운영진은 삭제할 수 없습니다. 먼저 멤버로 내린 뒤 삭제해 주세요.',
-  ADMIN_MEMBER_HAS_HISTORY: '내전 참가·결과 기록이 있는 회원은 삭제할 수 없습니다.',
 };
 
 /**

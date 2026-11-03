@@ -187,7 +187,7 @@ function MemberRow({ m, isMe, onToast }: { m: AdminMemberItem; isMe: boolean; on
         <ConfirmDialog
           open={deleting}
           title={`${m.user.nickname}님을 삭제할까요?`}
-          description="계정과 로그인 정보가 지워지고 되돌릴 수 없어요. 내전 참가나 결과 기록이 있는 회원은 삭제할 수 없어요."
+          description="로그인 정보가 지워지고 닉네임 앞에 (Del)이 붙어요. 내전 참가·결과 기록은 그대로 남고, 되돌릴 수 없어요."
           confirmLabel="삭제"
           confirmVariant="danger"
           pending={remove.isPending}

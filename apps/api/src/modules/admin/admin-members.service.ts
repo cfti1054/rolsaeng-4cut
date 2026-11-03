@@ -6,6 +6,7 @@ import {
   type ChangeMemberRoleRequest,
   type ListAdminMembersQuery,
   ListAdminMembersResponse,
+  deletedMemberNickname,
   isLinkedDiscordId,
 } from '@gcd/shared';
 import { Prisma, type User } from '@prisma/client';
@@ -131,12 +132,12 @@ export class AdminMembersService {
       const rows = await this.prisma.$queryRaw<{ id: string }[]>`
         /* gcd:admin-member-search */
         SELECT u.id::text AS id FROM users u
-        WHERE u.nickname ILIKE ${pattern} ESCAPE '\\' OR u.discord_username ILIKE ${pattern} ESCAPE '\\'`;
+        WHERE u.deleted_at IS NULL AND (u.nickname ILIKE ${pattern} ESCAPE '\\' OR u.discord_username ILIKE ${pattern} ESCAPE '\\')`;
       idFilter = rows.map((r) => r.id);
       if (idFilter.length === 0) return ListAdminMembersResponse.parse({ items: [], next_cursor: null });
     }
     const users = await this.prisma.user.findMany({
-      where: { ...(q.role ? { role: q.role } : {}), ...(idFilter ? { id: { in: idFilter } } : {}) },
+      where: { deletedAt: null, ...(q.role ? { role: q.role } : {}), ...(idFilter ? { id: { in: idFilter } } : {}) },
     });
     const built = await this.build(this.prisma, users, now);
     const time = (d: string | null) => (d === null ? null : Date.parse(d));
@@ -214,10 +215,12 @@ export class AdminMembersService {
   }
 
   /**
-   * DELETE /admin/members/:id. $transaction: admin-roles advisory(역할 변경과 직렬화) → 요청자 role 재확인 →
-   * 대상(없으면 NOT_FOUND) → 운영진이면 ADMIN_DELETE_ADMIN(본인·ADMIN_DISCORD_IDS 포함, 먼저 멤버로 내린다) →
-   * 내전 기록(참가·방장·결과 제출·승인·반려·되돌리기·이의 제기·노쇼 표시) 하나라도 있으면 ADMIN_MEMBER_HAS_HISTORY(기록을 지우면 다른 회원의 결과·레이팅이 깨진다) →
-   * delete(토큰·게임 계정·레이팅·활동은 cascade) + 감사 member.delete. 감사 target_id는 FK가 없어 삭제 뒤에도 남는다.
+   * DELETE /admin/members/:id — 익명화 삭제(S6 후속). 회원 행과 내전 기록은 남기고 로그인 정보만 지운다.
+   * $transaction: admin-roles advisory(역할 변경과 직렬화) → 요청자 role 재확인 → 대상(없거나 이미 삭제됐으면 NOT_FOUND) →
+   * 운영진이면 ADMIN_DELETE_ADMIN(본인·ADMIN_DISCORD_IDS 포함, 먼저 멤버로 내린다) →
+   * 리프레시 토큰·게임 계정(전적·플레이타임 캐시 cascade)·Riot 인증·동기화 요청 삭제 →
+   * 닉네임을 「(Del) 원래닉네임」으로, 디스코드·이메일 값을 비우고 deleted_at 기록. 레이팅·내전 기록은 그대로 둔다.
+   * 감사 행 member.delete는 관리 추적을 위해 원래 닉네임을 details에 남긴다.
    */
   async remove(admin: AuthUser, targetId: string): Promise<void> {
     const now = this.clock.now();
@@ -227,18 +230,25 @@ export class AdminMembersService {
         const actor = await tx.user.findUnique({ where: { id: admin.id } });
         if (!actor || actor.role !== 'admin') throw new AppError('FORBIDDEN');
         const target = await tx.user.findUnique({ where: { id: targetId } });
-        if (!target) throw new AppError('NOT_FOUND');
+        if (!target || target.deletedAt) throw new AppError('NOT_FOUND');
         if (target.role === 'admin') throw new AppError('ADMIN_DELETE_ADMIN');
-        const [participations, hosted, results, disputes] = await Promise.all([
-          tx.scrimPlayer.count({ where: { OR: [{ userId: target.id }, { noShowMarkedById: target.id }] } }),
-          tx.scrim.count({ where: { hostId: target.id } }),
-          tx.scrimResult.count({
-            where: { OR: [{ submittedById: target.id }, { approvedById: target.id }, { rejectedById: target.id }, { revertedById: target.id }] },
-          }),
-          tx.scrimResultDispute.count({ where: { OR: [{ userId: target.id }, { resolvedById: target.id }] } }),
-        ]);
-        if (participations + hosted + results + disputes > 0) throw new AppError('ADMIN_MEMBER_HAS_HISTORY');
-        await tx.user.delete({ where: { id: target.id } });
+        await tx.refreshToken.deleteMany({ where: { userId: target.id } });
+        await tx.gameAccount.deleteMany({ where: { userId: target.id } });
+        await tx.riotLinkVerification.deleteMany({ where: { userId: target.id } });
+        await tx.gameAccountSyncRequest.deleteMany({ where: { userId: target.id } });
+        await tx.user.update({
+          where: { id: target.id },
+          data: {
+            nickname: deletedMemberNickname(target.nickname, target.id),
+            email: null,
+            discordId: null,
+            discordUsername: null,
+            discordGlobalName: null,
+            discordAvatar: null,
+            discordGuildVerifiedAt: null,
+            deletedAt: now,
+          },
+        });
         await writeAudit(tx, {
           actorId: admin.id,
           action: 'member.delete',

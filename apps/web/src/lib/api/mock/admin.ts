@@ -984,11 +984,7 @@ export function handleS6(ctx: MockS6Context): Response | null {
     const target = memberRows().find((x) => x.id === m!.id);
     if (!target) return error('NOT_FOUND', '회원 없음');
     if (target.role === 'admin') return error('ADMIN_DELETE_ADMIN', 'ADMIN_DELETE_ADMIN');
-    const hasHistory =
-      st.players.some((p) => p.user_id === target.id) ||
-      st.scrims.some((s) => s.host_id === target.id) ||
-      st.results.some((r) => [r.submitted_by, r.approved_by, r.rejected_by, r.reverted_by].includes(target.id));
-    if (hasHistory) return error('ADMIN_MEMBER_HAS_HISTORY', 'ADMIN_MEMBER_HAS_HISTORY');
+    // 익명화 삭제: 내전 기록은 남기고 목록·순위에서만 뺀다(서버와 같다). 닉네임 표시는 목 시드가 고정이라 바꾸지 않는다
     const nick = ctx.userRef(target.id).nickname;
     st.deleted_user_ids.push(target.id);
     st.members = st.members.filter((x) => x.user_id !== target.id);
