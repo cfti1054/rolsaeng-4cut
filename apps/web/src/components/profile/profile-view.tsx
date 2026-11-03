@@ -218,7 +218,7 @@ function NicknameEditor({ userId, nickname }: { userId: string; nickname: string
     return (
       <span className="inline-flex flex-wrap items-center gap-2">
         <h1 className="m-0 text-[28px] font-bold tracking-[-0.03em]">{nickname}</h1>
-        <Button type="button" size="sm" variant="primary" onClick={open}>
+        <Button type="button" size="sm" variant="secondary" onClick={open}>
           이름 수정
         </Button>
       </span>
