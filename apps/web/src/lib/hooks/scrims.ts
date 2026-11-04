@@ -156,7 +156,7 @@ export function applyScrimDetail(qc: QueryClient, detail: ScrimDetail): void {
   qc.setQueryData(scrimKeys.detail(detail.id), detail);
   void qc.invalidateQueries({ queryKey: scrimKeys.lists });
   // 홈 다음 내전·모집 목록(인원, my_status)은 내전 값이라 바로 다시 받는다
-  void qc.invalidateQueries({ queryKey: dashboardKeys.summary });
+  void qc.invalidateQueries({ queryKey: dashboardKeys.all });
   // S6 후속(D295): 캘린더 내전 항목(상태·인원·my_status·제목·시각)
   void qc.invalidateQueries({ queryKey: calendarKeys.all });
   // S6 후속(23-8-4): 관리자 「다가오는 일정」의 내전 항목
@@ -182,7 +182,7 @@ export function handleScrimMutationError(qc: QueryClient, id: string | null, err
   if (id && [403, 404, 409].includes(err.status)) {
     void qc.invalidateQueries({ queryKey: scrimKeys.detail(id) });
     void qc.invalidateQueries({ queryKey: scrimKeys.lists });
-    void qc.invalidateQueries({ queryKey: dashboardKeys.summary });
+    void qc.invalidateQueries({ queryKey: dashboardKeys.all });
     void qc.invalidateQueries({ queryKey: calendarKeys.all });
     // S6 후속(23-8-4): 관리자 「다가오는 일정」의 내전 항목
     void qc.invalidateQueries({ queryKey: ADMIN_OVERVIEW_KEY });
@@ -285,7 +285,7 @@ export function useDeleteScrim(id: string) {
     onSuccess: () => {
       qc.removeQueries({ queryKey: scrimKeys.detail(id) });
       void qc.invalidateQueries({ queryKey: scrimKeys.lists });
-      void qc.invalidateQueries({ queryKey: dashboardKeys.summary });
+      void qc.invalidateQueries({ queryKey: dashboardKeys.all });
       void qc.invalidateQueries({ queryKey: calendarKeys.all });
       // S6 후속(23-8-4): 관리자 「다가오는 일정」의 내전 항목
       void qc.invalidateQueries({ queryKey: ADMIN_OVERVIEW_KEY });

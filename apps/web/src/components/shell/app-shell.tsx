@@ -12,7 +12,7 @@ import { cn } from '@/lib/cn';
 import { errorMessage } from '@/lib/errors';
 import { mobileSeasonText, userEloText } from '@/lib/dashboard';
 import { useLogout, useMe } from '@/lib/hooks/auth';
-import { useDashboardSummary } from '@/lib/hooks/rankings';
+import { useDashboardShell } from '@/lib/hooks/rankings';
 import { routes } from '@/lib/routes';
 import { navItems } from './nav-items';
 import { SeasonCard } from './season-card';
@@ -21,7 +21,7 @@ import { SeasonCard } from './season-card';
  * (main) 공통 레이아웃(계약 9-5).
  * - md 이상: 좌측 사이드바(로고, MENU 5개, STAFF(admin만), 테마 세그먼트, 시즌 카드, 사용자 카드)
  * - md 미만: 상단 헤더(로고 + 시즌·D-day + 테마 토글) + 하단 탭 5개
- * - 시즌 카드·내 ELO는 useDashboardSummary(홈과 같은 쿼리, D157). 요약이 실패해도 셸은 그대로 뜬다
+ * - 시즌 카드·내 ELO는 useDashboardShell(사이드바 전용 쿼리). 실패해도 셸은 그대로 뜬다
  * - 세션 확인: useMe(토큰 없으면 refresh로 부팅). 실패하면 클라이언트가 /login으로 보낸다.
  * - needs_nickname_confirmation이면 /welcome?redirect={현재 경로}
  */
@@ -146,7 +146,7 @@ function UserCard({ me }: { me: Me | undefined }) {
   const ref = useRef<HTMLDivElement>(null);
   const logout = useLogout();
   const router = useRouter();
-  const summary = useDashboardSummary();
+  const summary = useDashboardShell();
   const eloText = userEloText(summary.data?.me ?? null);
 
   useEffect(() => {
@@ -244,7 +244,7 @@ function UserCard({ me }: { me: Me | undefined }) {
  */
 function MobileHeader({ me, pathname }: { me: Me | undefined; pathname: string }) {
   // 요약을 받기 전·실패하면 기본 표시(GAME CLUB)
-  const summary = useDashboardSummary();
+  const summary = useDashboardShell();
   const sub = summary.data ? mobileSeasonText(summary.data.season) : undefined;
   const icon = (active: boolean) =>
     cn(

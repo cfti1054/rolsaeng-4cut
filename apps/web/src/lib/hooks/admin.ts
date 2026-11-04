@@ -90,7 +90,7 @@ export function isForbidden(err: unknown): boolean {
 export function invalidateAfterResultChange(qc: QueryClient): void {
   void qc.invalidateQueries({ queryKey: scrimKeys.all });
   void qc.invalidateQueries({ queryKey: adminKeys.all });
-  void qc.invalidateQueries({ queryKey: dashboardKeys.summary });
+  void qc.invalidateQueries({ queryKey: dashboardKeys.all });
   void qc.invalidateQueries({ queryKey: rankingKeys.all });
   void qc.invalidateQueries({ queryKey: gameAccountKeys.profiles });
   void qc.invalidateQueries({ queryKey: ratingKeys.seasons });
@@ -100,7 +100,7 @@ export function invalidateAfterResultChange(qc: QueryClient): void {
 
 function invalidateAfterNewsWrite(qc: QueryClient): void {
   void qc.invalidateQueries({ queryKey: newsKeys.all });
-  void qc.invalidateQueries({ queryKey: dashboardKeys.summary });
+  void qc.invalidateQueries({ queryKey: dashboardKeys.all });
   void qc.invalidateQueries({ queryKey: adminKeys.auditAll });
   // S6 후속(D295): 운영진 일정 = 이벤트(공지·패치노트 쓰기에도 불러도 캘린더 1회 재조회뿐이다)
   void qc.invalidateQueries({ queryKey: calendarKeys.all });
@@ -395,7 +395,7 @@ function invalidateAfterSeasonWrite(qc: QueryClient): void {
   void qc.invalidateQueries({ queryKey: adminKeys.seasons });
   void qc.invalidateQueries({ queryKey: adminKeys.auditAll });
   void qc.invalidateQueries({ queryKey: ratingKeys.seasons });
-  void qc.invalidateQueries({ queryKey: dashboardKeys.summary });
+  void qc.invalidateQueries({ queryKey: dashboardKeys.all });
   void qc.invalidateQueries({ queryKey: rankingKeys.all });
 }
 

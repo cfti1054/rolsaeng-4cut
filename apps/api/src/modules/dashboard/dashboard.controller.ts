@@ -1,5 +1,5 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
-import { ApiPath, type GetDashboardSummaryResponse } from '@gcd/shared';
+import { ApiPath, type GetDashboardShellResponse, type GetDashboardSummaryResponse } from '@gcd/shared';
 import { type AuthUser, CurrentUser } from '../../common/decorators/current-user';
 import { JwtGuard } from '../../common/guards/jwt.guard';
 import { DashboardService } from './dashboard.service';
@@ -14,5 +14,11 @@ export class DashboardController {
   @Get(ApiPath.dashboardSummary)
   summary(@CurrentUser() user: AuthUser): Promise<GetDashboardSummaryResponse> {
     return this.dashboard.summary(user);
+  }
+
+  /** GET /dashboard/shell → 200 GetDashboardShellResponse (사이드바용, 요약보다 가볍다) */
+  @Get(ApiPath.dashboardShell)
+  shell(@CurrentUser() user: AuthUser): Promise<GetDashboardShellResponse> {
+    return this.dashboard.shell(user);
   }
 }
