@@ -194,6 +194,24 @@ export function isPartyRecruit(game: string, tftMode: TftMode | null | undefined
   return recruitFormat(game, tftMode, format) === 'party';
 }
 
+/**
+ * 진행 방식이 맵·게임과 맞는지. 솔랭내기(solo)는 롤 협곡 전용이다.
+ * 내전·인원 모집은 모든 롤 맵과 롤체 일반·더블업에서 쓴다(롤체 랭크는 recruitFormat이 party로 고정).
+ */
+export function isFormatAllowed(
+  game: string,
+  lolMap: LolMap | null | undefined,
+  format: LolFormat | null | undefined,
+): boolean {
+  if (format !== 'solo') return true;
+  return game === 'lol' && (lolMap ?? 'rift') === 'rift';
+}
+
+/** 작성 화면에 보여 줄 진행 방식. 롤 맵·롤체 모드에 맞지 않는 항목은 뺀다. */
+export function availableLolFormats(game: string, lolMap: LolMap | null | undefined): LolFormat[] {
+  return LolFormat.options.filter((format) => isFormatAllowed(game, lolMap, format));
+}
+
 /** 저장할 rated. 승패를 받지 않는 게임(스팀 모집)은 항상 false. */
 export function appliedRated(hasResults: boolean, requested: boolean): boolean {
   return hasResults && requested;
@@ -624,6 +642,9 @@ export const CreateScrimRequest = z
     }
     if (v.game === 'tft' && v.tft_mode === 'ranked' && v.lol_format === 'scrim') {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['lol_format'], message: '롤체 랭크는 인원 모집만 할 수 있습니다.' });
+    }
+    if (!isFormatAllowed(v.game, v.lol_map, v.lol_format)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['lol_format'], message: '솔랭내기는 롤 협곡에서만 고를 수 있습니다.' });
     }
     const custom = v.custom_game_name ?? null;
     if (v.game === 'other' && !custom) {

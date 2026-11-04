@@ -240,6 +240,7 @@ function Hero({ s }: { s: ScrimDetail }) {
             <GameTag game={s.game.code} capacity={s.capacity} boxed />
             {s.game.code === 'lol' && <StatusPill label={LOL_MAP_LABEL[s.lol_map ?? 'rift']} tone="neutral" className="rounded-lg" />}
             {isPartyRecruit(s.game.code, s.tft_mode, s.lol_format) && <StatusPill label={LOL_FORMAT_LABEL.party} tone="neutral" className="rounded-lg" />}
+            {s.lol_format === 'solo' && <StatusPill label={LOL_FORMAT_LABEL.solo} tone="neutral" className="rounded-lg" />}
             <StatusPill label={badge.label} tone={badge.tone} className="rounded-lg" />
             {s.viewer.status === 'joined' && open && <StatusPill label="참가 중" tone="cyan" className="rounded-lg" />}
             {s.viewer.status === 'waitlist' && open && (

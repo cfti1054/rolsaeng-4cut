@@ -19,6 +19,8 @@ import {
   type TftMode,
   type SteamAppRef,
   appliedRated,
+  availableLolFormats,
+  isFormatAllowed,
   isPartyRecruit,
   recruitFormat,
 } from '@gcd/shared';
@@ -50,6 +52,13 @@ import { PositionPicker } from './position-picker';
 import { RestrictionBanner, scrimErrorText, useRestriction } from './scrim-bits';
 import { ScrimCard } from './scrim-card';
 import { SteamAppPicker } from './steam-app-picker';
+
+/** 진행 방식 카드의 설명 한 줄. 솔랭내기는 내전과 같이 밸런스·ELO를 쓰므로 그렇게 적는다. */
+function formatHint(format: LolFormat): string {
+  if (format === 'party') return '파티만 모음';
+  if (format === 'solo') return '협곡 전용 · 밸런스 · ELO 반영';
+  return '밸런스 · ELO를 켤 수 있음';
+}
 
 const FIELDS = ['game', 'tft_mode', 'lol_map', 'steam_app_id', 'custom_game_name', 'title', 'scheduled_at', 'capacity', 'rules', 'host_preferred_positions'] as const;
 type FieldErrors = Partial<Record<(typeof FIELDS)[number], string>>;
@@ -337,6 +346,7 @@ export function ScrimNewForm() {
                           aria-pressed={on}
                           onClick={() => {
                             setLolMap(map);
+                            if (!isFormatAllowed('lol', map, lolFormat)) setLolFormat('scrim');
                             setErrors((x) => ({ ...x, lol_map: undefined, host_preferred_positions: undefined }));
                           }}
                           className={cn(
@@ -353,7 +363,7 @@ export function ScrimNewForm() {
                   {errors.lol_map && <InlineError>{errors.lol_map}</InlineError>}
                   <span className="mt-2 text-[13px] text-muted">진행</span>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {(Object.keys(LOL_FORMAT_LABEL) as LolFormat[]).map((format) => {
+                    {availableLolFormats('lol', lolMap).map((format) => {
                       const on = lolFormat === format;
                       return (
                         <button
@@ -367,7 +377,7 @@ export function ScrimNewForm() {
                           )}
                         >
                           <span className="block text-sm font-bold">{LOL_FORMAT_LABEL[format]}</span>
-                          <span className="text-xs text-muted">{format === 'party' ? '파티만 모음' : '밸런스 · ELO를 켤 수 있음'}</span>
+                          <span className="text-xs text-muted">{formatHint(format)}</span>
                         </button>
                       );
                     })}
@@ -409,7 +419,7 @@ export function ScrimNewForm() {
                     <>
                       <span className="mt-2 text-[13px] text-muted">진행</span>
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        {(Object.keys(LOL_FORMAT_LABEL) as LolFormat[]).map((item) => {
+                        {availableLolFormats('tft', null).map((item) => {
                           const on = lolFormat === item;
                           return (
                             <button
@@ -423,7 +433,7 @@ export function ScrimNewForm() {
                               )}
                             >
                               <span className="block text-sm font-bold">{LOL_FORMAT_LABEL[item]}</span>
-                              <span className="text-xs text-muted">{item === 'party' ? '파티만 모음' : '밸런스 · ELO를 켤 수 있음'}</span>
+                              <span className="text-xs text-muted">{formatHint(item)}</span>
                             </button>
                           );
                         })}

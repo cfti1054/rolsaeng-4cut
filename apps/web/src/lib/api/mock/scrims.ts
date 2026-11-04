@@ -16,6 +16,7 @@ import {
 import {
   appliedAutoBalance,
   appliedRated,
+  isFormatAllowed,
   isPartyRecruit,
   recruitFormat,
   ApiPath,
@@ -1301,6 +1302,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
     if (b.game !== 'lol' && b.lol_map != null) details.push({ path: 'lol_map', message: '이 게임은 맵을 고를 수 없습니다.' });
     if (b.game !== 'lol' && b.game !== 'tft' && b.lol_format != null) details.push({ path: 'lol_format', message: '이 게임은 내전·인원 모집을 고를 수 없습니다.' });
     if (b.game === 'tft' && tftMode === 'ranked' && b.lol_format === 'scrim') details.push({ path: 'lol_format', message: '롤체 랭크는 인원 모집만 할 수 있습니다.' });
+    if (!isFormatAllowed(b.game, b.lol_map, lolFormat)) details.push({ path: 'lol_format', message: '솔랭내기는 롤 협곡에서만 고를 수 있습니다.' });
     const pi = validatePositions(hostPositions, game.positions, usePositions);
     if (pi) details.push({ path: 'host_preferred_positions', message: pi });
     const appId = b.steam_app_id ?? null;

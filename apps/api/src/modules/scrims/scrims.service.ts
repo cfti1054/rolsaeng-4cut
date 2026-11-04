@@ -15,6 +15,7 @@ import {
   appliedAutoBalance,
   appliedRated,
   isPartyRecruit,
+  isFormatAllowed,
   recruitFormat,
   type CreateScrimRequest,
   type ErrorDetail,
@@ -193,6 +194,9 @@ export class ScrimsService {
     }
     if (game.code === 'tft' && tftMode === 'ranked' && body.lol_format === 'scrim') {
       throw new AppError('VALIDATION_FAILED', undefined, { details: [{ path: 'lol_format', message: '롤체 랭크는 인원 모집만 할 수 있습니다.' }] });
+    }
+    if (!isFormatAllowed(game.code, lolMap, lolFormat)) {
+      throw new AppError('VALIDATION_FAILED', undefined, { details: [{ path: 'lol_format', message: '솔랭내기는 롤 협곡에서만 고를 수 있습니다.' }] });
     }
     const party = isPartyRecruit(game.code, tftMode, lolFormat);
     const usePositions = body.use_positions && game.hasPositions && lolMap !== 'aram';

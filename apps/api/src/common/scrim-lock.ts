@@ -21,7 +21,7 @@ export type LockedScrim = {
   gameId: string;
   autoBalance: boolean;
   tftMode: 'double_up' | 'normal' | 'ranked' | null;
-  lolFormat: 'scrim' | 'party' | null;
+  lolFormat: 'scrim' | 'party' | 'solo' | null;
 };
 
 type LockedRow = {
@@ -35,7 +35,7 @@ type LockedRow = {
   game_id: string;
   auto_balance: boolean;
   tft_mode: 'double_up' | 'normal' | 'ranked' | null;
-  lol_format: 'scrim' | 'party' | null;
+  lol_format: 'scrim' | 'party' | 'solo' | null;
 };
 
 /** 없으면 null(호출자가 NOT_FOUND). id는 컨트롤러에서 UUID 검증을 거친 값 */
