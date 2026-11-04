@@ -86,10 +86,11 @@ enum LolMap {
   @@map("lol_map")
 }
 
-/// 롤 모집 종류. shared LolFormat. 다른 게임의 scrims.lol_format는 null
+/// 롤 모집 종류. shared LolFormat. 다른 게임의 scrims.lol_format는 null. solo(솔랭내기)는 협곡 전용
 enum LolFormat {
   scrim
   party
+  solo
 
   @@map("lol_format")
 }

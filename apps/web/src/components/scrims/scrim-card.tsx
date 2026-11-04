@@ -115,6 +115,9 @@ export function ScrimCard({ s, now, preview = false }: { s: ScrimSummary; now: n
           {isPartyRecruit(s.game.code, s.tft_mode, s.lol_format) && (
             <li className="rounded-lg border border-line-2 bg-surface-2 px-[9px] py-[3px] text-xs text-text-2">{LOL_FORMAT_LABEL.party}</li>
           )}
+          {s.lol_format === 'solo' && (
+            <li className="rounded-lg border border-line-2 bg-surface-2 px-[9px] py-[3px] text-xs text-text-2">{LOL_FORMAT_LABEL.solo}</li>
+          )}
           {s.tft_mode && (
             <li className="rounded-lg border border-line-2 bg-surface-2 px-[9px] py-[3px] text-xs text-text-2">{TFT_MODE_LABEL[s.tft_mode]}</li>
           )}

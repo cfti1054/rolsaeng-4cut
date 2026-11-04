@@ -112,6 +112,18 @@ describe('GET /games', () => {
 });
 
 describe('POST /scrims 작성', () => {
+  it('솔랭내기(solo)는 협곡에서 내전처럼 밸런스·ELO를 저장하고, 칼바람·롤체에서는 400', async () => {
+    t = await createTestApp({ fixedClock: true });
+    const a = await login(t, 'alice');
+    const d = await create(t, a, { lol_format: 'solo', lol_map: 'rift', rated: true, auto_balance: true });
+    expect(d).toMatchObject({ lol_format: 'solo', options: { rated: true, auto_balance: true } });
+
+    const aram = await call(t, 'POST', '/scrims', a.token, { ...LOL_BASE, lol_format: 'solo', lol_map: 'aram', scheduled_at: at(t, DAY) });
+    expect(aram.status).toBe(400);
+    const tft = await call(t, 'POST', '/scrims', a.token, { ...TFT_BASE, lol_format: 'solo', scheduled_at: at(t, DAY) });
+    expect(tft.status).toBe(400);
+  });
+
   it('201: 방장 자동 참가(joined, 1지망), recruiting, 적용값 options, balance·result null, 비공개 필드 없음', async () => {
     t = await createTestApp({ fixedClock: true });
     const a = await login(t, 'alice');

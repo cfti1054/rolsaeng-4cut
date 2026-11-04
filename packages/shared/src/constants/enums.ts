@@ -65,12 +65,13 @@ export const LOL_MAP_LABEL: Record<LolMap, string> = {
  * party: 인원 모집. 둘 다 저장하지 않는다.
  * 롤체 랭크는 항상 party. 이 필드 전에 만든 롤·롤체 글은 null이고, 랭크가 아니면 화면은 내전으로 본다.
  */
-export const LolFormat = z.enum(['scrim', 'party']);
+export const LolFormat = z.enum(['scrim', 'party', 'solo']);
 export type LolFormat = z.infer<typeof LolFormat>;
 
 export const LOL_FORMAT_LABEL: Record<LolFormat, string> = {
   scrim: '내전',
   party: '인원 모집',
+  solo: '솔랭내기',
 };
 
 /**
