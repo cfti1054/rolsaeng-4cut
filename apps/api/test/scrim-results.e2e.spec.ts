@@ -66,6 +66,7 @@ type SeedOpts = {
   rated?: boolean;
   autoBalance?: boolean;
   usePositions?: boolean;
+  lolFormat?: 'scrim' | 'party' | 'solo';
   capacity?: number;
   /** 사용자별 희망 포지션(기본 []) */
   prefs?: Record<string, string[]>;
@@ -85,6 +86,7 @@ function seedScrim(app: TestApp, host: Who, members: Who[], o: SeedOpts = {}): s
     rated: o.rated ?? true,
     autoBalance: o.autoBalance ?? (o.game ?? 'lol') !== 'tft',
     usePositions: o.usePositions ?? false,
+    lolFormat: o.lolFormat ?? null,
     startedAt: status === 'playing' ? new Date(now - 30 * MIN) : null,
   });
   [host, ...members].forEach((w, i) => {
@@ -131,6 +133,36 @@ async function four(app: TestApp) {
 // -----------------------------------------------------------------------------
 
 describe('POST /scrims/:id/balance', () => {
+  it('솔랭내기: 티어를 무시하고 무작위로 나눈 1안(mode random, 포지션 없음), 저장도 된다', async () => {
+    t = await createTestApp({ fixedClock: true });
+    const { host, a, b, c, admin } = await four(t);
+    seedTier(t, b.userId, 'DIAMOND');
+    seedTier(t, c.userId, 'BRONZE');
+    const id = seedScrim(t, host, [a, b, c], { status: 'full', lolFormat: 'solo' });
+    const body = BalanceScrimResponse.parse(JSON.parse(await (await balance(t, admin, id)).text()));
+    expect(body).toMatchObject({ mode: 'random', partitions_evaluated: 1, used_positions: false, player_count: 4 });
+    expect(body.options).toHaveLength(1);
+    const [opt] = body.options;
+    const ids = [...opt!.blue.members, ...opt!.orange.members].map((m) => m.user.id).sort();
+    expect(ids).toEqual([host.userId, a.userId, b.userId, c.userId].sort());
+    expect(opt!.blue.members).toHaveLength(2);
+    expect(opt!.blue.members.every((m) => m.position === null)).toBe(true);
+
+    const saved = await saveTeams(t, host, id, {
+      blue: opt!.blue.members.map((m) => ({ user_id: m.user.id, position: null })),
+      orange: opt!.orange.members.map((m) => ({ user_id: m.user.id, position: null })),
+    });
+    expect(saved.status).toBe(200);
+  });
+
+  it('일반 내전 응답은 mode auto', async () => {
+    t = await createTestApp({ fixedClock: true });
+    const { host, a, b, c, admin } = await four(t);
+    const id = seedScrim(t, host, [a, b, c], { status: 'full' });
+    const body = BalanceScrimResponse.parse(JSON.parse(await (await balance(t, admin, id)).text()));
+    expect(body.mode).toBe('auto');
+  });
+
   it('권한·상태·옵션 검사: 멤버 403, 없는 내전 404, 롤체 409 TEAMS_NOT_EDITABLE, 모집 중 409, auto_balance off 409 BALANCE_UNAVAILABLE', async () => {
     t = await createTestApp({ fixedClock: true });
     const { host, a, b, c } = await four(t);

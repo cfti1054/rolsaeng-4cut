@@ -1,5 +1,6 @@
 import {
   balanceTeams,
+  randomTeamSplit,
   buildEloRanking,
   computePlacementEloUpdates,
   computeSkill,
@@ -15,6 +16,7 @@ import {
   selectRatedParticipants,
   tierSeedRating,
   type BalancePlayer,
+  type BalanceResult,
   type EloPolicy,
   type SeasonLike,
   type TeamPlan,
@@ -267,8 +269,12 @@ export function balanceResponse(input: {
   positions: readonly string[];
   rated: boolean;
   policy: EloPolicy;
+  /** 솔랭내기: 실력·포지션을 보지 않고 무작위로 나눈 한 안 */
+  random?: boolean;
 }): BalanceScrimResponse {
-  const { options, partitionsEvaluated } = balanceTeams({ players: input.players, usePositions: input.usePositions, positions: input.positions });
+  const { options, partitionsEvaluated } = input.random
+    ? randomOption(input.players)
+    : balanceTeams({ players: input.players, usePositions: input.usePositions, positions: input.positions });
   const byId = new Map(input.players.map((p) => [p.userId, p]));
   const side = (plan: TeamPlan, preview: { win: number; lose: number } | null): BalanceOptionSide => ({
     ...sideView(plan, preview),
@@ -293,8 +299,21 @@ export function balanceResponse(input: {
     player_count: input.players.length,
     partitions_evaluated: partitionsEvaluated,
     used_positions: input.usePositions,
+    mode: input.random ? 'random' : 'auto',
     rating_policy: ratingPolicyView(input.policy),
   };
+}
+
+/** 솔랭내기 랜덤 한 안. 실력·포지션을 보지 않는다(서버 scrim-teams.service randomBalance와 같은 규칙) */
+function randomOption(players: readonly BalancePlayer[]): { options: BalanceResult[]; partitionsEvaluated: number } {
+  const split = randomTeamSplit(
+    players.map((p) => p.userId),
+    () => Math.random(),
+  );
+  const byId = new Map(players.map((p) => [p.userId, p] as const));
+  const side = (ids: readonly string[]) => ids.map((id) => ({ ...byId.get(id)!, position: null }));
+  const ev = evaluateTeams({ blue: side(split.blue), orange: side(split.orange), usePositions: false });
+  return { options: [{ ...ev, totalCost: ev.powerDiff }], partitionsEvaluated: 1 };
 }
 
 // -----------------------------------------------------------------------------

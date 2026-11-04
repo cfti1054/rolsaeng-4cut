@@ -34,6 +34,12 @@ import { RowErrors, SectionHead, scrimErrorTextRest } from './scrim-bits';
 
 type ToastFn = (t: { message: string; tone: 'success' | 'error' }) => void;
 
+/** 솔랭내기: 팀은 실력·라인을 보지 않고 무작위로 나눈다. 승률·전력 차 막대는 보여 주지 않는다. */
+export function isSoloScrim(s: Pick<ScrimDetail, 'game' | 'lol_format'>): boolean {
+  return s.game.code === 'lol' && s.lol_format === 'solo';
+}
+const SOLO_TEAM_NOTE = '솔랭내기는 실력과 라인을 보지 않고 무작위로 나눠요. 다시 뽑거나 직접 나눌 수 있어요.';
+
 /** 팀 색. 레드팀(API 값 orange)은 경고색과 섞이지 않게 팀 전용 토큰을 쓴다(D174). hex 금지(D53) */
 export const TEAM_TONE: Record<ScrimTeam, { border: string; bg: string; head: string; ink: string; dot: string; soft: string }> = {
   blue: { border: 'border-blue/35', bg: 'bg-blue/6', head: 'bg-blue', ink: 'text-blue-ink', dot: 'bg-blue', soft: 'bg-blue/12' },
@@ -218,6 +224,7 @@ export function TeamsPanel({ s, onToast }: { s: ScrimDetail; onToast: ToastFn })
   const current = plan && plan.key === key && v.can_edit_teams ? plan.data : null;
   const option = current ? (current.options[Math.min(pick, current.options.length - 1)] ?? null) : null;
   const editing = draft !== null && v.can_edit_teams;
+  const solo = isSoloScrim(s);
 
   const runBalance = () =>
     balance.mutate(undefined, {
@@ -244,8 +251,8 @@ export function TeamsPanel({ s, onToast }: { s: ScrimDetail; onToast: ToastFn })
       },
     );
 
-  const title = s.options.auto_balance ? '팀 자동 밸런스' : '팀 구성';
-  const subtitle = current ? balanceSubtitle(current) : null;
+  const title = s.options.auto_balance ? (solo ? '팀 랜덤 뽑기' : '팀 자동 밸런스') : '팀 구성';
+  const subtitle = current ? (solo ? '무작위로 나눈 1안 · 다시 뽑으면 바뀌어요' : balanceSubtitle(current)) : null;
   const err = balance.error ?? save.error;
   // 팀 저장 VALIDATION_FAILED details: 편집기에서는 해당 참가자 행 아래, 행을 찾지 못한 것만 패널 하단(계약 9절)
   const split = splitValidationDetails(isApiError(save.error) ? save.error.details : undefined, (path) =>
@@ -309,7 +316,9 @@ export function TeamsPanel({ s, onToast }: { s: ScrimDetail; onToast: ToastFn })
         />
       ) : option && current ? (
         <>
-          <OddsBar blue={option.blue_win_probability} powerDiff={option.power_diff} positionCost={option.position_cost} showCost={current.used_positions} />
+          {!solo && (
+            <OddsBar blue={option.blue_win_probability} powerDiff={option.power_diff} positionCost={option.position_cost} showCost={current.used_positions} />
+          )}
           <div className="flex flex-wrap gap-3.5">
             {(['blue', 'orange'] as const).map((team) => (
               <TeamCard
@@ -324,7 +333,7 @@ export function TeamsPanel({ s, onToast }: { s: ScrimDetail; onToast: ToastFn })
             ))}
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="flex-[1_1_320px] text-xs leading-relaxed text-faint">{skillFormulaText(current.rating_policy)}</span>
+            <span className="flex-[1_1_320px] text-xs leading-relaxed text-faint">{solo ? SOLO_TEAM_NOTE : skillFormulaText(current.rating_policy)}</span>
             {/* gap 8px: 390px에서 lg 14px 버튼 세 개(닫기·직접 수정·N안으로 팀 확정)가 한 줄에 들어가게(10px이면 0.2px 넘침) */}
             <div className="flex flex-wrap gap-2">
               <Button size="lg" variant="ghost" onClick={() => setPlan(null)} disabled={save.isPending}>
@@ -347,14 +356,14 @@ export function TeamsPanel({ s, onToast }: { s: ScrimDetail; onToast: ToastFn })
 
       {!editing && !current && v.can_edit_teams && (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <span className="flex-[1_1_320px] text-xs leading-relaxed text-faint">{skillFormulaText(null)}</span>
+          <span className="flex-[1_1_320px] text-xs leading-relaxed text-faint">{solo ? SOLO_TEAM_NOTE : skillFormulaText(null)}</span>
           <div className="flex flex-wrap gap-2.5">
             <Button size="lg" onClick={() => setDraft(draftFromPlayers(s.players))} disabled={balance.isPending || save.isPending}>
               {s.balance ? '팀 다시 구성' : '팀 직접 구성'}
             </Button>
             {v.can_balance && (
               <Button size="lg" variant="primary" onClick={runBalance} disabled={balance.isPending}>
-                {balance.isPending ? '계산하는 중…' : '팀 자동 밸런스 실행'}
+                {balance.isPending ? (solo ? '뽑는 중…' : '계산하는 중…') : solo ? '랜덤으로 팀 뽑기' : '팀 자동 밸런스 실행'}
               </Button>
             )}
           </div>
@@ -370,6 +379,7 @@ function NoTeamsYet({ s }: { s: ScrimDetail }) {
   let description: string;
   if (s.status === 'recruiting') description = '정원이 차면 방장이 두 팀을 나눠요.';
   else if (s.status === 'finished' || s.status === 'cancelled') description = '저장된 팀 구성이 없어요.';
+  else if (v.can_balance && isSoloScrim(s)) description = '랜덤으로 뽑으면 두 팀을 무작위로 나눠 보여 줘요. 마음에 들지 않으면 다시 뽑거나 직접 나눠 주세요.';
   else if (v.can_balance) description = '자동 밸런스를 실행하면 두 팀 전력을 맞춘 안을 최대 3개까지 보여 줘요.';
   else if (v.can_edit_teams) description = s.options.auto_balance ? '참가 인원이 맞지 않아 자동 밸런스를 쓸 수 없어요. 팀을 직접 구성해 주세요.' : '이 내전은 자동 밸런스를 쓰지 않아요. 팀을 직접 구성해 주세요.';
   else description = '방장이 팀을 나누면 여기에 보여요.';
@@ -398,7 +408,7 @@ function SavedTeams({ s }: { s: ScrimDetail }) {
   const hasNoShow = s.players.some((p) => p.team && p.status === 'no_show');
   return (
     <>
-      <OddsBar blue={b.blue_win_probability} powerDiff={b.power_diff} positionCost={b.position_cost} showCost={usePositions} />
+      {!isSoloScrim(s) && <OddsBar blue={b.blue_win_probability} powerDiff={b.power_diff} positionCost={b.position_cost} showCost={usePositions} />}
       <div className="flex flex-wrap gap-3.5">
         {(['blue', 'orange'] as const).map((team) => (
           <TeamCard

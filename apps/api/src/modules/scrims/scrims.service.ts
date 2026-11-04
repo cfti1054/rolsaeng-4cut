@@ -199,7 +199,8 @@ export class ScrimsService {
       throw new AppError('VALIDATION_FAILED', undefined, { details: [{ path: 'lol_format', message: '솔랭내기는 롤 협곡에서만 고를 수 있습니다.' }] });
     }
     const party = isPartyRecruit(game.code, tftMode, lolFormat);
-    const usePositions = body.use_positions && game.hasPositions && lolMap !== 'aram';
+    // 솔랭내기는 라인을 쓰지 않는다(팀은 랜덤 또는 직접 구성)
+    const usePositions = body.use_positions && game.hasPositions && lolMap !== 'aram' && lolFormat !== 'solo';
     const hostPositions = usePositions ? body.host_preferred_positions : [];
     if (game.code === 'tft' && tftMode === null) {
       throw new AppError('VALIDATION_FAILED', undefined, { details: [{ path: 'tft_mode', message: '롤체 모드를 골라 주세요.' }] });
