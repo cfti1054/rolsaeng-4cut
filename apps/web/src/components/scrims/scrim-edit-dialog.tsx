@@ -2,6 +2,7 @@
 
 import {
   CUSTOM_GAME_NAME_MAX_LENGTH,
+  availableLolFormats,
   isPartyRecruit,
   LOL_FORMAT_LABEL,
   LOL_MAP_LABEL,
@@ -12,13 +13,16 @@ import {
   ScrimTitle,
   UpdateScrimRequest,
   appliedAutoBalance,
+  recruitFormat,
   type GameView,
+  type LolFormat,
   type ScrimDetail,
   type SteamAppRef,
 } from '@gcd/shared';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Button, InlineError } from '@/components/ui/controls';
 import { isApiError } from '@/lib/api/client';
+import { cn } from '@/lib/cn';
 import { duoBalanceNote } from '@/lib/elo-info';
 import { useUpdateScrim } from '@/lib/hooks/scrims';
 import { buildScrimPatch, capacityFloor, isoToKstInputs, kstInputsToIso, scheduleMaxMs, scheduleMaxText } from '@/lib/scrims';
@@ -51,8 +55,13 @@ export function ScrimEditDialog({
   const [autoBalance, setAutoBalance] = useState(s.options.auto_balance);
   const [steamApp, setSteamApp] = useState<SteamAppRef | null>(s.steam_app);
   const [customGameName, setCustomGameName] = useState(s.custom_game_name ?? '');
+  const currentFormat = recruitFormat(s.game.code, s.tft_mode, s.lol_format);
+  const [format, setFormat] = useState<LolFormat | null>(currentFormat);
   const [error, setError] = useState<string | null>(null);
   const ids = { title: useId(), date: useId(), time: useId(), cap: useId(), rules: useId(), head: useId(), custom: useId() };
+  // 롤(전 맵)·롤체 일반/더블업은 진행 방식을 바꿀 수 있다. 롤체 랭크는 인원 모집으로 고정이다
+  const formatChangeable = game.code === 'lol' || (game.code === 'tft' && s.tft_mode !== 'ranked');
+  const formatChoices = formatChangeable ? availableLolFormats(game.code, s.lol_map) : [];
 
   useEffect(() => {
     const d = ref.current;
@@ -62,7 +71,17 @@ export function ScrimEditDialog({
   // 원래 시작 시각이 상한을 넘는 모집글은 그대로 둘 수 있어야 하므로 max는 상한과 현재 값 중 큰 쪽
   const limitMs = scheduleMaxMs(Date.now(), scrimPolicy);
   const maxDate = limitMs !== null ? isoToKstInputs(new Date(Math.max(limitMs, Date.parse(s.scheduled_at))).toISOString()).date : undefined;
-  const party = isPartyRecruit(s.game.code, s.tft_mode, s.lol_format);
+  const party = isPartyRecruit(s.game.code, s.tft_mode, format);
+
+  const pickFormat = (next: LolFormat) => {
+    // 인원 모집에서 내전·솔랭내기로 바꾸면 ELO·밸런스는 작성 때 기본값(켜짐)으로 되돌린다
+    if (party && next !== 'party') {
+      setRated(true);
+      setAutoBalance(true);
+    }
+    setFormat(next);
+    setError(null);
+  };
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -80,7 +99,7 @@ export function ScrimEditDialog({
     if (game.code === 'other' && !CustomGameName.safeParse(customGameName).success) {
       return setError(`게임 이름을 1–${CUSTOM_GAME_NAME_MAX_LENGTH}자로 입력해 주세요.`);
     }
-    const patch = buildScrimPatch(s, {
+    const base = buildScrimPatch(s, {
       title,
       scheduledIso: iso,
       capacity,
@@ -99,7 +118,8 @@ export function ScrimEditDialog({
       steamAppId: game.requires_steam_app ? steamApp?.app_id : null,
       customGameName: game.code === 'other' ? customGameName : undefined,
     });
-    if (!patch) return onClose();
+    const patch = format !== null && format !== currentFormat ? { ...(base ?? {}), lol_format: format } : base;
+    if (!patch || Object.keys(patch).length === 0) return onClose();
     const parsed = UpdateScrimRequest.safeParse(patch);
     if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? '입력값을 확인해 주세요.');
     setError(null);
@@ -130,15 +150,36 @@ export function ScrimEditDialog({
         <h2 id={ids.head} className="m-0 text-lg font-bold">
           모집글 수정
         </h2>
-        {game.code === 'lol' && (
-          <p className="m-0 text-sm text-muted">
-            맵 · {LOL_MAP_LABEL[s.lol_map ?? 'rift']} · {LOL_FORMAT_LABEL[s.lol_format ?? 'scrim']}
-          </p>
-        )}
-        {game.code === 'tft' && s.tft_mode && (
-          <p className="m-0 text-sm text-muted">
-            모드 · {TFT_MODE_LABEL[s.tft_mode]} · {LOL_FORMAT_LABEL[isPartyRecruit(s.game.code, s.tft_mode, s.lol_format) ? 'party' : 'scrim']}
-          </p>
+        {game.code === 'lol' && <p className="m-0 text-sm text-muted">맵 · {LOL_MAP_LABEL[s.lol_map ?? 'rift']}</p>}
+        {game.code === 'tft' && s.tft_mode && <p className="m-0 text-sm text-muted">모드 · {TFT_MODE_LABEL[s.tft_mode]}</p>}
+        {formatChoices.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <span className="text-[13px] text-muted">진행</span>
+            <div role="radiogroup" aria-label="진행 방식" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {formatChoices.map((f) => {
+                const on = format === f;
+                return (
+                  <button
+                    key={f}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    onClick={() => pickFormat(f)}
+                    className={cn(
+                      'rounded-2xl border-[1.5px] px-4 py-3 text-left',
+                      on ? 'border-accent bg-accent/5' : 'border-line bg-surface-2 hover:border-line-3',
+                    )}
+                  >
+                    <span className="block text-sm font-bold">{LOL_FORMAT_LABEL[f]}</span>
+                    <span className="text-xs text-muted">
+                      {f === 'party' ? '파티만 모음' : f === 'solo' ? '협곡 전용 · 밸런스 · ELO 반영' : '밸런스 · ELO를 켤 수 있음'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {format !== currentFormat && <p className="m-0 text-xs text-orange-ink">진행 방식을 바꾸면 저장된 팀 구성은 지워져요.</p>}
+          </div>
         )}
         {game.requires_steam_app && <SteamAppPicker value={steamApp} onChange={setSteamApp} />}
         {game.code === 'other' && (

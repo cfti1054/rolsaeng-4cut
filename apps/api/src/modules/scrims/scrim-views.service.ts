@@ -399,7 +399,7 @@ export class ScrimViews {
         restricted_until: restrictedUntil?.toISOString() ?? null,
         can_join: open && !base.join_closed && !active && restrictedUntil === null,
         can_leave: open && !base.join_closed && active && !isHost,
-        can_edit: isHost && open,
+        can_edit: (isHost || isAdmin) && open,
         can_cancel: hostOrAdmin && open,
         can_start:
           hostOrAdmin &&

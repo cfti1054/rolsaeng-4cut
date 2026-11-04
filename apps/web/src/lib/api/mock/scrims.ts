@@ -1068,7 +1068,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
         restricted_until: r.until !== null ? iso(r.until) : null,
         can_join: open && !closed && !inRoster && !r.restricted,
         can_leave: open && !closed && inRoster && !isHost,
-        can_edit: isHost && open,
+        can_edit: (isHost || isAdmin) && open,
         can_cancel: (isHost || isAdmin) && open,
         can_start: (isHost || isAdmin) && open && canStart(s),
         can_finish: canFinishScrim({
@@ -1758,7 +1758,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
 
     const parsed = UpdateScrimRequest.safeParse(ctx.body);
     if (!parsed.success) return error('VALIDATION_FAILED', '요청 형식이 올바르지 않습니다.', { details: issues(parsed.error) });
-    if (s.host_id !== me.id) return error('FORBIDDEN', '방장만 수정');
+    if (s.host_id !== me.id && !isAdmin) return error('FORBIDDEN', '방장·운영진만 수정');
     if (!isOpen(s)) return error('SCRIM_NOT_RECRUITING', '모집 중 아님');
     const b = parsed.data;
     const game = gameOf(s.game);
@@ -1778,10 +1778,29 @@ export function handleS2(ctx: MockS2Context): Response | null {
     if (b.custom_game_name !== undefined && s.game !== 'other') {
       details.push({ path: 'custom_game_name', message: '이 게임은 게임 이름을 따로 적지 않습니다.' });
     }
+    const changingFormat = b.lol_format !== undefined;
+    if (changingFormat) {
+      const formatable = s.game === 'lol' || (s.game === 'tft' && s.tft_mode !== 'ranked');
+      if (!formatable) details.push({ path: 'lol_format', message: '이 모집의 진행 방식은 바꿀 수 없습니다.' });
+      else if (!isFormatAllowed(s.game, s.lol_map, b.lol_format)) {
+        details.push({ path: 'lol_format', message: '솔랭내기는 롤 협곡에서만 고를 수 있습니다.' });
+      }
+    }
     if (details.length) return error('VALIDATION_FAILED', '입력값을 확인해 주세요.', { details });
     if (b.capacity !== undefined && b.capacity < joinedRows(s.id).length) {
       return error('SCRIM_CAPACITY_BELOW_JOINED', '정원 < 참가 인원');
     }
+    const prevFormat = recruitFormat(s.game, s.tft_mode, s.lol_format);
+    const nextFormat = changingFormat ? recruitFormat(s.game, s.tft_mode, b.lol_format) : prevFormat;
+    const formatChanged = nextFormat !== prevFormat;
+    if (formatChanged) {
+      rowsOf(s.id).forEach((p) => {
+        p.team = null;
+        p.position = null;
+      });
+      if (nextFormat === 'solo') s.use_positions = false;
+    }
+    if (b.lol_format !== undefined) s.lol_format = b.lol_format;
     if (b.title !== undefined) s.title = b.title;
     if (b.scheduled_at !== undefined) s.scheduled_at = iso(Date.parse(b.scheduled_at));
     if (b.rules !== undefined) s.rules = b.rules ?? null;
@@ -1791,8 +1810,11 @@ export function handleS2(ctx: MockS2Context): Response | null {
       if (s.tft_mode === 'ranked') s.lol_format = 'party';
     } else {
       if (b.rated !== undefined) s.rated = appliedRated(game.has_results, b.rated);
+      else if (formatChanged) s.rated = appliedRated(game.has_results, true);
       if (b.auto_balance !== undefined) {
         s.auto_balance = appliedAutoBalance({ game: s.game, hasTeams: game.has_teams, tftMode: s.tft_mode, requested: b.auto_balance });
+      } else if (formatChanged) {
+        s.auto_balance = appliedAutoBalance({ game: s.game, hasTeams: game.has_teams, tftMode: s.tft_mode, requested: true });
       }
     }
     if (app) s.steam_app = app;
