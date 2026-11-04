@@ -517,7 +517,7 @@ export type ScrimResultRevertBlock = z.infer<typeof ScrimResultRevertBlock>;
  * - can_join: 모집 중 && !join_closed && 내 상태가 joined·waitlist 아님 && 노쇼 제한 아님
  *   (정원이 찼으면 「대기열 등록」으로 표시. 내 상태가 joined·waitlist면 같은 POST로 희망 포지션만 바꿀 수 있다)
  * - can_leave: 모집 중 && !join_closed && 내 상태가 joined·waitlist && 방장 아님
- * - can_edit: 방장 && 모집 중
+ * - can_edit: (방장 || 운영진) && 모집 중
  * - can_cancel: (방장 || 운영진) && 모집 중
  * - can_start: (방장 || 운영진) && 모집 중 && 시작 조건 충족(core canStartScrim)
  * - can_mark_no_show: 운영진 && status ∈ {playing, finished} && 노쇼 표시 기한 안
@@ -682,6 +682,8 @@ export const UpdateScrimRequest = z
     auto_balance: z.boolean().optional(),
     /** other 내전만. 다른 게임에 오면 서버가 VALIDATION_FAILED */
     custom_game_name: CustomGameName.optional(),
+    /** 롤(협곡·칼바람 — 솔랭내기는 협곡만)·롤체 일반/더블업의 진행 방식. 바뀌면 팀 구성을 지운다. 롤체 랭크는 거부 */
+    lol_format: LolFormat.optional(),
   })
   .strict()
   .refine((v) => Object.values(v).some((x) => x !== undefined), '바꿀 필드를 1개 이상 보내야 함');

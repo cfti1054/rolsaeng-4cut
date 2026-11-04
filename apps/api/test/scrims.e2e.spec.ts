@@ -540,6 +540,39 @@ describe('DELETE /scrims/:id/join 참가 취소', () => {
 });
 
 describe('PATCH /scrims/:id 수정', () => {
+  it('수정 권한: 운영진은 남의 모집글을 고칠 수 있고(can_edit true), 일반 멤버는 403', async () => {
+    t = await createTestApp({ fixedClock: true });
+    const host = await login(t, 'host');
+    const member = await login(t, 'alice');
+    const admin = await login(t, 'boss', 'admin');
+    const s = await create(t, host, {}, LOL_BASE);
+    await expectError(await call(t, 'PATCH', `/scrims/${s.id}`, member.token, { title: '멤버가 고침' }), 403, 'FORBIDDEN');
+    const byAdmin = await detailOf(await call(t, 'PATCH', `/scrims/${s.id}`, admin.token, { title: '운영진이 고침' }));
+    expect(byAdmin.title).toBe('운영진이 고침');
+    expect((await getScrim(t, admin, s.id)).viewer.can_edit).toBe(true);
+    expect((await getScrim(t, member, s.id)).viewer.can_edit).toBe(false);
+  });
+
+  it('진행 방식 변경: 인원 모집 → 솔랭내기(협곡)는 ELO·밸런스 켜짐·라인 끔·팀 초기화, 칼바람·롤체 랭크는 400', async () => {
+    t = await createTestApp({ fixedClock: true });
+    const host = await login(t, 'host');
+    const a = await login(t, 'alice');
+    const s = await create(t, host, { lol_format: 'party', lol_map: 'rift', use_positions: true, rated: false }, LOL_BASE);
+    expect(s.lol_format).toBe('party');
+    await join(t, a, s.id, ['top']);
+
+    const aramScrim = await create(t, host, { lol_format: 'party', lol_map: 'aram', use_positions: false }, LOL_BASE);
+    await expectError(await call(t, 'PATCH', `/scrims/${aramScrim.id}`, host.token, { lol_format: 'solo' }), 400, 'VALIDATION_FAILED');
+    const d = await detailOf(await call(t, 'PATCH', `/scrims/${s.id}`, host.token, { lol_format: 'scrim' }));
+    expect(d).toMatchObject({ lol_format: 'scrim', options: { rated: true, auto_balance: true } });
+
+    const solo = await detailOf(await call(t, 'PATCH', `/scrims/${s.id}`, host.token, { lol_format: 'solo' }));
+    expect(solo).toMatchObject({ lol_format: 'solo', options: { use_positions: false } });
+
+    const tft = await create(t, host, { tft_mode: 'ranked' }, TFT_BASE);
+    await expectError(await call(t, 'PATCH', `/scrims/${tft.id}`, host.token, { lol_format: 'scrim' }), 400, 'VALIDATION_FAILED');
+  });
+
   it('정원 축소 < 참가 인원 → 409, 확대 → 대기열 순서대로 승격 + 상태 갱신', async () => {
     t = await createTestApp({ fixedClock: true });
     const host = await login(t, 'host');

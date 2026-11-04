@@ -294,7 +294,7 @@ export class ScrimsService {
   private async steamAppForUpdate(user: AuthUser, id: string, appId: number): Promise<SteamAppRef> {
     const s = await this.prisma.scrim.findUnique({ where: { id } });
     if (!s) throw new AppError('NOT_FOUND');
-    if (s.hostId !== user.id) throw new AppError('FORBIDDEN');
+    if (s.hostId !== user.id && user.role !== 'admin') throw new AppError('FORBIDDEN');
     const game = await loadGame(this.prisma, s.gameId);
     if (!game.requiresSteamApp) {
       throw new AppError('VALIDATION_FAILED', undefined, {
@@ -310,7 +310,8 @@ export class ScrimsService {
     const steamApp = body.steam_app_id === undefined ? undefined : await this.steamAppForUpdate(user, id, body.steam_app_id);
     await scrimWriteTx(this.prisma, async (tx) => {
       const s = await lockOrNotFound(tx, id);
-      if (s.hostId !== user.id) throw new AppError('FORBIDDEN');
+      // 수정은 방장과 운영진만(can_edit과 같은 규칙)
+      if (s.hostId !== user.id && user.role !== 'admin') throw new AppError('FORBIDDEN');
       if (!isOpenStatus(s.status)) throw new AppError('SCRIM_NOT_RECRUITING');
       const game = await loadGame(tx, s.gameId);
 
@@ -327,12 +328,29 @@ export class ScrimsService {
       if (body.custom_game_name !== undefined && game.code !== 'other') {
         details.push({ path: 'custom_game_name', message: '이 게임은 게임 이름을 따로 적지 않습니다.' });
       }
+      // 진행 방식 변경: 롤(전 맵)·롤체 일반/더블업만. 롤체 랭크는 인원 모집으로 고정이다
+      const changingFormat = body.lol_format !== undefined;
+      if (changingFormat) {
+        const formatable = game.code === 'lol' || (game.code === 'tft' && s.tftMode !== 'ranked');
+        const lolMap = game.code === 'lol' ? ((await tx.scrim.findUnique({ where: { id: s.id }, select: { lolMap: true } }))?.lolMap ?? 'rift') : null;
+        if (!formatable) details.push({ path: 'lol_format', message: '이 모집의 진행 방식은 바꿀 수 없습니다.' });
+        else if (!isFormatAllowed(game.code, lolMap, body.lol_format)) {
+          details.push({ path: 'lol_format', message: '솔랭내기는 롤 협곡에서만 고를 수 있습니다.' });
+        }
+      }
       if (details.length > 0) throw new AppError('VALIDATION_FAILED', undefined, { details });
 
       const joinedCount = await countJoined(tx, s.id);
       if (body.capacity !== undefined && body.capacity < joinedCount) {
         throw new AppError('SCRIM_CAPACITY_BELOW_JOINED');
       }
+
+      const prevFormat = recruitFormat(game.code, s.tftMode, s.lolFormat);
+      const nextFormat = changingFormat ? recruitFormat(game.code, s.tftMode, body.lol_format) : prevFormat;
+      const formatChanged = nextFormat !== prevFormat;
+      const nextParty = isPartyRecruit(game.code, s.tftMode, nextFormat);
+      // 진행 방식이 바뀌면 팀 구성은 새 방식 기준으로 다시 짜야 하므로 지운다
+      if (formatChanged) await resetTeams(tx, s.id);
 
       await tx.scrim.update({
         where: { id: s.id },
@@ -341,18 +359,32 @@ export class ScrimsService {
           scheduledAt,
           capacity: body.capacity,
           rules: body.rules === undefined ? undefined : body.rules,
-          rated: isPartyRecruit(game.code, s.tftMode, s.lolFormat) ? false : body.rated === undefined ? undefined : appliedRated(game.hasResults, body.rated),
-          autoBalance:
-            isPartyRecruit(game.code, s.tftMode, s.lolFormat)
-              ? false
-              : body.auto_balance === undefined
-                ? undefined
-                : appliedAutoBalance({
+          lolFormat: changingFormat ? body.lol_format : undefined,
+          usePositions: formatChanged && nextFormat === 'solo' ? false : undefined,
+          rated: nextParty
+            ? false
+            : body.rated !== undefined
+              ? appliedRated(game.hasResults, body.rated)
+              : formatChanged
+                ? appliedRated(game.hasResults, true)
+                : undefined,
+          autoBalance: nextParty
+            ? false
+            : body.auto_balance !== undefined
+              ? appliedAutoBalance({
+                  game: game.code as 'lol' | 'tft' | 'steam' | 'other',
+                  hasTeams: game.hasTeams,
+                  tftMode: s.tftMode,
+                  requested: body.auto_balance,
+                })
+              : formatChanged
+                ? appliedAutoBalance({
                     game: game.code as 'lol' | 'tft' | 'steam' | 'other',
                     hasTeams: game.hasTeams,
                     tftMode: s.tftMode,
-                    requested: body.auto_balance,
-                  }),
+                    requested: true,
+                  })
+                : undefined,
           steamAppId: steamApp?.app_id,
           steamAppName: steamApp?.name,
           customGameName: body.custom_game_name,
