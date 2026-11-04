@@ -98,6 +98,8 @@ export const BalanceScrimResponse = z.object({
   /** 포지션 배정까지 했는가(scrim.use_positions && game.has_positions) */
   used_positions: z.boolean(),
   rating_policy: RatingPolicyView,
+  /** auto = 실력·포지션 밸런스. random = 솔랭내기 랜덤 뽑기(안 1개, 승률·전력 차는 참고용) */
+  mode: z.enum(['auto', 'random']).default('auto'),
 });
 export type BalanceScrimResponse = z.infer<typeof BalanceScrimResponse>;
 

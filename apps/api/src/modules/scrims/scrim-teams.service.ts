@@ -1,5 +1,16 @@
+import { randomInt } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import { type BalanceResult, balanceDuos, balanceTeams, previewTeamElo, roundHalfAwayFromZero, validateTeamAssignment } from '@gcd/core';
+import {
+  type BalancePlayer,
+  type BalanceResult,
+  balanceDuos,
+  balanceTeams,
+  evaluateTeams,
+  previewTeamElo,
+  randomTeamSplit,
+  roundHalfAwayFromZero,
+  validateTeamAssignment,
+} from '@gcd/core';
 import {
   BALANCE_ELO_WEIGHT_MAX,
   BALANCE_FULL_WEIGHT_GAMES,
@@ -23,6 +34,18 @@ import { ScrimViews, orderSlots, roundProbability, teamSideView, teamsUsePositio
 import { loadGame, lockOrNotFound } from './scrims.service';
 
 type Db = Pick<Prisma.TransactionClient, 'scrimResult'>;
+
+/** 솔랭내기: 실력·포지션을 보지 않고 무작위로 나눈 한 안. 누를 때마다 새로 뽑는다. */
+function randomBalance(players: readonly BalancePlayer[]): { options: BalanceResult[]; partitionsEvaluated: number } {
+  const split = randomTeamSplit(
+    players.map((p) => p.userId),
+    () => randomInt(2 ** 31) / 2 ** 31,
+  );
+  const byId = new Map(players.map((p) => [p.userId, p] as const));
+  const side = (ids: readonly string[]) => ids.map((id) => ({ ...byId.get(id)!, position: null }));
+  const ev = evaluateTeams({ blue: side(split.blue), orange: side(split.orange), usePositions: false });
+  return { options: [{ ...ev, totalCost: ev.powerDiff }], partitionsEvaluated: 1 };
+}
 
 /** 활성 결과(pending·approved) 있음 */
 export async function hasActiveResult(db: Db, scrimId: string): Promise<boolean> {
@@ -76,13 +99,18 @@ export class ScrimTeamsService {
       return { userId: p.userId, skill: s.skill, rating: s.rating, preferredPositions: p.preferredPositions };
     });
     const usePositions = teamsUsePositions(scrim, game);
+    const solo = scrim.lolFormat === 'solo';
     let result: { options: BalanceResult[]; partitionsEvaluated: number };
-    try {
-      result = balanceTeams({ players, usePositions, positions: game.positions });
-    } catch (err) {
-      // 한 팀 인원 > 포지션 수(5-2 5번)
-      if (err instanceof RangeError) throw new AppError('SCRIM_BALANCE_UNAVAILABLE', undefined, { cause: err });
-      throw err;
+    if (solo) {
+      result = randomBalance(players);
+    } else {
+      try {
+        result = balanceTeams({ players, usePositions, positions: game.positions });
+      } catch (err) {
+        // 한 팀 인원 > 포지션 수(5-2 5번)
+        if (err instanceof RangeError) throw new AppError('SCRIM_BALANCE_UNAVAILABLE', undefined, { cause: err });
+        throw err;
+      }
     }
 
     const users = await this.views.usersById(eligible.map((p) => p.userId));
@@ -117,6 +145,7 @@ export class ScrimTeamsService {
       player_count: n,
       partitions_evaluated: result.partitionsEvaluated,
       used_positions: usePositions,
+      mode: solo ? 'random' : 'auto',
       rating_policy: {
         k_base: k.kBase,
         k_new: k.kNew,

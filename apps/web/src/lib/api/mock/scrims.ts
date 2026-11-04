@@ -1292,7 +1292,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
     const tftMode = b.game === 'tft' ? (b.tft_mode ?? null) : null;
     const lolFormat = recruitFormat(b.game, tftMode, b.lol_format);
     const party = isPartyRecruit(b.game, tftMode, lolFormat);
-    const usePositions = b.use_positions && game.has_positions && lolMap !== 'aram';
+    const usePositions = b.use_positions && game.has_positions && lolMap !== 'aram' && lolFormat !== 'solo';
     const hostPositions = usePositions ? b.host_preferred_positions : [];
     const details: { path: string; message: string }[] = [];
     const si = scheduleIssue(b.scheduled_at);
@@ -1456,7 +1456,14 @@ export function handleS2(ctx: MockS2Context): Response | null {
       try {
         return json(
           200,
-          balanceResponse({ players, usePositions: s.use_positions && g.has_positions, positions: g.positions, rated: s.rated, policy: eloPolicy }),
+          balanceResponse({
+            players,
+            usePositions: s.use_positions && g.has_positions,
+            positions: g.positions,
+            rated: s.rated,
+            policy: eloPolicy,
+            random: s.lol_format === 'solo',
+          }),
         );
       } catch (e) {
         if (e instanceof RangeError) return error('SCRIM_BALANCE_UNAVAILABLE', e.message);

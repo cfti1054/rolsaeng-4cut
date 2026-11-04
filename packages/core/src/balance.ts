@@ -399,3 +399,25 @@ export function balanceDuos(players: readonly { userId: string; skill: number }[
   }
   return pairs;
 }
+
+/**
+ * 솔랭내기 랜덤 팀 나누기. 티어·ELO·포지션을 보지 않고 순서만 섞는다.
+ * 블루는 ⌊n/2⌋명, 나머지는 오렌지다(홀수면 오렌지가 한 명 더). random은 [0, 1) 난수를 준다.
+ * 인원은 BALANCE_PLAYERS_MIN–MAX(짝수가 아니어도 된다). 범위를 벗어나면 RangeError.
+ */
+export function randomTeamSplit(
+  userIds: readonly string[],
+  random: () => number,
+): { blue: string[]; orange: string[] } {
+  const n = userIds.length;
+  if (!Number.isInteger(n) || n < BALANCE_PLAYERS_MIN || n > BALANCE_PLAYERS_MAX) {
+    throw new RangeError(`players: ${BALANCE_PLAYERS_MIN}–${BALANCE_PLAYERS_MAX}명 (${n})`);
+  }
+  const shuffled = [...userIds];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!];
+  }
+  const small = Math.floor(n / 2);
+  return { blue: shuffled.slice(0, small), orange: shuffled.slice(small) };
+}

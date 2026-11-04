@@ -79,6 +79,7 @@ export {
   bestPositionAssignment,
   balanceTeams,
   balanceDuos,
+  randomTeamSplit,
   evaluateTeams,
   validateTeamAssignment,
   validatePlacementUsers,

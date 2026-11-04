@@ -133,7 +133,8 @@ export function ScrimNewForm() {
   const mapIsAram = game?.code === 'lol' && lolMap === 'aram';
   const format = game ? recruitFormat(game.code, tftMode, lolFormat) : null;
   const party = game ? isPartyRecruit(game.code, tftMode, format) : false;
-  const effPositions = !!game?.has_positions && usePositions && !mapIsAram;
+  const isSolo = game?.code === 'lol' && lolFormat === 'solo';
+  const effPositions = !!game?.has_positions && usePositions && !mapIsAram && !isSolo;
   const balanceChoice = party ? false : game?.code === 'tft' ? tftMode === 'double_up' : !!game?.has_teams;
   const effBalance = balanceChoice && autoBalance;
   const effRated = party ? false : appliedRated(game?.has_results !== false, rated);
@@ -591,9 +592,17 @@ export function ScrimNewForm() {
                 )}
                 <Toggle
                   label="포지션 희망 받기"
-                  desc={mapIsAram ? '칼바람은 포지션이 없습니다' : game?.has_positions ? '참가할 때 1지망 · 2지망을 고릅니다' : '이 게임은 포지션이 없습니다'}
+                  desc={
+                    isSolo
+                      ? '솔랭내기는 라인을 쓰지 않아요. 팀은 랜덤으로 나눠요'
+                      : mapIsAram
+                        ? '칼바람은 포지션이 없습니다'
+                        : game?.has_positions
+                          ? '참가할 때 1지망 · 2지망을 고릅니다'
+                          : '이 게임은 포지션이 없습니다'
+                  }
                   checked={effPositions}
-                  disabled={!game?.has_positions || mapIsAram}
+                  disabled={!game?.has_positions || mapIsAram || isSolo}
                   onChange={() => setUsePositions((v) => !v)}
                 />
                 {game?.has_results !== false && !party && (
