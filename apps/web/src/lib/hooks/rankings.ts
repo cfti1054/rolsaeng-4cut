@@ -3,7 +3,7 @@
 import { RANKING_CACHE_INTERVAL_MIN, type ActivityPeriod, type GameCode, type TierRankingGame } from '@gcd/shared';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { isApiError } from '@/lib/api/client';
-import { getActivityRanking, getDashboardSummary, getEloRanking, getPlaytimeRanking, getTierRanking } from '@/lib/api/rankings';
+import { getActivityRanking, getDashboardShell, getDashboardSummary, getEloRanking, getPlaytimeRanking, getTierRanking } from '@/lib/api/rankings';
 import { useMe } from './auth';
 
 /**
@@ -19,7 +19,10 @@ export const rankingKeys = {
 
 /** 사이드바와 홈이 같은 키를 써서 요청이 한 번만 나간다(D157) */
 export const dashboardKeys = {
+  /** 대시보드 전체(요약·사이드바). 바뀌는 쪽은 이 접두어로 둘 다 무효화한다 */
+  all: ['dashboard'] as const,
   summary: ['dashboard', 'summary'] as const,
+  shell: ['dashboard', 'shell'] as const,
 };
 
 const noRetryOn4xx = (count: number, err: unknown) => !(isApiError(err) && err.status > 0 && err.status < 500) && count < 2;
@@ -92,8 +95,21 @@ export function dashboardSummaryOptions(enabled: boolean) {
   };
 }
 
-/** GET /dashboard/summary — 사이드바·모바일 머리·홈 공유(staleTime 60초, D157). 세션을 확인한 뒤에 부른다 */
+/** GET /dashboard/summary — 홈 전용(staleTime 60초, D157). 세션을 확인한 뒤에 부른다 */
 export function useDashboardSummary() {
   const me = useMe();
   return useQuery(dashboardSummaryOptions(me.data !== undefined && !me.data.needs_nickname_confirmation));
+}
+
+/** GET /dashboard/shell — 사이드바·모바일 머리용. 요약 전체를 받지 않는다(같은 60초·5분 주기) */
+export function useDashboardShell() {
+  const me = useMe();
+  return useQuery({
+    queryKey: dashboardKeys.shell,
+    queryFn: ({ signal }: { signal?: AbortSignal }) => getDashboardShell(signal),
+    enabled: me.data !== undefined && !me.data.needs_nickname_confirmation,
+    staleTime: 60_000,
+    refetchInterval: RANKING_REFETCH_MS,
+    retry: noRetryOn4xx,
+  });
 }

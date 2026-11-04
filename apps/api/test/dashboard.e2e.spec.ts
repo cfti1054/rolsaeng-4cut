@@ -1,7 +1,7 @@
 /**
  * S4 GET /dashboard/summary(계약 8절, D156–D158). DB 없이 FakePrisma + MemoryRankingCache.
  */
-import { GetDashboardSummaryBody, GetDashboardSummaryResponse } from '@gcd/shared';
+import { GetDashboardShellResponse, GetDashboardSummaryBody, GetDashboardSummaryResponse } from '@gcd/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 import { eloRankingKey } from '../src/modules/rankings/ranking-keys';
 import { call, expectNoExternalIds } from './support/s1-helpers';
@@ -207,6 +207,22 @@ describe('stats 주 경계', () => {
 });
 
 describe('top_rankers·me', () => {
+  it('사이드바 shell: season·me는 요약과 같고, 응답에는 다른 블록이 없다', async () => {
+    t = await createTestApp({ fixedClock: NOW });
+    const me = await login(t, 'me');
+    const s = seedSeason(t, '현재', ...CURRENT);
+    seedRating(t, me.userId, s.id, { elo: 1300, wins: 5 });
+    const res = await call(t, 'GET', '/dashboard/shell', me.token);
+    const text = await res.text();
+    expect({ status: res.status, text }).toMatchObject({ status: 200 });
+    expectNoExternalIds(text);
+    const shell = GetDashboardShellResponse.parse(JSON.parse(text));
+    expect(Object.keys(JSON.parse(text)).sort()).toEqual(['me', 'season']);
+    const full = await summary(t, me);
+    expect(shell.season).toEqual(full.season);
+    expect(shell.me).toEqual(full.me);
+  });
+
   it('top_rankers: sort_order 순으로 행이 있는 첫 게임, 최대 5명', async () => {
     t = await createTestApp({ fixedClock: NOW });
     const me = await login(t, 'me');

@@ -29,11 +29,14 @@ import {
   type DashboardNews,
   type DashboardMe,
   type DashboardNextScrim,
+  type ScrimSummary as ScrimSummaryView,
   type DashboardRecentResult,
   type DashboardTopRankers,
   type DashboardTopRankersState,
   GameCode,
+  GetDashboardShellResponse,
   GetDashboardSummaryResponse,
+  type DashboardSeason,
   type ScrimRatingStatus,
 } from '@gcd/shared';
 import { Prisma, type Game, type Scrim, type ScrimResult, type Season } from '@prisma/client';
@@ -52,6 +55,15 @@ import { readPlacements } from '../scrims/scrim-result-json';
 import { OPEN_STATUSES, ScrimViews, orderSlots } from '../scrims/scrim-views.service';
 
 type CodedGame = Game & { code: GameCode };
+
+/** 현재 시즌 카드 값(요약·사이드바 공통) */
+function dashboardSeasonView(current: Season, now: Date): DashboardSeason {
+  return {
+    ...seasonRef(current),
+    days_left: seasonDaysLeft(current.endsAt, now),
+    progress: seasonProgress(current, now),
+  };
+}
 
 /**
  * 홈 요약(계약 S4 8절). 응답 전체를 캐시하지 않고 랭킹 부분만 5분 캐시를 재사용한다(D156).
@@ -74,9 +86,47 @@ export class DashboardService {
     const now = this.clock.now();
     const seasons = await this.seasons.all();
     const current = resolveSeasonAt(seasons, now);
-    const rows = await this.prisma.game.findMany({ orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
-    const games = rows.filter((g): g is CodedGame => GameCode.safeParse(g.code).success);
+    const games = await this.codedGames();
 
+    // 서로 기다릴 필요가 없는 묶음은 함께 보낸다(순서대로 기다리면 DB 왕복이 전부 더해진다).
+    // topRankers가 ELO 캐시를 채우므로 그 뒤에 me를 읽는다.
+    const [scrims, stats, community, news, recentResults] = await Promise.all([
+      this.scrimSection(viewer, now),
+      this.stats(now),
+      this.community(now),
+      this.news(now),
+      this.recentResults(),
+    ]);
+    const ranked = await this.topRankers(games, current ?? latestStartedSeason(seasons, now), now);
+    const me = current ? await this.me(viewer.id, games, current, now) : null;
+
+    return GetDashboardSummaryResponse.parse({
+      season: current ? dashboardSeasonView(current, now) : null,
+      rating_policy: {
+        min_games: this.config.ranking.eloMinGames,
+        k_base: this.config.rating.kBase,
+        k_new: this.config.rating.kNew,
+        new_player_games: this.config.rating.newPlayerGames,
+        loss_ratio: this.config.rating.lossRatio,
+        full_weight_games: BALANCE_FULL_WEIGHT_GAMES,
+        elo_weight_max: BALANCE_ELO_WEIGHT_MAX,
+      },
+      next_scrim: scrims.nextScrim,
+      recruiting: scrims.recruiting,
+      stats,
+      community,
+      news,
+      ...ranked,
+      recent_results: recentResults,
+      me,
+    });
+  }
+
+  /** 다음 내전 카드와 모집 중 목록. 두 번째 것은 다음 내전을 뺀 나머지다. */
+  private async scrimSection(
+    viewer: AuthUser,
+    now: Date,
+  ): Promise<{ nextScrim: DashboardNextScrim | null; recruiting: ScrimSummaryView[] }> {
     const next = await this.nextScrimRow(viewer.id, now);
     const recruitingRows = await this.prisma.scrim.findMany({
       where: { status: { in: [...OPEN_STATUSES] }, ...(next ? { id: { not: next.scrim.id } } : {}) },
@@ -88,33 +138,7 @@ export class DashboardService {
       next && summaries[0]
         ? { source: next.source, scrim: summaries[0], participants: await this.participants(next.scrim) }
         : null;
-
-    return GetDashboardSummaryResponse.parse({
-      season: current
-        ? {
-            ...seasonRef(current),
-            days_left: seasonDaysLeft(current.endsAt, now),
-            progress: seasonProgress(current, now),
-          }
-        : null,
-      rating_policy: {
-        min_games: this.config.ranking.eloMinGames,
-        k_base: this.config.rating.kBase,
-        k_new: this.config.rating.kNew,
-        new_player_games: this.config.rating.newPlayerGames,
-        loss_ratio: this.config.rating.lossRatio,
-        full_weight_games: BALANCE_FULL_WEIGHT_GAMES,
-        elo_weight_max: BALANCE_ELO_WEIGHT_MAX,
-      },
-      next_scrim: nextScrim,
-      recruiting: next ? summaries.slice(1) : summaries,
-      stats: await this.stats(now),
-      community: await this.community(now),
-      news: await this.news(now),
-      ...(await this.topRankers(games, current ?? latestStartedSeason(seasons, now), now)),
-      recent_results: await this.recentResults(),
-      me: current ? await this.me(viewer.id, games, current) : null,
-    });
+    return { nextScrim, recruiting: next ? summaries.slice(1) : summaries };
   }
 
   /** 8-1 다음 내전(카드에 쓸 내전 행과 출처). 대기·playing은 대상이 아니다(D158) */
@@ -292,7 +316,7 @@ export class DashboardService {
   }
 
   /** 8-2 사이드바 값. 대표 게임 = 현재 시즌 경기 수 최다(같으면 sort_order, D157). elo·rank는 같은 캐시 행 */
-  private async me(userId: string, games: readonly CodedGame[], season: Season): Promise<DashboardMe | null> {
+  private async me(userId: string, games: readonly CodedGame[], season: Season, now: Date): Promise<DashboardMe | null> {
     const ratings = await this.prisma.rating.findMany({ where: { userId, seasonId: season.id } });
     let best: { game: CodedGame; elo: number; played: number } | null = null;
     for (const game of games) {
@@ -302,8 +326,35 @@ export class DashboardService {
       if (!best || played > best.played) best = { game, elo: r.elo, played };
     }
     if (!best) return null;
-    const entry = await this.rankings.eloEntryOf(best.game.code, season.id, userId);
+    // 캐시가 아직 없으면 계산해서 채운다(없으면 사이드바 순위가 빠진다). 계산 실패는 순위 없이 ELO만 보인다(21절)
+    let entry: { elo: number; rank: number } | null = null;
+    try {
+      const view = await this.rankings.eloView(best.game, season, now);
+      entry = view.entries.find((e) => e.user.id === userId) ?? null;
+    } catch (err) {
+      this.log.warn(`me 순위 계산 실패: ${err instanceof Error ? err.name : 'error'}`);
+    }
     return { game: best.game.code, elo: entry?.elo ?? best.elo, rank: entry?.rank ?? null, games: best.played };
+  }
+
+  private async codedGames(): Promise<CodedGame[]> {
+    const rows = await this.prisma.game.findMany({ orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
+    return rows.filter((g): g is CodedGame => GameCode.safeParse(g.code).success);
+  }
+
+  /**
+   * GET /dashboard/shell (사이드바용). season·me는 요약과 같은 규칙이다.
+   * 통계·커뮤니티·뉴스·랭커·최근 결과·다음 내전은 계산하지 않는다.
+   */
+  async shell(viewer: AuthUser): Promise<GetDashboardShellResponse> {
+    const now = this.clock.now();
+    const seasons = await this.seasons.all();
+    const current = resolveSeasonAt(seasons, now);
+    const games = await this.codedGames();
+    return GetDashboardShellResponse.parse({
+      season: current ? dashboardSeasonView(current, now) : null,
+      me: current ? await this.me(viewer.id, games, current, now) : null,
+    });
   }
 
   /** 8-3. 내전·게임·사용자·이력을 id 목록으로 한 번씩 읽는다(N+1 없음) */

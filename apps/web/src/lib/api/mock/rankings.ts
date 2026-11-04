@@ -19,6 +19,7 @@ import {
   DASHBOARD_RECRUITING_LIMIT,
   DASHBOARD_TOP_RANKERS_LIMIT,
   GetActivityRankingQuery,
+  GetDashboardShellResponse,
   GetDashboardSummaryResponse,
   GetEloRankingQuery,
   GetPlaytimeRankingQuery,
@@ -151,7 +152,14 @@ const TFT_TIER: readonly MockTierRow[] = [
 // 공통
 // -----------------------------------------------------------------------------
 
-const ALL_PATHS: readonly string[] = [ApiPath.rankingsTier, ApiPath.rankingsElo, ApiPath.dashboardSummary, ApiPath.rankingsActivity, ApiPath.rankingsPlaytime];
+const ALL_PATHS: readonly string[] = [
+  ApiPath.rankingsTier,
+  ApiPath.rankingsElo,
+  ApiPath.dashboardSummary,
+  ApiPath.dashboardShell,
+  ApiPath.rankingsActivity,
+  ApiPath.rankingsPlaytime,
+];
 export const isRankingPath = (path: string): boolean => ALL_PATHS.includes(path);
 
 const iso = (t: number) => new Date(t).toISOString();
@@ -523,7 +531,7 @@ export function handleRankings(ctx: MockRankingContext): Response {
   const { method, path, now, me, scenario, json, error } = ctx;
   if (method !== 'GET') return error('NOT_FOUND', `목에 없는 경로: ${method} ${path}`);
   if (scenario === 'error') return error('INTERNAL_ERROR', '목 오류 상태');
-  if (scenario === 'top_unavailable' && path !== ApiPath.dashboardSummary) {
+  if (scenario === 'top_unavailable' && path !== ApiPath.dashboardSummary && path !== ApiPath.dashboardShell) {
     return error('INTERNAL_ERROR', '목 랭킹 첫 계산 실패');
   }
   const empty = scenario === 'empty';
@@ -559,21 +567,23 @@ export function handleRankings(ctx: MockRankingContext): Response {
     return json(200, eloResponse(st, q.data.game, season, { me, now, scenario, userRef: ctx.userRef }));
   }
 
-  return json(
-    200,
-    dashboardResponse(st, {
-      community: mockCommunity({ bot: ctx.bot, now, logs }),
-      news: ctx.news,
-      policy: ctx.policy,
-      me,
-      now,
-      scenario,
-      scrims: empty ? [] : ctx.scrims,
-      games: ctx.games,
-      userRef: ctx.userRef,
-      summary: ctx.summary,
-      joinedUsers: ctx.joinedUsers,
-    }),
-  );
+  const summaryBody = dashboardResponse(st, {
+    community: mockCommunity({ bot: ctx.bot, now, logs }),
+    news: ctx.news,
+    policy: ctx.policy,
+    me,
+    now,
+    scenario,
+    scrims: empty ? [] : ctx.scrims,
+    games: ctx.games,
+    userRef: ctx.userRef,
+    summary: ctx.summary,
+    joinedUsers: ctx.joinedUsers,
+  });
+  // 사이드바용 shell은 요약과 같은 season·me 값만 돌려준다(서버 dashboard.service shell과 같은 규칙)
+  if (path === ApiPath.dashboardShell) {
+    return json(200, GetDashboardShellResponse.parse({ season: summaryBody.season, me: summaryBody.me }));
+  }
+  return json(200, summaryBody);
 }
 

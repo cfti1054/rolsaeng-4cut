@@ -20,13 +20,19 @@ const DESCRIPTION = '롤 · 롤체 · 스팀 게임방 내전과 서버 랭킹';
 
 // 공유 카드 주소는 `{WEB_ORIGIN}/brand/og-card.jpg`. 상대 경로로 두면 localhost가 된다.
 export async function generateMetadata(): Promise<Metadata> {
-  const h = await headers();
-  const metadataBase = metadataBaseFrom({
-    siteUrl: webOriginFromEnv(),
-    forwardedHost: h.get('x-forwarded-host'),
-    host: h.get('host'),
-    forwardedProto: h.get('x-forwarded-proto'),
-  });
+  // WEB_ORIGIN이 있으면 요청 헤더를 읽지 않는다. 헤더를 읽으면 모든 페이지가 요청마다 새로 그려진다(정적 캐시 불가).
+  const siteUrl = webOriginFromEnv();
+  let metadataBase: URL;
+  if (siteUrl) {
+    metadataBase = metadataBaseFrom({ siteUrl });
+  } else {
+    const h = await headers();
+    metadataBase = metadataBaseFrom({
+      forwardedHost: h.get('x-forwarded-host'),
+      host: h.get('host'),
+      forwardedProto: h.get('x-forwarded-proto'),
+    });
+  }
   const image = absoluteFromBase(metadataBase, brand.ogCard);
   return {
     metadataBase,

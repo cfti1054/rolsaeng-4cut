@@ -287,3 +287,13 @@ export const GetDashboardSummaryResponse = z.discriminatedUnion('top_rankers_sta
   GetDashboardSummaryBody.extend({ top_rankers_state: z.enum(['no_season', 'unavailable']), top_rankers: z.null() }),
 ]);
 export type GetDashboardSummaryResponse = z.infer<typeof GetDashboardSummaryResponse>;
+
+/**
+ * GET /dashboard/shell 응답. 모든 화면 사이드바의 ELO 문구와 시즌 카드에만 쓴다.
+ * 요약(GET /dashboard/summary) 전체보다 가볍다. season·me 값은 요약과 같은 규칙으로 만든다.
+ */
+export const GetDashboardShellResponse = z.object({
+  season: DashboardSeason.nullable(),
+  me: DashboardMe.nullable(),
+});
+export type GetDashboardShellResponse = z.infer<typeof GetDashboardShellResponse>;

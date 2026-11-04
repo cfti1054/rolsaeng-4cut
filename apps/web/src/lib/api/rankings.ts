@@ -1,6 +1,7 @@
 import {
   ApiPath,
   GetActivityRankingResponse,
+  GetDashboardShellResponse,
   GetDashboardSummaryResponse,
   GetEloRankingResponse,
   GetPlaytimeRankingResponse,
@@ -29,6 +30,11 @@ export function getEloRanking(q: GetEloRankingQuery, signal?: AbortSignal) {
 /** GET /dashboard/summary */
 export function getDashboardSummary(signal?: AbortSignal) {
   return apiClient.request(ApiPath.dashboardSummary, GetDashboardSummaryResponse, { signal });
+}
+
+/** GET /dashboard/shell — 사이드바 ELO·시즌 카드용(요약보다 가볍다) */
+export function getDashboardShell(signal?: AbortSignal) {
+  return apiClient.request(ApiPath.dashboardShell, GetDashboardShellResponse, { signal });
 }
 
 /** S5 GET /rankings/activity?period= */

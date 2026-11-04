@@ -53,6 +53,7 @@ export const ApiPath = {
   rankingsTier: '/rankings/tier',
   rankingsElo: '/rankings/elo',
   dashboardSummary: '/dashboard/summary',
+  dashboardShell: '/dashboard/shell',
   // S4 후속 변경 2 라인 추천(계약 S4 20절 D190)
   myPositionSuggestions: '/me/position-suggestions',
   // S5 활동·플레이타임 랭킹

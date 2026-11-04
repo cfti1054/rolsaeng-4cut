@@ -14,8 +14,8 @@ describe('내전 변경 실패 처리', () => {
     [403, 'FORBIDDEN'],
     [404, 'NOT_FOUND'],
     [409, 'SCRIM_NOT_RECRUITING'],
-  ] as const)('%i: 상세·목록·홈 요약을 다시 받는다', (status, code) => {
-    expect(keys(status, code)).toEqual(expect.arrayContaining([['scrims', 'detail', 'id'], ['scrims', 'list'], ['dashboard', 'summary']]));
+  ] as const)('%i: 상세·목록·대시보드(홈 요약·사이드바)를 다시 받는다', (status, code) => {
+    expect(keys(status, code)).toEqual(expect.arrayContaining([['scrims', 'detail', 'id'], ['scrims', 'list'], ['dashboard']]));
   });
   it('400은 다시 받지 않는다', () => {
     expect(keys(400, 'VALIDATION_FAILED')).toEqual([]);
