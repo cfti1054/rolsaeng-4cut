@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { AppInstallSection } from '@/components/settings/app-install-section';
 import { DiscordSection } from '@/components/settings/discord-section';
 import { GameAccountsSection } from '@/components/settings/game-accounts-section';
 import { NotificationSection } from '@/components/settings/notification-section';
@@ -16,6 +17,7 @@ export default function SettingsPage() {
     <div className="mx-auto flex w-full max-w-[900px] flex-col gap-5">
       <PageHeader eyebrow="SETTINGS" title="설정" />
       <ThemeSettingsSection />
+      <AppInstallSection />
       <GameAccountsSection />
       <DiscordSection />
       <NotificationSection />

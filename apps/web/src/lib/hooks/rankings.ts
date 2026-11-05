@@ -95,19 +95,21 @@ export function dashboardSummaryOptions(enabled: boolean) {
   };
 }
 
-/** GET /dashboard/summary — 홈 전용(staleTime 60초, D157). 세션을 확인한 뒤에 부른다 */
+/**
+ * GET /dashboard/summary — 홈 전용(staleTime 60초, D157).
+ * /me를 기다리지 않는다. 두 요청은 같은 토큰 갱신을 함께 쓰므로(single-flight) 병렬로 나간다.
+ * 닉네임 확인 대기 사용자는 AppShell이 /welcome으로 보내므로 요청이 한 번 더 나가도 화면은 그대로다.
+ */
 export function useDashboardSummary() {
-  const me = useMe();
-  return useQuery(dashboardSummaryOptions(me.data !== undefined && !me.data.needs_nickname_confirmation));
+  return useQuery(dashboardSummaryOptions(true));
 }
 
-/** GET /dashboard/shell — 사이드바·모바일 머리용. 요약 전체를 받지 않는다(같은 60초·5분 주기) */
+/** GET /dashboard/shell — 사이드바·모바일 머리용. 요약 전체를 받지 않는다(같은 60초·5분 주기). /me와 병렬 */
 export function useDashboardShell() {
-  const me = useMe();
   return useQuery({
     queryKey: dashboardKeys.shell,
     queryFn: ({ signal }: { signal?: AbortSignal }) => getDashboardShell(signal),
-    enabled: me.data !== undefined && !me.data.needs_nickname_confirmation,
+    enabled: true,
     staleTime: 60_000,
     refetchInterval: RANKING_REFETCH_MS,
     retry: noRetryOn4xx,
