@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { AppInstallSection } from '@/components/settings/app-install-section';
 import { DiscordSection } from '@/components/settings/discord-section';
+import { LogoutSection } from '@/components/settings/logout-section';
 import { GameAccountsSection } from '@/components/settings/game-accounts-section';
 import { NotificationSection } from '@/components/settings/notification-section';
 import { ThemeSettingsSection } from '@/components/theme/theme-settings';
@@ -21,6 +22,7 @@ export default function SettingsPage() {
       <GameAccountsSection />
       <DiscordSection />
       <NotificationSection />
+      <LogoutSection />
     </div>
   );
 }
