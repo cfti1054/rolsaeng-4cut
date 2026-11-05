@@ -38,6 +38,9 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase,
     title: { default: '롤생네컷', template: '%s · 롤생네컷' },
     description: DESCRIPTION,
+    applicationName: '롤생네컷',
+    // iOS 홈 화면 앱 모드: 설치 후 주소창 없이 실행된다. 아이콘은 app/apple-icon.png
+    appleWebApp: { capable: true, title: '롤생네컷', statusBarStyle: 'black-translucent' },
     openGraph: {
       title: '롤생네컷',
       description: DESCRIPTION,
