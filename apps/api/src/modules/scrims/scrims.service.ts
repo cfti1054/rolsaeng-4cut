@@ -166,10 +166,17 @@ export class ScrimsService {
     return null;
   }
 
-  private capacityDetail(capacity: number, game: Game, tftMode: 'double_up' | 'normal' | 'ranked' | null): ErrorDetail | null {
+  private capacityDetail(
+    capacity: number,
+    game: Game,
+    tftMode: 'double_up' | 'normal' | 'ranked' | null,
+    user: AuthUser,
+  ): ErrorDetail | null {
+    // 운영진은 게임 범위와 상관없이 정원을 직접 정할 수 있다
     const bounds = scrimCapacityRange(
       { code: game.code, capacityMin: game.capacityMin, capacityMax: game.capacityMax, capacityStep: game.capacityStep },
       tftMode === 'double_up' || tftMode === 'normal' || tftMode === 'ranked' ? tftMode : null,
+      { admin: user.role === 'admin' },
     );
     if (isCapacityInRange(capacity, bounds)) return null;
     const range = bounds.min === bounds.max ? `${bounds.min}명` : `${bounds.min}–${bounds.max}명`;
@@ -219,7 +226,7 @@ export class ScrimsService {
     const details: ErrorDetail[] = [];
     const sd = this.scheduleDetail(scheduledAt, now);
     if (sd) details.push(sd);
-    const cd = this.capacityDetail(body.capacity, game, tftMode);
+    const cd = this.capacityDetail(body.capacity, game, tftMode, user);
     if (cd) details.push(cd);
     const pv = validatePreferredPositions(hostPositions, game.positions, usePositions);
     if (!pv.ok) details.push({ path: 'host_preferred_positions', message: pv.message });
@@ -322,7 +329,7 @@ export class ScrimsService {
         if (sd) details.push(sd);
       }
       if (body.capacity !== undefined) {
-        const cd = this.capacityDetail(body.capacity, game, s.tftMode);
+        const cd = this.capacityDetail(body.capacity, game, s.tftMode, user);
         if (cd) details.push(cd);
       }
       if (body.custom_game_name !== undefined && game.code !== 'other') {

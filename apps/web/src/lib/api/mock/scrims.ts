@@ -1142,6 +1142,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
     const bounds = scrimCapacityRange(
       { code: game.code, capacityMin: game.capacity_min, capacityMax: game.capacity_max, capacityStep: game.capacity_step },
       tftMode,
+      { admin: isAdmin },
     );
     return cap < bounds.min || cap > bounds.max || (cap - bounds.min) % bounds.step !== 0
       ? `정원은 ${bounds.min}–${bounds.max}명${bounds.step > 1 ? ` ${bounds.step}명 단위` : ''}이에요`

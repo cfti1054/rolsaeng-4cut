@@ -184,6 +184,23 @@ describe('POST /scrims 작성', () => {
     expect((await detailOf(await call(t, 'PATCH', `/scrims/${s.id}`, a.token, { capacity: 5 }))).capacity).toBe(5);
   });
 
+  it('운영진 정원 직접 입력: 게임 범위·단위와 상관없이 2–100, 그 밖은 400', async () => {
+    t = await createTestApp({ fixedClock: true });
+    const admin = await login(t, 'boss', 'admin');
+    expect((await create(t, admin, { capacity: 20 })).capacity).toBe(20);
+    // 롤체 더블업(2명 단위·최대 8)도 운영진은 홀수·범위 밖 허용
+    expect((await create(t, admin, { capacity: 11, tft_mode: 'double_up' }, TFT_BASE)).capacity).toBe(11);
+    const err = await expectError(await call(t, 'POST', '/scrims', admin.token, { ...LOL_BASE, scheduled_at: at(t, DAY), capacity: 1 }), 400, 'VALIDATION_FAILED');
+    expect(err.details).toEqual([{ path: 'capacity', message: '이 게임의 정원은 2–100명입니다.' }]);
+    const s = await create(t, admin);
+    expect((await detailOf(await call(t, 'PATCH', `/scrims/${s.id}`, admin.token, { capacity: 30 }))).capacity).toBe(30);
+    // 일반 멤버가 만든 글도 운영진은 범위 밖으로 수정할 수 있다
+    const a = await login(t, 'alice');
+    const m = await create(t, a);
+    expect((await detailOf(await call(t, 'PATCH', `/scrims/${m.id}`, admin.token, { capacity: 16 }))).capacity).toBe(16);
+    await expectError(await call(t, 'PATCH', `/scrims/${m.id}`, a.token, { capacity: 17 }), 400, 'VALIDATION_FAILED');
+  });
+
   it('시작 시각 경계: 정확히 30일 뒤 허용, 30일 + 1ms 거부. 포지션 없는 게임에 포지션 → 400', async () => {
     t = await createTestApp({ fixedClock: true });
     const a = await login(t, 'alice');

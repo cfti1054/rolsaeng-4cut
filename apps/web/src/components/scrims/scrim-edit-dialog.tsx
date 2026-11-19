@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  ADMIN_SCRIM_CAPACITY,
   CUSTOM_GAME_NAME_MAX_LENGTH,
   availableLolFormats,
   isPartyRecruit,
@@ -24,6 +25,7 @@ import { Button, InlineError } from '@/components/ui/controls';
 import { isApiError } from '@/lib/api/client';
 import { cn } from '@/lib/cn';
 import { duoBalanceNote } from '@/lib/elo-info';
+import { useMe } from '@/lib/hooks/auth';
 import { useUpdateScrim } from '@/lib/hooks/scrims';
 import { buildScrimPatch, capacityFloor, isoToKstInputs, kstInputsToIso, scheduleMaxMs, scheduleMaxText } from '@/lib/scrims';
 import { scrimErrorText, useRestriction } from './scrim-bits';
@@ -50,6 +52,9 @@ export function ScrimEditDialog({
   const [date, setDate] = useState(start.date);
   const [time, setTime] = useState(start.time);
   const [capacity, setCapacity] = useState(s.capacity);
+  // 운영진은 게임 범위와 상관없이 정원을 직접 입력한다
+  const isAdmin = useMe().data?.role === 'admin';
+  const capRange = isAdmin ? { ...game.capacity, ...ADMIN_SCRIM_CAPACITY } : game.capacity;
   const [rules, setRules] = useState(s.rules ?? '');
   const [rated, setRated] = useState(s.options.rated);
   const [autoBalance, setAutoBalance] = useState(s.options.auto_balance);
@@ -218,14 +223,20 @@ export function ScrimEditDialog({
           </div>
           <div className="flex flex-[1_1_150px] flex-col gap-1.5">
             <span id={ids.cap} className="text-[13px] text-muted">
-              정원{game.capacity.step > 1 && <span className="text-faint"> ({game.capacity.step}명 단위)</span>}
+              정원
+              {isAdmin ? (
+                <span className="text-faint"> (운영진 직접 입력)</span>
+              ) : (
+                game.capacity.step > 1 && <span className="text-faint"> ({game.capacity.step}명 단위)</span>
+              )}
             </span>
             <CapacityStepper
               labelledBy={ids.cap}
               value={capacity}
-              min={capacityFloor(game.capacity, s.joined_count)}
-              max={game.capacity.max}
-              step={game.capacity.step}
+              min={capacityFloor(capRange, s.joined_count)}
+              max={capRange.max}
+              step={capRange.step}
+              allowInput={isAdmin}
               onChange={setCapacity}
             />
           </div>

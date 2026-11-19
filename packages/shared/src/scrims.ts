@@ -217,11 +217,16 @@ export function appliedRated(hasResults: boolean, requested: boolean): boolean {
   return hasResults && requested;
 }
 
-/** 작성·수정 정원 범위. 롤체는 모드 범위, 그 외는 게임 행 범위. */
+/** 운영진이 직접 입력하는 정원 범위(방장 포함). 게임·모드 범위와 단위를 따르지 않는다. */
+export const ADMIN_SCRIM_CAPACITY = { min: 2, max: 100, step: 1 } as const;
+
+/** 작성·수정 정원 범위. 운영진은 ADMIN_SCRIM_CAPACITY, 롤체는 모드 범위, 그 외는 게임 행 범위. */
 export function scrimCapacityRange(
   game: { code: string; capacityMin: number; capacityMax: number; capacityStep: number },
   tftMode: TftMode | null,
+  opts: { admin?: boolean } = {},
 ): { min: number; max: number; step: number } {
+  if (opts.admin) return { ...ADMIN_SCRIM_CAPACITY };
   if (game.code === 'tft' && tftMode) return TFT_MODE_CAPACITY[tftMode];
   return { min: game.capacityMin, max: game.capacityMax, step: game.capacityStep };
 }

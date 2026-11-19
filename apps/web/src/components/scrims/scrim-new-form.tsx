@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  ADMIN_SCRIM_CAPACITY,
   CreateScrimRequest,
   LOL_FORMAT_LABEL,
   LOL_MAP_LABEL,
@@ -121,7 +122,8 @@ export function ScrimNewForm() {
 
   const list = games.data?.items ?? [];
   const game = list.find((g) => g.code === gameCode) ?? list[0] ?? null;
-  const capRange =
+  const isAdmin = me.data?.role === 'admin';
+  const baseCapRange =
     game?.code === 'tft'
       ? tftMode
         ? TFT_MODE_CAPACITY[tftMode]
@@ -129,6 +131,8 @@ export function ScrimNewForm() {
       : game
         ? { min: game.capacity.min, max: game.capacity.max, step: game.capacity.step, default: game.capacity.default }
         : null;
+  // 운영진은 게임 범위와 상관없이 정원을 직접 입력한다(기본값은 게임 기본값)
+  const capRange = baseCapRange && isAdmin ? { ...ADMIN_SCRIM_CAPACITY, default: baseCapRange.default } : baseCapRange;
   const cap = capRange ? (capacity ?? capRange.default) : null;
   const mapIsAram = game?.code === 'lol' && lolMap === 'aram';
   const format = game ? recruitFormat(game.code, tftMode, lolFormat) : null;
@@ -527,7 +531,11 @@ export function ScrimNewForm() {
                 </div>
                 <div className="flex flex-[1_1_170px] flex-col gap-2">
                   <span id={ids.cap} className="text-[13px] text-muted">
-                    정원 <span className="text-faint">(방장 포함{capRange && capRange.step > 1 ? ` · ${capRange.step}명 단위` : ''})</span>
+                    정원{' '}
+                    <span className="text-faint">
+                      (방장 포함
+                      {isAdmin ? ` · 운영진 직접 입력 ${ADMIN_SCRIM_CAPACITY.min}–${ADMIN_SCRIM_CAPACITY.max}명` : capRange && capRange.step > 1 ? ` · ${capRange.step}명 단위` : ''})
+                    </span>
                   </span>
                   {capRange && cap !== null ? (
                     <CapacityStepper
@@ -536,6 +544,7 @@ export function ScrimNewForm() {
                       min={capRange.min}
                       max={capRange.max}
                       step={capRange.step}
+                      allowInput={isAdmin}
                       onChange={(v) => setCapacity(v)}
                     />
                   ) : game?.code === 'tft' ? (
@@ -695,6 +704,7 @@ export function CapacityStepper({
   min,
   max,
   step = 1,
+  allowInput = false,
   onChange,
 }: {
   labelledBy: string;
@@ -702,8 +712,11 @@ export function CapacityStepper({
   min: number;
   max: number;
   step?: number;
+  /** 운영진: 가운데 숫자를 직접 입력할 수 있다 */
+  allowInput?: boolean;
   onChange: (v: number) => void;
 }) {
+  if (allowInput) return <CapacityInput labelledBy={labelledBy} value={value} min={min} max={max} onChange={onChange} />;
   if (min === max) {
     return (
       <div
@@ -727,6 +740,65 @@ export function CapacityStepper({
         {value}
       </output>
       <button type="button" aria-label="정원 늘리기" className={btn} disabled={value >= max} onClick={() => onChange(Math.min(max, value + step))}>
+        +
+      </button>
+    </div>
+  );
+}
+
+/** 운영진 정원 직접 입력. 입력 중에는 빈 값도 허용하고, 벗어나면 min–max로 맞춘다. */
+function CapacityInput({
+  labelledBy,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  labelledBy: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (v: number) => void;
+}) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  const clamp = (n: number) => Math.min(max, Math.max(min, Math.round(n)));
+  const commit = () => {
+    const n = Number(text);
+    const next = text.trim() === '' || !Number.isFinite(n) ? value : clamp(n);
+    setText(String(next));
+    if (next !== value) onChange(next);
+  };
+  const btn =
+    'size-10 shrink-0 rounded-[10px] border-0 bg-surface-2 text-lg text-text disabled:cursor-not-allowed disabled:opacity-40';
+  return (
+    <div role="group" aria-labelledby={labelledBy} className="flex h-12 items-center rounded-[14px] border border-line-3 bg-bg px-1">
+      <button type="button" aria-label="정원 줄이기" className={btn} disabled={value <= min} onClick={() => onChange(clamp(value - 1))}>
+        −
+      </button>
+      <input
+        type="number"
+        inputMode="numeric"
+        aria-label="정원 직접 입력"
+        min={min}
+        max={max}
+        step={1}
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          const n = Number(e.target.value);
+          if (e.target.value.trim() !== '' && Number.isInteger(n) && n >= min && n <= max) onChange(n);
+        }}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit();
+          }
+        }}
+        className="w-full min-w-0 flex-1 border-0 bg-transparent text-center font-display text-lg font-bold text-text outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+      />
+      <button type="button" aria-label="정원 늘리기" className={btn} disabled={value >= max} onClick={() => onChange(clamp(value + 1))}>
         +
       </button>
     </div>
