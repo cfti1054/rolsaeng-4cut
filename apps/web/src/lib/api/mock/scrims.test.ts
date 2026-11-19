@@ -1,4 +1,5 @@
 import {
+  AddScrimPlayerResponse,
   ApiPath,
   CreateScrimResponse,
   DevLoginResponse,
@@ -22,7 +23,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import { createApiClient } from '../client';
 import { createMockBackend, type MockDb } from './backend';
-import { computeOpenPositions } from './scrims';
+import { MOCK_SCRIM_USERS, computeOpenPositions } from './scrims';
 
 /** S2 목이 계약을 지키는지: 실제 클라이언트(zod 파싱)로 호출한다 */
 function setup(login?: { username: string; role?: UserRole }) {
@@ -637,5 +638,31 @@ describe('S2 목: 백엔드 확정 사항 대조', () => {
       code: 'SCRIM_DELETE_NOT_ALLOWED',
       status: 409,
     });
+  });
+});
+
+describe('S2 목: 운영진 직접 등록(POST /scrims/:id/players)', () => {
+  it('운영진만, 빈 자리면 joined·이미 있으면 포지션만, 없는 회원은 VALIDATION_FAILED', async () => {
+    const admin = setup({ username: 'admin_add', role: 'admin' });
+    await admin.ready;
+    const add = (t: ReturnType<typeof setup>, id: string, body: object) =>
+      t.api.request(fillPath(ApiPath.scrimPlayers, { id }), AddScrimPlayerResponse, { method: 'POST', body });
+    const s = await admin.create({ game: 'lol', title: '운영진 등록 테스트', scheduled_at: admin.kst(5), capacity: 2, host_preferred_positions: ['mid'] });
+    const target = MOCK_SCRIM_USERS[0]!.id;
+    const d = await add(admin, s.id, { user_id: target, preferred_positions: ['top'] });
+    expect(d.joined_count).toBe(2);
+    expect(d.status).toBe('full');
+    expect(d.players.find((p) => p.user.id === target)?.preferred_positions).toEqual(['top']);
+    const again = await add(admin, s.id, { user_id: target, preferred_positions: ['jungle'] });
+    expect(again.joined_count).toBe(2);
+    expect(again.players.find((p) => p.user.id === target)?.preferred_positions).toEqual(['jungle']);
+    await expect(add(admin, s.id, { user_id: '00000000-0000-4000-8000-000000000000', preferred_positions: ['top'] })).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+    });
+
+    const member = setup({ username: 'plain_member' });
+    await member.ready;
+    const open = await member.findByTitle('open', '화요일 저녁 5:5 내전');
+    await expect(add(member, open.id, { user_id: target, preferred_positions: ['top'] })).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
   });
 });

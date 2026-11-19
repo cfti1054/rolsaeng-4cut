@@ -38,6 +38,8 @@ export const ApiPath = {
   scrimFinish: '/scrims/:id/finish',
   scrimCancel: '/scrims/:id/cancel',
   scrimPlayerNoShow: '/scrims/:id/players/:userId/no-show',
+  /** 운영진이 멤버를 참가자로 직접 등록. POST, 응답은 ScrimDetail */
+  scrimPlayers: '/scrims/:id/players',
   // S2 내 노쇼 제한 상태
   myScrimRestriction: '/me/scrim-restriction',
   // S3 팀 밸런스·팀 구성·결과 (scrimResult: POST 제출, DELETE 제출 취소)

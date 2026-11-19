@@ -1,4 +1,5 @@
 import {
+  AddScrimPlayerResponse,
   ApiPath,
   ApproveScrimResultResponse,
   BalanceScrimResponse,
@@ -29,6 +30,7 @@ import {
   fillPath,
   type CreateScrimRequestInput,
   type GameCode,
+  type AddScrimPlayerRequestInput,
   type JoinScrimRequestInput,
   type ScrimListStatus,
   type SetScrimNoShowRequest,
@@ -81,6 +83,11 @@ export function updateScrim(id: string, body: UpdateScrimRequestInput) {
 /** POST /scrims/:id/join — 참가·대기 등록·희망 포지션 변경(본문은 항상 객체) */
 export function joinScrim(id: string, body: JoinScrimRequestInput) {
   return apiClient.request(fillPath(ApiPath.scrimJoin, { id }), JoinScrimResponse, { method: 'POST', body });
+}
+
+/** POST /scrims/:id/players — 운영진이 멤버를 참가자로 직접 등록, 200 ScrimDetail */
+export function addScrimPlayer(id: string, body: AddScrimPlayerRequestInput) {
+  return apiClient.request(fillPath(ApiPath.scrimPlayers, { id }), AddScrimPlayerResponse, { method: 'POST', body });
 }
 
 /** DELETE /scrims/:id/join — 본문 없음, 200 ScrimDetail */

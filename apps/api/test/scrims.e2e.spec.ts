@@ -718,6 +718,59 @@ describe('POST /scrims/:id/cancel 모집 취소', () => {
   });
 });
 
+const addPlayer = (app: TestApp, who: Who, id: string, body: object) => call(app, 'POST', `/scrims/${id}/players`, who.token, body);
+
+describe('POST /scrims/:id/players 운영진 직접 등록', () => {
+  it('운영진이 멤버를 빈 자리에 넣는다: joined, 희망 포지션, 꽉 차면 full', async () => {
+    t = await createTestApp({ fixedClock: true });
+    const host = await login(t, 'host');
+    const admin = await login(t, 'boss', 'admin');
+    const a = await login(t, 'alice');
+    const s = await create(t, host, { capacity: 2 });
+    const d = await detailOf(await addPlayer(t, admin, s.id, { user_id: a.userId, preferred_positions: ['top'] }));
+    expect(d.joined_count).toBe(2);
+    expect(d.status).toBe('full');
+    expect(d.players.find((p) => p.user.id === a.userId)?.preferred_positions).toEqual(['top']);
+    // 운영진 본인은 참가자가 아니다
+    expect(d.players.some((p) => p.user.id === admin.userId)).toBe(false);
+    // 이미 참가 중이면 희망 포지션만 바뀐다(멱등)
+    const again = await detailOf(await addPlayer(t, admin, s.id, { user_id: a.userId, preferred_positions: ['mid'] }));
+    expect(again.joined_count).toBe(2);
+    expect(again.players.find((p) => p.user.id === a.userId)?.preferred_positions).toEqual(['mid']);
+  });
+
+  it('자리가 없으면 대기열, 노쇼 제한·시작 시각 마감은 보지 않는다', async () => {
+    t = await createTestApp({ fixedClock: true });
+    const host = await login(t, 'host');
+    const admin = await login(t, 'boss', 'admin');
+    const a = await login(t, 'alice');
+    const b = await login(t, 'bob');
+    const s = await create(t, host, { capacity: 2, scheduled_at: at(t, HOUR) });
+    const now = t.clock.now().getTime();
+    seedNoShows(t, a.userId, [new Date(now - 3 * HOUR), new Date(now - 2 * HOUR), new Date(now - HOUR)]);
+    await expectError(await join(t, a, s.id, ['top']), 403, 'SCRIM_BANNED');
+    expect((await detailOf(await addPlayer(t, admin, s.id, { user_id: a.userId, preferred_positions: ['top'] }))).joined_count).toBe(2);
+    t.clock.advance(2 * HOUR);
+    const d = await detailOf(await addPlayer(t, admin, s.id, { user_id: b.userId, preferred_positions: ['jungle'] }));
+    expect(d.waitlist.map((w) => w.user.id)).toEqual([b.userId]);
+  });
+
+  it('멤버·방장 → 403, 없는 회원 → 400 user_id, 모집 중 아님 → 409', async () => {
+    t = await createTestApp({ fixedClock: true });
+    const host = await login(t, 'host');
+    const admin = await login(t, 'boss', 'admin');
+    const a = await login(t, 'alice');
+    const s = await create(t, host);
+    await expectError(await addPlayer(t, host, s.id, { user_id: a.userId }), 403, 'FORBIDDEN');
+    await expectError(await addPlayer(t, a, s.id, { user_id: a.userId }), 403, 'FORBIDDEN');
+    const bad = await expectError(await addPlayer(t, admin, s.id, { user_id: randomUUID() }), 400, 'VALIDATION_FAILED');
+    expect(bad.details?.[0]?.path).toBe('user_id');
+    await expectError(await addPlayer(t, admin, s.id, { user_id: a.userId, preferred_positions: ['nope'] }), 400, 'VALIDATION_FAILED');
+    await call(t, 'POST', `/scrims/${s.id}/cancel`, host.token);
+    await expectError(await addPlayer(t, admin, s.id, { user_id: a.userId }), 409, 'SCRIM_NOT_RECRUITING');
+  });
+});
+
 describe('PUT /scrims/:id/players/:userId/no-show 노쇼', () => {
   async function playingScrim(app: TestApp) {
     const host = await login(app, 'host');

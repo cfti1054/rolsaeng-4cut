@@ -720,6 +720,29 @@ export type JoinScrimRequestInput = z.input<typeof JoinScrimRequest>;
 export const JoinScrimResponse = ScrimDetail;
 export type JoinScrimResponse = z.infer<typeof JoinScrimResponse>;
 
+// -----------------------------------------------------------------------------
+// POST /scrims/{id}/players — 운영진이 멤버를 참가자로 직접 등록(로스터 「빈 자리」)
+// -----------------------------------------------------------------------------
+
+/**
+ * 운영진만(FORBIDDEN). 대상 멤버가 직접 참가한 것과 같은 규칙으로 넣는다:
+ * - 자리가 있으면 joined, 그사이 꽉 찼으면 waitlist(대기열 맨 뒤)
+ * - 이미 joined·waitlist → 상태·순번은 그대로 두고 희망 포지션만 바꾼다(멱등)
+ * 운영진이 정하는 것이므로 대상의 노쇼 제한과 시작 시각 마감(join_closed)은 보지 않는다. 모집 중(recruiting·full)만.
+ * 없는 회원·탈퇴(left_at)·삭제(deleted_at) 회원 → VALIDATION_FAILED(path user_id).
+ */
+export const AddScrimPlayerRequest = z
+  .object({
+    user_id: Uuid,
+    preferred_positions: PreferredPositions.default([]),
+  })
+  .strict();
+export type AddScrimPlayerRequest = z.infer<typeof AddScrimPlayerRequest>;
+export type AddScrimPlayerRequestInput = z.input<typeof AddScrimPlayerRequest>;
+
+export const AddScrimPlayerResponse = ScrimDetail;
+export type AddScrimPlayerResponse = z.infer<typeof AddScrimPlayerResponse>;
+
 /**
  * DELETE /scrims/{id}/join — 본문 없음. 200 ScrimDetail.
  * 참가 확정자가 취소하면 같은 트랜잭션에서 대기 1번을 승격(대기열이 없으면 full → recruiting).

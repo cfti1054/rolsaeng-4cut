@@ -57,6 +57,7 @@ import {
   kstMonthDayTime,
 } from '@/lib/scrims';
 import { PositionPicker } from './position-picker';
+import { AddPlayerDialog } from './scrim-add-player-dialog';
 import { GameTag, PositionChips, SectionHead, StatusPill, scrimErrorText, useRestriction } from './scrim-bits';
 import { ScrimEditDialog } from './scrim-edit-dialog';
 import { ResultPanel } from './scrim-result';
@@ -511,6 +512,7 @@ function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => vo
   const showNoShow = isAdmin && (s.status === 'playing' || s.status === 'finished');
   const noShow = useSetScrimNoShow(s.id);
   const [markTarget, setMarkTarget] = useState<ScrimPlayerView | null>(null);
+  const [adding, setAdding] = useState(false);
   const open = isOpenStatus(s.status);
   const empty = open ? Math.max(0, s.capacity - s.players.length) : 0;
   const usePositions = s.options.use_positions;
@@ -607,13 +609,43 @@ function Roster({ s, onToast }: { s: ScrimDetail; onToast: (t: ToastState) => vo
             )}
           </div>
         ))}
-        {Array.from({ length: empty }, (_, i) => (
-          <div key={`empty-${i}`} className="col-span-full flex min-h-[42px] items-center gap-2.5 py-1 text-sm text-faint">
-            <span aria-hidden="true" className="size-[30px] shrink-0 rounded-full border border-dashed border-line-3" />
-            빈 자리
-          </div>
-        ))}
+        {Array.from({ length: empty }, (_, i) =>
+          isAdmin ? (
+            // 운영진: 빈 자리를 눌러 멤버를 직접 등록
+            <button
+              key={`empty-${i}`}
+              type="button"
+              onClick={() => setAdding(true)}
+              className="group col-span-full flex min-h-[42px] items-center gap-2.5 rounded-lg border-0 bg-transparent py-1 text-left text-sm text-faint hover:bg-surface-2 hover:text-accent-ink"
+            >
+              <span
+                aria-hidden="true"
+                className="flex size-[30px] shrink-0 items-center justify-center rounded-full border border-dashed border-line-3 text-base group-hover:border-accent-ink"
+              >
+                +
+              </span>
+              빈 자리
+              <span className="ml-auto pr-1 text-xs font-semibold text-accent-ink opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                참가자 등록
+              </span>
+            </button>
+          ) : (
+            <div key={`empty-${i}`} className="col-span-full flex min-h-[42px] items-center gap-2.5 py-1 text-sm text-faint">
+              <span aria-hidden="true" className="size-[30px] shrink-0 rounded-full border border-dashed border-line-3" />
+              빈 자리
+            </div>
+          ),
+        )}
       </div>
+      {adding && (
+        <AddPlayerDialog
+          s={s}
+          onClose={() => setAdding(false)}
+          onAdded={(nickname, waitlisted) =>
+            onToast({ message: waitlisted ? `자리가 차서 ${nickname}님을 대기열에 넣었어요.` : `${nickname}님을 참가자로 등록했어요.`, tone: 'success' })
+          }
+        />
+      )}
       {showNoShow && policy && <p className="m-0 px-1 text-xs text-faint">{noShowMarkHintText(policy)}</p>}
       {showNoShow && noShow.isError &&<InlineError>{scrimErrorText(noShow.error)}</InlineError>}
 

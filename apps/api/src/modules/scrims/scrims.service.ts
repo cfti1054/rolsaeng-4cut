@@ -19,6 +19,7 @@ import {
   recruitFormat,
   type CreateScrimRequest,
   type ErrorDetail,
+  type AddScrimPlayerRequest,
   type JoinScrimRequest,
   type ListScrimsQuery,
   ListScrimsResponse,
@@ -442,45 +443,79 @@ export class ScrimsService {
       const s = await lockOrNotFound(tx, id);
       if (!isOpenStatus(s.status)) throw new AppError('SCRIM_NOT_RECRUITING');
       if (isJoinClosed(s.scheduledAt, now)) throw new AppError('SCRIM_JOIN_CLOSED');
-      const game = await loadGame(tx, s.gameId);
-      const pv = validatePreferredPositions(body.preferred_positions, game.positions, s.usePositions);
-      if (!pv.ok) {
-        throw new AppError('VALIDATION_FAILED', undefined, { details: [{ path: 'preferred_positions', message: pv.message }] });
-      }
-      const mine = await tx.scrimPlayer.findFirst({ where: { scrimId: s.id, userId: user.id } });
-      // 4. 이미 참가·대기 중 → 희망 포지션만(상태·순번 그대로, D81). 노쇼 제한과 무관(D83)
-      if (mine && (mine.status === 'joined' || mine.status === 'waitlist')) {
-        await tx.scrimPlayer.update({ where: { id: mine.id }, data: { preferredPositions: body.preferred_positions } });
-        return;
-      }
-      // 5. 새 신청만 노쇼 제한
-      await this.restriction.assertNotRestricted(user.id, now, tx);
-      // 6
-      const n = await countJoined(tx, s.id);
-      const place = placeNewParticipant(n, s.capacity);
-      if (mine) {
-        assertPlayerTransition(mine.status, place);
-        await tx.scrimPlayer.update({
-          where: { id: mine.id },
-          data: { status: place, preferredPositions: body.preferred_positions, joinedAt: now, position: null, team: null, duoIndex: null },
-        });
-      } else {
-        await tx.scrimPlayer.create({
-          data: { scrimId: s.id, userId: user.id, status: place, preferredPositions: body.preferred_positions, joinedAt: now },
-        });
-      }
-      // 7
-      if (place === 'joined') {
-        // S3 5-1(D110): 새 참가 확정으로 joined 집합이 바뀐다(재참가 행은 위에서 team·position도 null로 썼다)
-        await resetTeams(tx, s.id);
-        const next = statusForJoinedCount(n + 1, s.capacity);
-        if (next !== s.status) {
-          assertScrimTransition(s.status, next);
-          await tx.scrim.update({ where: { id: s.id }, data: { status: next } });
-        }
-      }
+      await this.enroll(tx, s, user.id, body.preferred_positions, now, { checkRestriction: true });
     });
     return this.views.detail(id, user, now);
+  }
+
+  /**
+   * POST /scrims/:id/players — 운영진이 멤버를 참가자로 직접 등록.
+   * 직접 참가와 같은 규칙(자리 있으면 joined, 없으면 waitlist, 이미 있으면 희망 포지션만).
+   * 노쇼 제한·시작 시각 마감은 보지 않는다.
+   */
+  async addPlayer(user: AuthUser, id: string, body: AddScrimPlayerRequest): Promise<ScrimDetail> {
+    const now = this.clock.now();
+    await scrimWriteTx(this.prisma, async (tx) => {
+      const s = await lockOrNotFound(tx, id);
+      // 컨트롤러 RolesGuard 뒤에서도 잠금 안에서 다시 확인(그사이 강등)
+      const actor = await tx.user.findUnique({ where: { id: user.id }, select: { role: true } });
+      if (actor?.role !== 'admin') throw new AppError('FORBIDDEN');
+      if (!isOpenStatus(s.status)) throw new AppError('SCRIM_NOT_RECRUITING');
+      const target = await tx.user.findUnique({ where: { id: body.user_id }, select: { leftAt: true, deletedAt: true } });
+      if (!target || target.leftAt != null || target.deletedAt != null) {
+        throw new AppError('VALIDATION_FAILED', undefined, { details: [{ path: 'user_id', message: '등록할 수 없는 회원입니다.' }] });
+      }
+      await this.enroll(tx, s, body.user_id, body.preferred_positions, now, { checkRestriction: false });
+    });
+    return this.views.detail(id, user, now);
+  }
+
+  /** 참가·대기 등록 공통(D81·D83). 잠근 내전 행과 같은 트랜잭션에서 부른다 */
+  private async enroll(
+    tx: Tx,
+    s: LockedScrim,
+    userId: string,
+    preferredPositions: string[],
+    now: Date,
+    opts: { checkRestriction: boolean },
+  ): Promise<void> {
+    const game = await loadGame(tx, s.gameId);
+    const pv = validatePreferredPositions(preferredPositions, game.positions, s.usePositions);
+    if (!pv.ok) {
+      throw new AppError('VALIDATION_FAILED', undefined, { details: [{ path: 'preferred_positions', message: pv.message }] });
+    }
+    const mine = await tx.scrimPlayer.findFirst({ where: { scrimId: s.id, userId } });
+    // 4. 이미 참가·대기 중 → 희망 포지션만(상태·순번 그대로, D81). 노쇼 제한과 무관(D83)
+    if (mine && (mine.status === 'joined' || mine.status === 'waitlist')) {
+      await tx.scrimPlayer.update({ where: { id: mine.id }, data: { preferredPositions } });
+      return;
+    }
+    // 5. 새 신청만 노쇼 제한(운영진 직접 등록은 건너뜀)
+    if (opts.checkRestriction) await this.restriction.assertNotRestricted(userId, now, tx);
+    // 6
+    const n = await countJoined(tx, s.id);
+    const place = placeNewParticipant(n, s.capacity);
+    if (mine) {
+      assertPlayerTransition(mine.status, place);
+      await tx.scrimPlayer.update({
+        where: { id: mine.id },
+        data: { status: place, preferredPositions, joinedAt: now, position: null, team: null, duoIndex: null },
+      });
+    } else {
+      await tx.scrimPlayer.create({
+        data: { scrimId: s.id, userId, status: place, preferredPositions, joinedAt: now },
+      });
+    }
+    // 7
+    if (place === 'joined') {
+      // S3 5-1(D110): 새 참가 확정으로 joined 집합이 바뀐다(재참가 행은 위에서 team·position도 null로 썼다)
+      await resetTeams(tx, s.id);
+      const next = statusForJoinedCount(n + 1, s.capacity);
+      if (next !== s.status) {
+        assertScrimTransition(s.status, next);
+        await tx.scrim.update({ where: { id: s.id }, data: { status: next } });
+      }
+    }
   }
 
   /** DELETE /scrims/:id/join */

@@ -450,3 +450,13 @@
 **기본값:** 목 모드는 시드 닉네임이 고정이라 「(Del)」 표시를 하지 않음(목록에서만 제외). 감사 details에는 원래 닉네임 유지.
 
 **확인:** `@gcd/shared` typecheck 통과(익명화 닉네임 테스트 포함). API·웹 typecheck, vitest, prisma generate·migrate 미실행.
+
+## 후속: 운영진 참가자 직접 등록 — 2026-11-19 — 판정: 구현
+
+**사용자 요청:** 내전 상세 로스터의 「빈 자리」에서 운영진이 멤버를 직접 참가자로 등록.
+
+**구현:** `POST /scrims/:id/players` `{ user_id, preferred_positions }` → 200 ScrimDetail(JwtGuard + RolesGuard admin, 잠금 안에서 role 재확인). 참가 공통 로직을 `ScrimsService.enroll`로 빼서 직접 참가와 같은 규칙(자리 있으면 joined, 없으면 waitlist, 이미 참가·대기면 희망 포지션만, joined 변화 시 팀 초기화·full 전환). 웹: 운영진에게 빈 자리가 버튼, `AddPlayerDialog`(GET /admin/members 검색, 참가·대기·탈퇴 멤버 제외, 포지션 내전이면 1·2지망 선택). 목 서버 동일 규칙.
+
+**기본값:** 운영진 등록은 대상의 노쇼 제한과 시작 시각 마감(join_closed)을 보지 않는다. 모집 중(recruiting·full)만. 없는·탈퇴·삭제 회원은 VALIDATION_FAILED(path user_id). 새 오류 코드 없음.
+
+**확인:** shared·web typecheck 통과. api e2e 3건, 웹 목 테스트 1건 추가·통과. shared 203, web 402 통과. api `scrims`·`scrim-results` e2e의 기존 실패 6건과 `fake-prisma.ts` deletedAt 타입 오류는 이번 변경 전에도 같음.

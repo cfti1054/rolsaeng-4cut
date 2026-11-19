@@ -39,6 +39,7 @@ import {
   GameCode,
   IsoDateTime,
   JoinScrimRequest,
+  AddScrimPlayerRequest,
   ListScrimsQuery,
   NO_SHOW_MARK_WINDOW_DAYS_DEFAULT,
   NO_SHOW_RESTRICTION_DAYS_DEFAULT,
@@ -1598,6 +1599,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
   // /scrims/:id/join | start | cancel
   for (const [template, action] of [
     [ApiPath.scrimJoin, 'join'],
+    [ApiPath.scrimPlayers, 'add'],
     [ApiPath.scrimStart, 'start'],
     [ApiPath.scrimFinish, 'finish'],
     [ApiPath.scrimCancel, 'cancel'],
@@ -1611,23 +1613,30 @@ export function handleS2(ctx: MockS2Context): Response | null {
     const isHost = s.host_id === me.id;
     const game = gameOf(s.game);
 
-    if (action === 'join' && method === 'POST') {
+    // 참가(본인) 또는 운영진 직접 등록(대상 회원). 운영진 등록은 노쇼 제한·시작 시각 마감을 보지 않는다
+    if ((action === 'join' || action === 'add') && method === 'POST') {
+      const byAdmin = action === 'add';
+      if (byAdmin && !isAdmin) return error('FORBIDDEN', '운영진만 참가자를 등록할 수 있습니다.');
       // 본문 필수(서버와 같게): 포지션 없는 게임도 {}를 보낸다. 본문이 없으면 VALIDATION_FAILED
-      const parsed = JoinScrimRequest.safeParse(ctx.body);
+      const parsed = byAdmin ? AddScrimPlayerRequest.safeParse(ctx.body) : JoinScrimRequest.safeParse(ctx.body);
       if (!parsed.success) return error('VALIDATION_FAILED', '요청 형식이 올바르지 않습니다.', { details: issues(parsed.error) });
       if (!isOpen(s)) return error('SCRIM_NOT_RECRUITING', '모집 중 아님');
-      if (isClosed(s, now)) return error('SCRIM_JOIN_CLOSED', '시작 시각 지남');
+      if (!byAdmin && isClosed(s, now)) return error('SCRIM_JOIN_CLOSED', '시작 시각 지남');
+      const targetId: string = 'user_id' in parsed.data ? String(parsed.data.user_id) : me.id;
+      if (byAdmin && targetId !== me.id && !MOCK_SCRIM_USERS.some((u) => u.id === targetId)) {
+        return error('VALIDATION_FAILED', '등록할 수 없는 회원입니다.', { details: [{ path: 'user_id', message: '등록할 수 없는 회원입니다.' }] });
+      }
       const pi = validatePositions(parsed.data.preferred_positions, game.positions, s.use_positions);
       if (pi) return error('VALIDATION_FAILED', '희망 포지션을 확인해 주세요.', { details: [{ path: 'preferred_positions', message: pi }] });
-      const mine = rowsOf(s.id).find((p) => p.user_id === me.id);
+      const mine = rowsOf(s.id).find((p) => p.user_id === targetId);
       if (mine && (mine.status === 'joined' || mine.status === 'waitlist')) {
         mine.preferred_positions = parsed.data.preferred_positions;
         s.updated_at = iso(now);
         persist();
         return json(200, detail(s));
       }
-      const r = restrictionOf(me.id);
-      if (r.restricted) return banned(r);
+      const r = restrictionOf(targetId);
+      if (!byAdmin && r.restricted) return banned(r);
       const beforeJoin = joinedSet(s.id);
       const placed = joinedRows(s.id).length < s.capacity ? 'joined' : 'waitlist';
       // 재참가 행은 방어적으로 team·position도 지운다(S3 5-1)
@@ -1636,7 +1645,7 @@ export function handleS2(ctx: MockS2Context): Response | null {
         state.players.push({
           id: crypto.randomUUID(),
           scrim_id: s.id,
-          user_id: me.id,
+          user_id: targetId,
           status: placed,
           preferred_positions: parsed.data.preferred_positions,
           joined_at: iso(now),

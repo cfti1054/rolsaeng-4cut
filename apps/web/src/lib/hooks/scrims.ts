@@ -36,6 +36,7 @@ import {
   getMyScrimRestriction,
   getScrim,
   joinScrim,
+  addScrimPlayer,
   leaveScrim,
   listGames,
   listScrims,
@@ -214,6 +215,16 @@ export function useJoinScrim(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (preferred_positions: string[]) => joinScrim(id, { preferred_positions }),
+    onSuccess: (d) => applyScrimDetail(qc, d),
+    onError: (err) => handleScrimMutationError(qc, id, err),
+  });
+}
+
+/** POST /scrims/:id/players — 운영진 직접 등록 */
+export function useAddScrimPlayer(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { user_id: string; preferred_positions: string[] }) => addScrimPlayer(id, body),
     onSuccess: (d) => applyScrimDetail(qc, d),
     onError: (err) => handleScrimMutationError(qc, id, err),
   });

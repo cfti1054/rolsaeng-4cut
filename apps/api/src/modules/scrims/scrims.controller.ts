@@ -1,5 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import {
+  AddScrimPlayerRequest,
+  type AddScrimPlayerResponse,
   ApiPath,
   ApproveScrimResultRequest,
   type ApproveScrimResultResponse,
@@ -142,6 +144,19 @@ export class ScrimsController {
   @HttpCode(200)
   cancel(@CurrentUser() user: AuthUser, @Param(idPipe) params: IdParam): Promise<CancelScrimResponse> {
     return this.scrims.cancel(user, params.id);
+  }
+
+  /** POST /scrims/:id/players → 200 AddScrimPlayerResponse (운영진이 멤버를 참가자로 직접 등록) */
+  @Post(ApiPath.scrimPlayers)
+  @HttpCode(200)
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  addPlayer(
+    @CurrentUser() user: AuthUser,
+    @Param(idPipe) params: IdParam,
+    @Body(new ZodValidationPipe(AddScrimPlayerRequest)) body: AddScrimPlayerRequest,
+  ): Promise<AddScrimPlayerResponse> {
+    return this.scrims.addPlayer(user, params.id, body);
   }
 
   /** PUT /scrims/:id/players/:userId/no-show → 200 SetScrimNoShowResponse (운영진) */
